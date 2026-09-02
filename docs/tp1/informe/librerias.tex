@@ -1,0 +1,41 @@
+% Librerias
+\usepackage{babel}
+\babelprovide[main,import]{spanish}
+\usepackage[utf8]{inputenc}
+
+
+\usepackage{amsmath, amssymb}
+\usepackage{siunitx}
+\sisetup{
+	output-decimal-marker = {,},  % Coma decimal
+	inter-unit-product = \cdot,   % Usa \cdot entre unidades
+	exponent-product = \cdot,	  % Usa \cdot entre mantisa y exponente
+	per-mode = symbol             % Formato de unidades (/)
+}
+
+\usepackage{tabularx}
+\usepackage{booktabs}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\usepackage{float}
+
+\usepackage{graphicx}
+\usepackage{caption}
+\captionsetup[figure]{justification=centering, singlelinecheck=false}
+\captionsetup[table]{justification=centering, singlelinecheck=false}
+
+\usepackage[top=2.5cm, bottom=2.5cm, left=1.5cm, right=1.5cm]{geometry}
+\raggedbottom
+\setlength{\emergencystretch}{2em}
+
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\setlength{\headheight}{14.5pt}
+
+\usepackage[colorlinks=true, allcolors=black]{hyperref}
+\fancyhead{}
+\fancyhead[L]{UNC - FCEFyN} % Alineado a la izquierda
+\fancyhead[R]{Arquitectura de computadoras} % Alineado a la derecha
+\fancyfoot{}
+\fancyfoot[C]{\thepage}
+

@@ -1,0 +1,4 @@
+\babel@toc {spanish}{}\relax 
+\contentsline {section}{\numberline {0.1}Introducción}{2}{section.0.1}%
+\contentsline {section}{\numberline {0.2}Modelado}{2}{section.0.2}%
+\contentsline {section}{\numberline {0.3}Síntesis}{2}{section.0.3}%
