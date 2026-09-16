@@ -18,13 +18,15 @@ module baudrate_gen #(
       counter <= 0; // Pongo a cero el contador
       o_baudrate <= 0; //y la salida
     end
+    else if (counter == COUNT_MAX-1)
+    begin
+      counter <= 0;
+      o_baudrate <= 1'b1;
+    end
     else
-      counter <= next_counter; // Asigno el valor del contador
-
-    // Logica del contador COUNT_MAX-1 -> En el proximo ciclo de relog se asigna al contador
-    assign next_counter = (r_reg == (COUNT_MAX-1)) ? 0 : counter+1;
-
-    // Logica de salida
-    assign o_baudrate = (r_reg==(COUNT_MAX-1))? 1'b1:1'b0;
+    begin
+      counter <= counter + 1; // Asigno el valor del contador
+      o_baudrate <= 0;
+    end
   end
 endmodule
