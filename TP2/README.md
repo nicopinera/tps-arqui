@@ -107,3 +107,215 @@ Instancia la FSM y el datapath, cablea las señales de control entre ambos, y ex
 ## La diferencia clave de diseño que vas a notar al escribirlo
 
 En el RX, `s_reg` avanzaba automáticamente con cada `s_tick` sin que la FSM tuviera que pedirlo — porque el RX siempre está "escuchando" mientras está en un estado activo. En el TX pasa lo mismo, pero además vas a necesitar que el datapath **cargue el dato completo de una sola vez** al arrancar (`b_reg <= din` cuando la FSM pide `load`), algo que el RX nunca necesitó porque él arma el dato de a un bit, nunca lo recibe entero.
+
+---
+
+## Tabla resumen de señales y flags
+
+| Módulo                | Señal                                          | Dir. | Ancho | Qué significa                                                           |
+| --------------------- | ---------------------------------------------- | ---- | ----- | ----------------------------------------------------------------------- |
+| **baudrate_gen**      | `clock`, `i_reset`                             | in   | 1     | Reloj del sistema y reset síncrono                                      |
+|                       | `o_baudrate`                                   | out  | 1     | Pulso de 1 ciclo cada 326 ciclos de clock (el `tick`, 16x el baud rate) |
+| **uart_rx_fsm**       | `rx`                                           | in   | 1     | Línea serie de entrada                                                  |
+|                       | `i_s_tick`                                     | in   | 1     | Tick del baudrate_gen                                                   |
+|                       | `i_s_reg`                                      | in   | 4     | Lee el contador de ticks actual (para saber si llegó a 7 o a 15)        |
+|                       | `i_n_reg`                                      | in   | 3     | Lee el contador de bits actual (para saber si ya van 8)                 |
+|                       | `o_s_clr`                                      | out  | 1     | Pulso: "reiniciá el contador de ticks"                                  |
+|                       | `o_n_clr`                                      | out  | 1     | Pulso: "reiniciá el contador de bits"                                   |
+|                       | `o_n_incr`                                     | out  | 1     | Pulso: "sumá 1 al contador de bits"                                     |
+|                       | `o_b_shift`                                    | out  | 1     | Pulso: "meté el bit actual de `rx` en el shift register"                |
+|                       | `o_p_load`                                     | out  | 1     | Pulso: "guardá el bit actual como paridad"                              |
+|                       | `o_rx_done`                                    | out  | 1     | Pulso final: "ya armé el byte completo, es válido"                      |
+| **uart_rx_datapath**  | `i_din` — n/a (no tiene, el dato lo arma solo) |      |       |                                                                         |
+|                       | `o_s_reg`                                      | out  | 4     | Contador de ticks (0-15)                                                |
+|                       | `o_n_reg`                                      | out  | 3     | Contador de bits recibidos (0-7)                                        |
+|                       | `o_b_reg`                                      | out  | 8     | Shift register — el byte que se va armando                              |
+|                       | `o_p_reg`                                      | out  | 1     | Bit de paridad recibido (guardado sin validar)                          |
+| **uart_rx (wrapper)** | `rx`, `i_s_tick`                               | in   | 1     | Pasan directo a fsm y datapath                                          |
+|                       | `o_dout`                                       | out  | 8     | El byte recibido = `w_b_reg` del datapath                               |
+|                       | `o_rx_done`                                    | out  | 1     | = `o_rx_done` de la fsm                                                 |
+| **uart_tx_fsm**       | `i_tx_start`                                   | in   | 1     | Pedido externo: "arrancá a transmitir"                                  |
+|                       | `i_b0`                                         | in   | 1     | Bit 0 actual del shift register (el que hay que sacar por `tx` ahora)   |
+|                       | `i_p_reg`                                      | in   | 1     | Bit de paridad ya calculado                                             |
+|                       | `o_b_load`                                     | out  | 1     | Pulso: "cargá el dato completo (`din`) en el shift register"            |
+|                       | `o_b_shift`                                    | out  | 1     | Pulso: "corré el shift register para exponer el próximo bit"            |
+|                       | `o_tx`                                         | out  | 1     | La línea serie de salida (1=reposo, 0=start, bit por bit en DATA, etc.) |
+|                       | `o_tx_done`                                    | out  | 1     | Pulso final: "ya mandé el frame completo"                               |
+| **uart_tx_datapath**  | `i_din`                                        | in   | 8     | El byte completo a transmitir                                           |
+|                       | `o_b_reg`                                      | out  | 8     | Shift register — se vacía bit a bit hacia `tx`                          |
+|                       | `o_p_reg`                                      | out  | 1     | Paridad calculada por XOR de `i_din`                                    |
+| **uart_tx (wrapper)** | `i_din`, `i_tx_start`                          | in   | —     | Pasan directo a fsm/datapath                                            |
+|                       | `o_tx`                                         | out  | 1     | = `o_tx` de la fsm                                                      |
+|                       | `o_tx_done`                                    | out  | 1     | = `o_tx_done` de la fsm                                                 |
+| **alu**               | `i_a`, `i_b`                                   | in   | 8 c/u | Operandos (con signo)                                                   |
+|                       | `i_opc`                                        | in   | 6     | Código de operación                                                     |
+|                       | `o_resultado`                                  | out  | 8     | Resultado de la operación                                               |
+|                       | `o_zero`                                       | out  | 1     | 1 si `o_resultado == 0`                                                 |
+|                       | `o_overflow`                                   | out  | 1     | 1 si hubo overflow (solo ADD/SUB)                                       |
+| **uart_interface**    | `i_rx_dout`, `i_rx_done`                       | in   | —     | Vienen del `uart_rx`                                                    |
+|                       | `i_tx_done`                                    | in   | 1     | Viene del `uart_tx`                                                     |
+|                       | `i_alu_resultado`                              | in   | 8     | Viene de la `alu`                                                       |
+|                       | `o_alu_a`, `o_alu_b`, `o_alu_opc`              | out  | 8,8,6 | Registros que alimentan la ALU, cargados byte a byte                    |
+|                       | `o_tx_din`, `o_tx_start`                       | out  | —     | Van hacia el `uart_tx`, para mandar el resultado                        |
+|                       | (interno) `byte_cnt`                           | reg  | 2     | Contador de secuencia: 0=esperando A, 1=esperando B, 2=esperando opcode |
+|                       | (interno) `r_tx_full`                          | reg  | 1     | Evita reiniciar una transmisión mientras hay una en curso               |
+|                       | (interno) `r_send_pending`                     | reg  | 1     | "El resultado ya está listo, hay que mandarlo apenas se pueda"          |
+
+## Diagrama Mermaid (código para el informe)
+
+```mermaid
+flowchart LR
+    RXLINE([Línea rx serie]) --> RX
+
+    BAUD["baudrate_gen<br/>contador módulo 326"]
+
+    subgraph RX["uart_rx"]
+        direction TB
+        RXFSM["uart_rx_fsm<br/>(control)"]
+        RXDP["uart_rx_datapath<br/>s_reg, n_reg, b_reg, p_reg"]
+        RXFSM -- "s_clr, n_clr, n_incr,<br/>b_shift, p_load" --> RXDP
+        RXDP -- "s_reg, n_reg" --> RXFSM
+    end
+
+    subgraph TX["uart_tx"]
+        direction TB
+        TXFSM["uart_tx_fsm<br/>(control)"]
+        TXDP["uart_tx_datapath<br/>s_reg, n_reg, b_reg, p_reg"]
+        TXFSM -- "s_clr, n_clr, n_incr,<br/>b_load, b_shift, p_load" --> TXDP
+        TXDP -- "s_reg, n_reg, b0, p_reg" --> TXFSM
+    end
+
+    INTF["uart_interface<br/>byte_cnt, tx_full, rx_empty"]
+    ALU["alu<br/>(combinacional)"]
+
+    BAUD -- s_tick --> RX
+    BAUD -- s_tick --> TX
+
+    RX -- "dout [8 bits], rx_done" --> INTF
+    INTF -- "alu_a, alu_b [8 bits c/u]" --> ALU
+    INTF -- "alu_opc [6 bits]" --> ALU
+    ALU -- "resultado [8 bits], zero, overflow" --> INTF
+    INTF -- "tx_din [8 bits], tx_start" --> TX
+    TX -- tx_done --> INTF
+
+    TX --> TXLINE([Línea tx serie])
+```
+
+Este diagrama muestra el flujo completo: la línea serie entra por `rx`, el `baudrate_gen` sincroniza tanto RX como TX con su `tick`, el RX arma el byte y se lo pasa a la interfaz, la interfaz va acumulando A/B/opcode y alimenta la ALU (que responde casi instantáneamente por ser combinacional), y el resultado vuelve a salir por TX hacia la línea serie.
+
+Si tu informe usa LaTeX en vez de un editor que renderice Mermaid nativamente (Word/Notion/GitHub sí lo soportan, Overleaf necesita un paquete aparte), avisame y te paso una alternativa en TikZ o directo una imagen exportada.
+
+Van los 5, cada uno con las señales detalladas como "pines" del módulo, así el informe queda claro con solo mirar el dibujo.
+
+## 1. baudrate_gen
+
+```mermaid
+flowchart LR
+    CLK([clock<br/>reloj del sistema, 100MHz]) --> BAUD
+    RST([i_reset<br/>reset sincrono]) --> BAUD
+    BAUD["baudrate_gen<br/>contador modulo COUNT_MAX=326"]
+    BAUD --> TICK([o_baudrate<br/>pulso de 1 ciclo cada 326 ciclos<br/>= 16x el baud rate])
+```
+
+## 2. uart_rx (fsm + datapath + wrapper)
+
+```mermaid
+flowchart TB
+    RX([rx<br/>linea serie de entrada])
+    STICK([i_s_tick<br/>tick del baudrate_gen])
+
+    subgraph RXMOD["uart_rx"]
+        direction TB
+        subgraph FSM["uart_rx_fsm - control"]
+            F["decide el estado:<br/>IDLE - START - DATA - PARITY - STOP"]
+        end
+        subgraph DP["uart_rx_datapath - registros"]
+            D["s_reg: contador ticks 0-15<br/>n_reg: contador bits 0-7<br/>b_reg: shift register del dato<br/>p_reg: bit de paridad recibido"]
+        end
+        F -- "o_s_clr: reiniciar contador de ticks" --> D
+        F -- "o_n_clr: reiniciar contador de bits" --> D
+        F -- "o_n_incr: sumar 1 al contador de bits" --> D
+        F -- "o_b_shift: meter bit actual en shift reg" --> D
+        F -- "o_p_load: guardar bit de paridad" --> D
+        D -- "o_s_reg: valor actual del contador de ticks" --> F
+        D -- "o_n_reg: valor actual del contador de bits" --> F
+    end
+
+    RX --> F
+    RX --> D
+    STICK --> F
+    STICK --> D
+
+    D -- "o_b_reg" --> DOUT([o_dout, 8 bits<br/>byte recibido completo])
+    F --> DONE([o_rx_done<br/>pulso 1 ciclo: dato listo])
+```
+
+## 3. uart_tx (fsm + datapath + wrapper)
+
+```mermaid
+flowchart TB
+    DIN([i_din, 8 bits<br/>byte a transmitir])
+    START([i_tx_start<br/>pedido de arranque desde la interfaz])
+    STICK([i_s_tick<br/>tick del baudrate_gen])
+
+    subgraph TXMOD["uart_tx"]
+        direction TB
+        subgraph FSM["uart_tx_fsm - control"]
+            F["decide el estado:<br/>IDLE - START - DATA - PARITY - STOP<br/>genera la linea o_tx"]
+        end
+        subgraph DP["uart_tx_datapath - registros"]
+            D["s_reg: contador ticks 0-15<br/>n_reg: contador bits 0-7<br/>b_reg: shift register del dato<br/>p_reg: paridad calculada por XOR"]
+        end
+        F -- "o_s_clr / o_n_clr" --> D
+        F -- "o_b_load: carga i_din completo" --> D
+        F -- "o_b_shift: saca el proximo bit" --> D
+        F -- "o_p_load: calcula paridad" --> D
+        D -- "o_s_reg, o_n_reg" --> F
+        D -- "b0: bit 0 actual a transmitir" --> F
+        D -- "p_reg: bit de paridad ya calculado" --> F
+    end
+
+    DIN --> D
+    START --> F
+    STICK --> F
+    STICK --> D
+
+    F --> TXOUT([o_tx<br/>linea serie de salida])
+    F --> DONE([o_tx_done<br/>pulso 1 ciclo: frame enviado])
+```
+
+## 4. alu
+
+```mermaid
+flowchart LR
+    A([i_a, 8 bits con signo<br/>operando A]) --> ALU
+    B([i_b, 8 bits con signo<br/>operando B]) --> ALU
+    OPC([i_opc, 6 bits<br/>codigo de operacion]) --> ALU
+    ALU["alu<br/>combinacional, sin clock<br/>ADD SUB AND OR XOR SRA SRL NOR"]
+    ALU --> RES([o_resultado, 8 bits<br/>resultado de la operacion])
+    ALU --> ZERO([o_zero<br/>1 si o_resultado == 0])
+    ALU --> OVF([o_overflow<br/>1 si hubo overflow, solo ADD/SUB])
+```
+
+## 5. uart_interface
+
+```mermaid
+flowchart TB
+    RXD([i_rx_dout, 8 bits<br/>byte recibido]) --> INTF
+    RXDONE([i_rx_done<br/>aviso de dato nuevo]) --> INTF
+    TXDONE([i_tx_done<br/>aviso de fin de transmision]) --> INTF
+    ALURES([i_alu_resultado, 8 bits<br/>resultado ya calculado]) --> INTF
+
+    subgraph INTF["uart_interface"]
+        direction TB
+        REG["byte_cnt: 0=espera A, 1=espera B, 2=espera opcode<br/>r_tx_full: hay una transmision en curso<br/>r_send_pending: resultado listo para mandar"]
+    end
+
+    INTF --> ALUA([o_alu_a, 8 bits<br/>operando A capturado])
+    INTF --> ALUB([o_alu_b, 8 bits<br/>operando B capturado])
+    INTF --> ALUOPC([o_alu_opc, 6 bits<br/>opcode capturado])
+    INTF --> TXDIN([o_tx_din, 8 bits<br/>resultado a transmitir])
+    INTF --> TXSTART([o_tx_start<br/>pulso: dispara la transmision])
+```
+
+Todos usan `flowchart` estándar, así que renderizan igual en GitHub, VS Code (con la extensión de Mermaid), Notion o Word con plugin — si tu informe va en LaTeX/Overleaf avisame y te los paso a TikZ.
