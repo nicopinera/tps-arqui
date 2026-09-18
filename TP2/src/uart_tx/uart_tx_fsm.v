@@ -80,6 +80,7 @@ module uart_tx_fsm #(
           else
             o_n_incr = 1'b1;
         end
+        end
         PARITY:
         begin
           o_tx = i_p_reg;
@@ -98,7 +99,6 @@ module uart_tx_fsm #(
             o_tx_done  = 1'b1;
           end
         end
-      end
     endcase
   end
 endmodule
