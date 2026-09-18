@@ -1,0 +1,196 @@
+\section{Diseño}
+\subsection{Arquitectura general}
+El problema se dividió en dos partes bien diferenciadas:
+\begin{itemize}
+	\item \textbf{La ALU} (\texttt{alu.v}): un bloque puramente \textbf{combinacional}, sin ningún conocimiento de la placa, que recibe dos operandos y un opcode y entrega el resultado junto con dos \textit{flags}. Al no depender de la interfaz física, es el módulo que se reutilizará tal cual en el trabajo final.
+	\item \textbf{El módulo top} (\texttt{top.v}): la parte \textbf{secuencial} que adapta la ALU a la placa. Contiene los registros donde se almacenan A, B y el opcode, decide cuál de ellos se carga a partir de las entradas de selección, y conecta la salida de la ALU a los LEDs.
+\end{itemize}
+
+Esta separación permite verificar la ALU de forma aislada y deja toda la lógica dependiente de la placa concentrada en un único módulo. La Figura~\ref{fig:arquitectura} muestra el esquema resultante.
+
+\begin{figure}[H]
+	\centering
+	\begin{tikzpicture}[
+		>=Stealth,
+		reg/.style={draw, thick, minimum width=1.6cm, minimum height=0.8cm, fill=gray!10},
+		io/.style={font=\small},
+		w/.style={font=\scriptsize, above}
+	]
+		% Registros
+		\node[reg] (A) at (0, 1.4) {Reg A};
+		\node[reg] (B) at (0, -0.2) {Reg B};
+		\node[reg] (OP) at (0, -1.8) {Reg OP};
+
+		% Habilitaciones de carga
+		\foreach \r/\i in {A/0, B/1, OP/2}
+			\draw[->, dashed] ($(\r.north)+(0,0.5)$) node[right, font=\scriptsize, yshift=-2pt] {\texttt{i\_abc[\i]}} -- (\r.north);
+
+		% ALU
+		\draw[thick, fill=blue!10] (3,2.2) -- (5.2,1.2) -- (5.2,-0.6) -- (3,-1.6) -- (3,-0.1) -- (3.4,0.3) -- (3,0.7) -- cycle;
+		\node at (4.4, 0.3) {\textbf{ALU}};
+
+		% Entrada de datos
+		\node[io, align=right, anchor=east] (datos) at (-2.6, -0.2) {\texttt{i\_datos}\\(SW0--SW7)};
+		\draw[thick] (datos.east) -- (-1.6, -0.2) coordinate (bus);
+		\fill (bus) circle (1.5pt);
+		\draw[->, thick] (bus) |- (A.west);
+		\draw[->, thick] (bus) -- (B.west);
+		\draw[->, thick] (bus) |- node[w, pos=0.8] {[5:0]} (OP.west);
+
+		% Registros a ALU
+		\draw[->, thick] (A.east) -- node[w] {MSB} (3, 1.4);
+		\draw[->, thick] (B.east) -- node[w] {MSB} (3, -0.2);
+		\draw[->, thick] (OP.east) -- (4.1, -1.8) node[w, pos=0.5] {6} -- (4.1, -1.1);
+
+		% Salidas
+		\draw[->, thick] (5.2, 0.9) -- node[w] {MSB} (7, 0.9) node[right, io] {\texttt{o\_led} (LD0--LD7)};
+		\draw[->, thick] (5.2, 0.3) -- (7, 0.3) node[right, io] {\texttt{o\_zero} (LD15)};
+		\draw[->, thick] (5.2, -0.3) -- (7, -0.3) node[right, io] {\texttt{o\_overflow} (LD14)};
+
+		\draw[dotted, thick] (-2.2, -2.6) rectangle (6.4, 2.8);
+		\node[font=\small\itshape, anchor=south east] at (6.4, -2.6) {top};
+	\end{tikzpicture}
+	\caption{Diagrama en bloques del diseño implementado. Los registros se actualizan con el flanco ascendente de \texttt{clock} y se ponen a cero con \texttt{i\_reset}.}
+	\label{fig:arquitectura}
+\end{figure}
+
+\subsection{Módulo ALU}
+
+\subsubsection{Interfaz y parametrización}
+La ALU se describió como un módulo parametrizado por \texttt{MSB}, que define el ancho en bits de los operandos y del resultado (por defecto 8, que es la cantidad de \textit{switches} y LEDs utilizados). El opcode es siempre de 6 bits, ya que no depende del ancho del dato.
+
+\begin{lstlisting}[caption={Declaración de la interfaz de la ALU.}]
+module alu #(parameter MSB = 8)(
+    output reg      [MSB-1:0]   o_resultado,
+    output reg                  o_zero,
+    output reg                  o_overflow,
+    input signed    [MSB-1:0]   i_a,
+    input signed    [MSB-1:0]   i_b,
+    input           [5:0]       i_opc
+  );
+\end{lstlisting}
+
+Todos los anchos y constantes internas se expresan en función del parámetro (por ejemplo, el resultado por defecto es \texttt{\{MSB\{1'b0\}\}} y el bit de signo es \texttt{[MSB-1]}), de modo que basta con cambiar \texttt{MSB} al instanciar el módulo para obtener una ALU de otro ancho sin modificar el código.
+
+Los operandos se declararon \texttt{signed} porque la ALU trabaja en complemento a dos: esto es necesario para que el desplazamiento aritmético replique el bit de signo y le da sentido a la detección de \textit{overflow}.
+
+Respecto a la especificación original (Figura~\ref{fig:alu_enunciado}), se agregaron dos salidas de estado, \texttt{o\_zero} y \texttt{o\_overflow}, pensando en su utilidad para el procesador del trabajo final (por ejemplo, para resolver saltos condicionales o detectar excepciones aritméticas).
+
+\subsubsection{Selección de la operación}
+La ALU se implementó con un único bloque \texttt{always@(*)} que contiene una sentencia \texttt{case} sobre el opcode. Cada rama calcula el resultado de una operación usando directamente los operadores de Verilog (\texttt{+}, \texttt{-}, \texttt{\&}, \texttt{|}, \texttt{\^{}}, \texttt{>>>}, \texttt{>>}), delegando en la herramienta de síntesis la elección del hardware más adecuado (por ejemplo, las cadenas de acarreo \texttt{CARRY4} de la FPGA para la suma y la resta).
+
+Un aspecto cuidado en esta descripción es evitar la inferencia de \textit{latches}. En lógica combinacional, si alguna salida no se asigna en todos los caminos posibles, el sintetizador debe ``recordar'' su valor anterior e infiere un elemento de memoria no deseado. Para evitarlo:
+\begin{itemize}
+	\item \texttt{o\_overflow} se inicializa en \texttt{0} al comienzo del bloque, y solo se pone en \texttt{1} en las ramas de ADD y SUB.
+	\item \texttt{o\_resultado} se asigna en todas las ramas, incluida la rama \texttt{default}, que lo pone en cero ante un opcode no válido (dejando los LEDs apagados).
+	\item \texttt{o\_zero} se calcula siempre, al final del bloque, a partir del resultado.
+\end{itemize}
+
+\subsubsection{Desplazamientos}
+Para los desplazamientos se tomó a A como el valor a desplazar y a B como la cantidad de posiciones. La diferencia entre ambos es cómo se completan los bits más significativos:
+\begin{itemize}
+	\item \textbf{SRL} (\texttt{>>}): se completa con ceros. Por ejemplo, \texttt{10010000 >> 2 = 00100100}.
+	\item \textbf{SRA} (\texttt{>>>}): se replica el bit de signo, preservando el signo del número en complemento a dos. Por ejemplo, \texttt{10010000 >>> 2 = 11100100}, es decir, $-112 / 4 = -28$.
+\end{itemize}
+El operador \texttt{>>>} solo realiza extensión de signo si el operando izquierdo es \texttt{signed}, razón por la cual fue necesario declarar así las entradas. La cantidad a desplazar, en cambio, Verilog siempre la interpreta sin signo, por lo que valores de B mayores o iguales a \texttt{MSB} desplazan todos los bits fuera del resultado.
+
+\subsubsection{Flags}
+\paragraph{Zero.} Se activa cuando el resultado es nulo, independientemente de la operación. Hay que tener en cuenta que, como un opcode inválido produce un resultado nulo, en ese caso el \textit{flag} también se activa (por ejemplo, inmediatamente después de un reset, cuando el opcode vale \texttt{000000}).
+
+\paragraph{Overflow.} Solo tiene sentido en las operaciones aritméticas, por lo que se evalúa únicamente en ADD y SUB. Se detecta analizando los bits de signo, sin necesidad de calcular un bit extra de acarreo:
+\begin{itemize}
+	\item \textbf{Suma:} hay overflow si A y B tienen el mismo signo y el resultado tiene signo distinto. Sumar dos números de signos opuestos nunca puede desbordar.
+	\item \textbf{Resta:} como $A - B = A + (-B)$, hay overflow si A y B tienen signos \textit{distintos} y el signo del resultado es distinto al de A.
+\end{itemize}
+
+\begin{lstlisting}[caption={Detección de overflow en suma y resta.}]
+// ADD
+6'b100000: begin
+  o_resultado = i_a + i_b;
+  if (i_a[MSB-1] == i_b[MSB-1] && o_resultado[MSB-1] != i_a[MSB-1])
+    o_overflow = 1'b1;
+end
+// SUB
+6'b100010: begin
+  o_resultado = i_a - i_b;
+  if (i_a[MSB-1] != i_b[MSB-1] && o_resultado[MSB-1] != i_a[MSB-1])
+    o_overflow = 1'b1;
+end
+\end{lstlisting}
+
+Por ejemplo, con 8 bits: $100 + 50$ da como resultado \texttt{10010110} ($-106$), que es negativo a pesar de ser la suma de dos positivos, por lo que se activa el \textit{flag}. En cambio, $100 - 50 = 50$ no produce overflow porque ambos operandos tienen el mismo signo.
+
+\subsection{Módulo top}
+
+\subsubsection{Carga de operandos}
+Como la placa no dispone de suficientes \textit{switches} para ingresar A, B y el opcode al mismo tiempo, se optó por compartir un único bus de entrada, \texttt{i\_datos}, conectado a los \textit{switches} SW0--SW7, y almacenar cada valor en un registro propio. La señal de 3 bits \texttt{i\_abc} indica cuál de los tres registros se actualiza:
+
+\begin{table}[H]
+	\centering
+	\caption{Selección del registro a cargar.}
+	\label{tab:abc}
+	\begin{tabular}{ccl}
+		\toprule
+		\textbf{\texttt{i\_abc}} & \textbf{Registro} & \textbf{Acción} \\
+		\midrule
+		\texttt{001} & A & \texttt{A <= i\_datos} \\
+		\texttt{010} & B & \texttt{B <= i\_datos} \\
+		\texttt{100} & opcode & \texttt{opcode <= i\_datos[5:0]} \\
+		otro & -- & Todos los registros mantienen su valor \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+Se usó una codificación \textit{one-hot}, en la que cada bit de \texttt{i\_abc} corresponde a una entrada física distinta. Cualquier combinación con más de un bit activo cae en la rama \texttt{default} y no modifica ningún registro, lo que evita cargar por error el mismo dato en dos registros.
+
+Los registros son sensibles al flanco ascendente del reloj de 100~MHz de la placa. Mientras la entrada de selección se mantiene activa, el registro correspondiente se carga en cada ciclo con el valor presente en los \textit{switches}; al desactivarla, conserva el último valor. Para el opcode solo se toman los 6 bits menos significativos del bus.
+
+\subsubsection{Reset}
+Se implementó un reset \textbf{síncrono}, que se evalúa dentro del mismo bloque \texttt{always@(posedge clock)} y tiene prioridad sobre la carga. Al activarse lleva A, B y el opcode a cero, con lo cual la ALU queda en la rama \texttt{default}: los LEDs de resultado se apagan y se enciende el de \textit{zero}.
+
+\begin{lstlisting}[caption={Lógica secuencial del módulo top.}]
+always@(posedge clock) begin
+  if(i_reset) begin
+    A      <= {MSB{1'b0}};
+    B      <= {MSB{1'b0}};
+    opcode <= {6{1'b0}};
+  end
+  else begin
+    case(i_abc)
+      3'b001:  A      <= i_datos;
+      3'b010:  B      <= i_datos;
+      3'b100:  opcode <= i_datos[5:0];
+      default: ; // Todos mantienen su valor
+    endcase
+  end
+end
+\end{lstlisting}
+
+\subsubsection{Conexión con la ALU}
+Los registros se conectan directamente a una instancia de la ALU, propagando el parámetro \texttt{MSB} (\texttt{alu \#(.MSB(MSB)) u\_alu(...)}), y las salidas de la ALU se exponen sin registrar como salidas del módulo top. Por lo tanto, el resultado mostrado en los LEDs se actualiza en el mismo ciclo en que cambia alguno de los registros.
+
+\subsection{Asignación de pines}
+Para mapear los puertos del módulo top a la placa se partió del archivo de restricciones genérico de la Basys 3, descomentando y renombrando las líneas correspondientes. La asignación resultante se muestra en la Tabla~\ref{tab:pines}.
+
+\begin{table}[H]
+	\centering
+	\caption{Asignación de puertos a los recursos de la Basys 3.}
+	\label{tab:pines}
+	\begin{tabularx}{\textwidth}{llYl}
+		\toprule
+		\textbf{Puerto} & \textbf{Recurso} & \textbf{Pines} & \textbf{Función} \\
+		\midrule
+		\texttt{clock} & Oscilador 100~MHz & W5 & Reloj del sistema \\
+		\texttt{i\_datos[7:0]} & SW7--SW0 & W13, W14, V15, W15, W17, W16, V16, V17 & Bus de datos \\
+		\texttt{i\_abc[0]} & SW13 & U1 & Carga de A \\
+		\texttt{i\_abc[1]} & SW14 & T1 & Carga de B \\
+		\texttt{i\_abc[2]} & SW15 & R2 & Carga del opcode \\
+		\texttt{i\_reset} & BTNC & U18 & Reset \\
+		\texttt{o\_led[7:0]} & LD7--LD0 & V14, U14, U15, W18, V19, U19, E19, U16 & Resultado \\
+		\texttt{o\_zero} & LD15 & L1 & Flag zero \\
+		\texttt{o\_overflow} & LD14 & P1 & Flag overflow \\
+		\bottomrule
+	\end{tabularx}
+\end{table}
+
+El reloj se declaró con \texttt{create\_clock} con un período de 10~ns, lo que permite a Vivado realizar el análisis de tiempos sobre los caminos sincronizados por él. Las selecciones de carga se asignaron a los \textit{switches} del extremo izquierdo en lugar de a botones, de modo que su estado quede visible y no sea necesario mantener un botón presionado.

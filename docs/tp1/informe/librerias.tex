@@ -39,3 +39,29 @@
 \fancyfoot{}
 \fancyfoot[C]{\thepage}
 
+
+% Codigo fuente y diagramas
+\usepackage{xcolor}
+\usepackage{listings}
+\lstset{
+	language=Verilog,
+	basicstyle=\ttfamily\small,
+	keywordstyle=\color{blue!70!black}\bfseries,
+	commentstyle=\color{gray}\itshape,
+	numbers=left,
+	numberstyle=\tiny\color{gray},
+	frame=single,
+	breaklines=true,
+	tabsize=2,
+	showstringspaces=false,
+	literate={á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1 {ñ}{{\~n}}1
+}
+\renewcommand{\lstlistingname}{Código}
+\usepackage{tikz}
+\usetikzlibrary{positioning, arrows.meta, calc}
+
+% Numeracion de secciones sin capitulo (clase report)
+\renewcommand{\thesection}{\arabic{section}}
+
+% Marca para contenido pendiente de completar
+\newcommand{\pendiente}[1]{\textcolor{red}{\textbf{[Pendiente: #1]}}}
