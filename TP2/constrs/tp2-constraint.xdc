@@ -1,10 +1,10 @@
-## Basys3 rev B - Constraints para el TP1 (ALU + top)
+## Basys3 rev B - Constraints para el TP2 (UART + ALU)
 ## Basado en el .xdc general de Digilent, dejando solo los pines usados.
 ## Uso:
-##   1) Poner el valor en SW7..SW0
-##   2) Encender SW13 para cargar A, SW14 para B, SW15 para el opcode
-##      (uno solo por vez; el resto apagado)
-##   3) Apagar el selector. El resultado queda en LD7..LD0
+##   La placa se comunica con la PC por el mismo cable micro-USB de
+##   programacion (puente USB-UART FTDI FT2232HQ, aparece como /dev/ttyUSBx).
+##   Trama: 19200 baudios, 8 bits de datos, paridad par, 1 bit de stop (8E1).
+##   Se envian 3 bytes: A, B, OPCODE -> la placa responde 1 byte con el resultado.
 ##   btnC (centro) = reset sincrono
 
 ## ============================================================
@@ -14,30 +14,15 @@ set_property -dict { PACKAGE_PIN W5    IOSTANDARD LVCMOS33 } [get_ports clock]
 create_clock -add -name sys_clk_pin -period 10.00 -waveform {0 5} [get_ports clock]
 
 ## ============================================================
-## Switches de datos: i_datos[7:0] -> SW7..SW0
-## SW7 = MSB, SW0 = LSB
+## USB-RS232 (puente FTDI)
+##   RsRx (B18): PC -> FPGA  -> entrada rx
+##   RsTx (A18): FPGA -> PC  -> salida tx
 ## ============================================================
-set_property -dict { PACKAGE_PIN V17   IOSTANDARD LVCMOS33 } [get_ports {i_datos[0]}]
-set_property -dict { PACKAGE_PIN V16   IOSTANDARD LVCMOS33 } [get_ports {i_datos[1]}]
-set_property -dict { PACKAGE_PIN W16   IOSTANDARD LVCMOS33 } [get_ports {i_datos[2]}]
-set_property -dict { PACKAGE_PIN W17   IOSTANDARD LVCMOS33 } [get_ports {i_datos[3]}]
-set_property -dict { PACKAGE_PIN W15   IOSTANDARD LVCMOS33 } [get_ports {i_datos[4]}]
-set_property -dict { PACKAGE_PIN V15   IOSTANDARD LVCMOS33 } [get_ports {i_datos[5]}]
-set_property -dict { PACKAGE_PIN W14   IOSTANDARD LVCMOS33 } [get_ports {i_datos[6]}]
-set_property -dict { PACKAGE_PIN W13   IOSTANDARD LVCMOS33 } [get_ports {i_datos[7]}]
+set_property -dict { PACKAGE_PIN B18   IOSTANDARD LVCMOS33 } [get_ports rx]
+set_property -dict { PACKAGE_PIN A18   IOSTANDARD LVCMOS33 } [get_ports tx]
 
 ## ============================================================
-## Switches selectores: i_abc[2:0] -> SW15, SW14, SW13
-##   SW13 (i_abc = 3'b001) -> carga A
-##   SW14 (i_abc = 3'b010) -> carga B
-##   SW15 (i_abc = 3'b100) -> carga opcode
-## ============================================================
-set_property -dict { PACKAGE_PIN U1    IOSTANDARD LVCMOS33 } [get_ports {i_abc[0]}]
-set_property -dict { PACKAGE_PIN T1    IOSTANDARD LVCMOS33 } [get_ports {i_abc[1]}]
-set_property -dict { PACKAGE_PIN R2    IOSTANDARD LVCMOS33 } [get_ports {i_abc[2]}]
-
-## ============================================================
-## LEDs de resultado: o_led[7:0] -> LD7..LD0
+## LEDs del resultado (LD7..LD0) -> o_led[7:0]
 ## ============================================================
 set_property -dict { PACKAGE_PIN U16   IOSTANDARD LVCMOS33 } [get_ports {o_led[0]}]
 set_property -dict { PACKAGE_PIN E19   IOSTANDARD LVCMOS33 } [get_ports {o_led[1]}]
