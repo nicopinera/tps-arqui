@@ -11,7 +11,10 @@ module top #(
 
     // Opcional: exponer flags para LEDs en la Basys 3
     output wire o_zero,
-    output wire o_overflow
+    output wire o_overflow,
+
+    // Ultimo resultado enviado por UART, para verlo en LD7..LD0
+    output wire [NBIT-1:0] o_led
   );
 
   // Wires del baudrate_gen hacia RX/TX
@@ -26,11 +29,32 @@ module top #(
   wire w_tx_start;
   wire w_tx_done;
 
+  // El dato que se manda al TX queda registrado hasta la proxima operacion
+  assign o_led = w_tx_din;
+
   // Wires entre interfaz y ALU
   wire [NBIT-1:0]     w_alu_a;
   wire [NBIT-1:0]     w_alu_b;
   wire [OPC_BITS-1:0] w_alu_opc;
   wire [NBIT-1:0]     w_alu_resultado;
+
+  // Sincronizador de 2 flip-flops para rx: la linea viene de la PC y es
+  // asincrona al clock de la FPGA. Arranca en 1 porque la linea en reposo es alta.
+  reg r_rx_meta, r_rx_sync;
+
+  always @(posedge clock)
+  begin
+    if (i_reset)
+    begin
+      r_rx_meta <= 1'b1;
+      r_rx_sync <= 1'b1;
+    end
+    else
+    begin
+      r_rx_meta <= rx;
+      r_rx_sync <= r_rx_meta;
+    end
+  end
 
   baudrate_gen #(
                  .COUNT_MAX(COUNT_MAX)
@@ -46,7 +70,7 @@ module top #(
           ) u_rx (
             .clock(clock),
             .i_reset(i_reset),
-            .rx(rx),
+            .rx(r_rx_sync),
             .i_s_tick(w_s_tick),
             .o_rx_done(w_rx_done),
             .o_dout(w_rx_dout)

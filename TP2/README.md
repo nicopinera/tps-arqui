@@ -319,3 +319,57 @@ flowchart TB
 ```
 
 Todos usan `flowchart` estándar, así que renderizan igual en GitHub, VS Code (con la extensión de Mermaid), Notion o Word con plugin — si tu informe va en LaTeX/Overleaf avisame y te los paso a TikZ.
+
+## Sincronizador en Rx
+
+Un flip-flop copia su entrada en el flanco del clock, pero con una condición: la entrada tiene que estar quieta un instante antes y un instante después del flanco. Esos instantes se llaman setup y hold, y son del orden de los picosegundos.
+
+```
+clock        ____|‾‾‾‾|____|‾‾‾‾|___
+                 ↑ flanco
+entrada   ════╳══[quieta]═══════════   ✔ la cambiaste lejos del flanco
+entrada   ═══════╳══════════════════   ✘ la cambiaste justo en el flanco
+
+
+```
+
+Si la entrada cambia justo dentro de esa ventana, el flip-flop no sabe si guardar 0 o 1. Puede quedar un rato en un valor intermedio, ni 0 ni 1, antes de caer para algún lado. Eso es la metaestabilidad. Es como una moneda que cae de canto y tambalea antes de decidir.
+
+En la Basys 3, 0 V es un 0 y 3,3 V es un 1. Cuando la entrada cambia justo en el flanco, la salida puede quedar un rato en un voltaje intermedio, por ejemplo 1,6 V. Ese voltaje es inestable, así que tarde o temprano cae a 0 o a 1 por sí solo:
+
+```
+
+3.3V ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ╱‾‾‾‾‾‾ (terminó en 1)
+                  ─ ────────╯
+1.6V ─ ─ ─ ─ ────╯ ← metaestable: no es ni 0 ni 1
+
+0V ─ ─ ─ ─ ─ ─ ─ ─╲**\*\***\_\_**\*\*** (o terminó en 0)
+↑ flanco
+```
+
+El problema de la metaestabilidad son tres cosas:
+
+1. No sabés a qué valor va a caer. Puede ser 0 o 1.
+2. No sabés cuánto va a tardar. Casi siempre se resuelve en fracciones de nanosegundo, pero no hay un tiempo máximo garantizado. La probabilidad de que siga indeciso baja exponencialmente, pero nunca llega a cero.
+3. Mientras está en el valor intermedio, cada compuerta que lo lee lo puede interpretar distinto. Una puede ver un 0 y otra un 1. Ese es el caso del estado que pasa a START mientras el contador no se limpia, que te conté antes.
+
+Con el sincronizador, el punto 1 no importa: si FF1 cae a 0 o a 1, el receptor ve el flanco un ciclo antes o un ciclo después, y 10 ns no cambian nada. Lo que el sincronizador resuelve son los puntos 2 y 3. FF1 tiene 10 ns para decidirse antes de que alguien lo lea, y lo lee un único flip-flop (FF2), no varios.
+
+### Qué hace el sincronizador
+
+```
+
+          ┌────┐  r_rx_meta  ┌────┐  r_rx_sync
+rx ──────►│ FF1│────────────►│ FF2│──────────► uart_rx
+(asínc.)  └────┘             └────┘ (ya sincronizada)
+
+```
+
+- FF1 es el único que recibe rx directo. Si justo cae en la ventana prohibida, puede quedar metaestable, pero tiene un ciclo entero (10 ns) para decidirse antes de que lo lea FF2. En 10 ns prácticamente siempre se decide: la probabilidad de que siga indeciso baja exponencialmente con el tiempo.
+- FF2 lee a FF1 cuando ya está estable, y su salida cambia sincronizada con el clock, como cualquier otra señal interna.
+- Ahora uart_rx recibe una señal que cambia solo en los flancos. Todos sus flip-flops (estado, contador, shift register) ven el mismo valor en el mismo ciclo, y se acaba la inconsistencia.
+
+El costo es que la FPGA ve rx con 20 ns de retraso. Un bit a 19200 baudios dura unos 52.000 ns, así que ese retraso no se nota.
+
+En sintesis: Toda señal que viene de afuera, sin relación con nuestro clock, se pasa por 2 flip-flops antes de usarla, para que la lógica interna la vea cambiar siempre
+en un flanco y todos los registros lean el mismo valor. Eso aplica a rx y también a botones y switches.
