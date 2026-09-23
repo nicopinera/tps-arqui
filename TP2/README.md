@@ -1,112 +1,386 @@
-# TP2 - Arquitectura de Computadoras
+# Trabajo Practico 2 - Arquitectura de Computadoras
+
+## Modulo UART
+
+## Nombre
 
 - Krede, Julian
 - Piñera, Nicolas
 
-> [!NOTE]
-> El baudrate generator es un contador sincrono cuya funcion principal es generar pulsos periodicos de habilitacion, llamados ticks a una frecuencia exacatmente 16 veces mayor que la tasa de baudios configurada para UART. El receptor UART necesita esta freceunca de sobremeustreo para poder estimar y muestrear con precision el punto medio de cada bit de datos recibido sin necesidad de transmitir una señar de reloj por la linea serie.
->
-> $M=\frac{f_{clock}}{16 \cdot \text{Tasa de Baudios}}$
-> la $f_{clock}=100MHz$
-> la Tasa de Baudios = 19200 baudios
->
-> Por lo tanto se neceista un contador modulo 326 que genere un pulso activo durante un ciclo de reloj cada 326 ciclos de reloj del sistema.
+## UNC - Facultad de Ciencias Exactas, Físicas y Naturales
 
-## ¿Se puede compartir una sola FSM entre RX y TX?
-
-En teoría los nombres de los estados se parecen (`IDLE`, `START`, `DATA`, `STOP`), pero **lo que pasa en cada estado es sustancialmente distinto**, no es solo un detalle de implementación:
-
-- El **RX** en cada estado hace lo mismo todo el tiempo: "esperá el tick 15, después _leé_ `rx` y metela en el shift register". Es un consumidor pasivo de la línea.
-- El **TX** en cada estado tiene que _generar_ la línea: en `START` pone `tx=0` él mismo, en `DATA` va sacando bit por bit del dato que le pasaron (`din`) y poniéndolo en `tx`, en `STOP` pone `tx=1`. Es un productor activo.
-
-Si armaras un `fsm.v` genérico que sirva para los dos, terminarías necesitando parámetros o señales para decirle "en este estado, ¿leés o escribís?", "¿de dónde sacás el bit?", etc. — en la práctica eso te obliga a meter tanta lógica condicional adentro del módulo "genérico" que perdés la ventaja de tenerlo separado, y el código se vuelve más difícil de leer que simplemente teniendo dos FSMs chicas y claras.
-
-**Lo que sí tiene sentido compartir** es la parte que es matemáticamente idéntica en los dos: el patrón "contá hasta 16 ticks y avisá". Eso lo podrías extraer como un módulo contador reusable (por ejemplo `tick_counter16`) que ambas FSMs instancian — ahí sí hay duplicación real que vale la pena eliminar. Pero la lógica de "qué hacer en cada estado" conviene dejarla separada, una FSM para cada uno.
-
-Dicho esto: la separación control/datapath que armamos para el RX está buena — pero al TX le va a quedar una forma parecida _en estructura_, no en contenido.
-
-## Ahora, lo que preguntaste: qué son `b`, `s`, `n`, `p` — con ejemplo concreto
-
-Pensalo así: llega un byte por la línea serie, pero **te llega un bit por vez, separados en el tiempo**, no todos juntos. Tu trabajo es ir "juntando" esos bits sueltos hasta tener el byte completo. Cada letra es una pieza de esa tarea:
-
-**`s` — contador de ticks (el "cronómetro" de cada bit)**
-Recordá: el `baudrate_gen` te tira un pulso (`tick`) 16 veces por cada bit que dura en la línea. `s` cuenta esos pulsos, de 0 a 15, para saber _en qué momento dentro del bit actual estás_. Cuando `s` llega a 15, es "ya pasó un bit entero, momento de leer el próximo". Es como un cronómetro que reinicia cada vez que termina de medir un bit.
-
-**`n` — contador de bits de datos (¿cuántos bits ya agarré?)**
-El byte tiene 8 bits. `n` es simplemente "voy en el bit número 3 de 8", "voy en el 7 de 8", etc. Cuando `n` llega a 7 (el octavo bit, contando desde 0), sabés que ya no quedan más bits de datos por leer y toca pasar al bit de paridad. Es un contador de "cuántas veces ya usé el cronómetro `s`".
-
-**`b` — el shift register (donde armás el byte, bit a bit)**
-
-Acá está el concepto más importante. Un **shift register** es un registro donde, en vez de escribir todo el valor de una vez, vas **entrando un bit nuevo por un extremo y empujando los que ya tenías hacia el otro lado**, como una fila de gente donde entra uno nuevo por la puerta y todos los demás se corren un lugar.
-
-Ejemplo concreto: supongamos que te llega el byte `1011_0010` (LSB primero, o sea el primer bit que llega es el de más a la derecha, el `0`).
-
-```txt
-Llega bit 0 (el primer '0' de 10110010):
-b = 0000_0000  -->  b = 0000_0000   (shift, entra el 0 por la izquierda)
-
-Llega bit 1 (siguiente bit, '1'):
-b = 0000_0000  -->  b = 1000_0000   (el 1 entra por la izquierda, todo se corre a la derecha)
-
-Llega bit 2 (siguiente, '0'):
-b = 1000_0000  -->  b = 0100_0000
-
-... y así 8 veces hasta completar los 8 bits
-```
-
-Por qué entra "por la izquierda" y no se escribe directamente en su posición final: porque cuando te llega el primer bit, **todavía no sabés dónde va a terminar** — depende de cuántos bits más vengan después. El shift register resuelve esto automáticamente: a medida que van entrando bits nuevos, los viejos se van corriendo solos a su posición correcta. Al final de los 8 shifts, el primer bit que llegó (que es el bit 0, el LSB) terminó en la posición 0 del registro — exactamente donde tiene que estar.
-
-Esa es la línea `b_next = {rx, b_reg[7:1]}` que escribimos: "el bit nuevo (`rx`) entra por arriba, y lo que ya tenía `b_reg` se corre un lugar hacia la derecha, perdiendo el bit que ya estaba más a la derecha" (que ya no hace falta porque ya se usó).
-
-**`p` — el bit de paridad recibido**
-Es simplemente 1 bit guardado aparte, no forma parte del dato — es el noveno "casillero" del frame, que consumís igual que los demás pero no metés en el shift register de 8 bits para no arruinar el dato.
-
-## Resumiendo con una analogía
-
-Pensalo como estar anotando un número de teléfono que te dictan de a un dígito por vez, con pausas entre dígito y dígito:
-
-- `s` es el reloj que usás para saber cuándo terminó la pausa y toca anotar el próximo dígito.
-- `n` es "voy en el dígito 4 de 10".
-- `b` es el papel donde vas anotando, corriendo lo ya escrito para hacerle lugar al nuevo dígito.
-- `p` sería un dígito de verificación aparte que también te dictan, pero no forma parte del número en sí.
-
-Dale. Tres módulos, cada uno con un rol bien delimitado:
-
-**`uart_rx_fsm` (el control)**
-Es el "cerebro" que decide en qué momento del proceso estás (`IDLE`, `START`, `DATA`, `PARITY`, `STOP`) y cuándo hay que pasar al siguiente. No toca ningún dato — no sabe qué bit vino ni cuántos van. Solo mira `rx`, `s_tick` y los contadores (`s_reg`, `n_reg`) para decidir, y en respuesta emite pulsos de orden ("reiniciá el contador", "metelo en el shift register", "avisá que terminaste"). Es pura lógica de decisión.
-
-**`uart_rx_datapath` (los registros de trabajo)**
-Es el "músculo" que obedece. No decide nada por sí mismo — cada contador y el shift register se mueven únicamente cuando la FSM les manda el pulso correspondiente. Acá viven `s_reg` (contador de ticks), `n_reg` (contador de bits), `b_reg` (shift register del dato) y `p_reg` (bit de paridad recibido).
-
-**`uart_rx` (el wrapper)**
-Es el módulo público que da la cara hacia afuera — el que vas a instanciar en el resto del proyecto (la interfaz, el testbench). Adentro conecta la FSM con el datapath (cableando las señales de control de una hacia la otra) y expone solo lo que le importa al resto del sistema: `dout` y `rx_done_tick`. Todo el cableado interno queda oculto.
-
-Un detalle a notar: esta FSM es tipo Mealy en sentido técnico porque las condiciones del case dependen tanto del estado (state_reg) como de entradas (s_tick, s_reg, n_reg, rx) — pero las salidas de control (s_clr, b_shift, etc.) solo cambian en los flancos donde también cambia el estado, así que en la práctica se comporta de forma bastante predecible, sin los glitches típicos que preocupan en un Mealy "puro" con salidas combinacionales sensibles a ruido en la entrada.
+## Cátedra: Arquitectura de Computadoras
 
 ---
 
-Mismo patrón que el RX: **3 módulos**. La arquitectura control/datapath no es exclusiva del receptor — es un patrón general para cualquier lógica secuencial con una FSM, así que el TX se estructura igual, aunque el contenido interno cambie bastante (recordá lo que hablamos: el TX _genera_ la línea en vez de leerla).
+## Indice
 
-## `uart_tx_fsm` (el control)
+1. [Introduccion](#1---introduccion)
 
-Decide en qué estado del proceso de transmisión estás (`IDLE`, `START`, `DATA`, `PARITY`, `STOP`) y cuándo pasar al siguiente. Igual que en el RX, no toca el dato en sí — solo mira los contadores y emite pulsos de orden hacia el datapath. La diferencia grande respecto al RX: acá el "disparador" no es una caída de línea (`~rx`), sino una señal externa `tx_start` que le llega de la interfaz cuando la ALU quiere mandar un byte.
+---
 
-## `uart_tx_datapath` (los registros de trabajo)
+## 1 - Introduccion
 
-Tiene los mismos tipos de registros que el RX en espíritu, pero usados al revés:
+La comunicación entre sistemas digitales que no comparten una señal de reloj común, requiere protocolos de transmisión asíncrona que resuelvan el problema de sincronización sin necesidad de una línea de clock adicional. La **UART (Universal Asynchronous Receiver Transmitter)** es uno de los protocolos más difundidos para este propósito, utilizado ampliamente en sistemas embebidos y comunicación con periféricos por su simplicidad de implementación y bajo requerimiento de hardware.
 
-- Un contador de ticks (`s_reg`), igual que en el RX — mide cuánto dura cada bit en la línea.
-- Un contador de bits (`n_reg`) — cuántos bits de dato ya salieron.
-- Un shift register (`b_reg`) — pero acá, en vez de ir **metiendo** bits que llegan, va **sacando** bits que ya tenía cargados (el dato completo que la interfaz le pasó al arrancar). Cada shift saca el bit menos significativo y lo pone en la línea `tx`.
-- Un registro para el bit de paridad a transmitir (`p_reg`) — a diferencia del RX, acá sí hay que **calcularlo**, no solo guardarlo: es el XOR de los 8 bits de dato (si es paridad par, por ejemplo).
+El presente trabajo práctico tiene como objetivo el diseño e implementación de un **módulo UART completo (transmisor y receptor)** en Verilog, sobre placa **Basys 3**, integrado con la ALU desarrollada en el TP anterior. El sistema resultante permite recibir por puerto serie los operandos y el código de operación, ejecutar el cálculo correspondiente, y transmitir el resultado de vuelta por el mismo medio.
 
-## `uart_tx` (el wrapper)
+Para el diseño de los módulos RX y TX se adoptó una arquitectura de separación entre control y datapath, con el objetivo de aislar la lógica de decisión de estados (implementada como máquina de estados finita) de los registros encargados de almacenar y desplazar los datos. Esta decisión de diseño facilita la verificación individual de cada componente y mejora la legibilidad del código.
 
-Instancia la FSM y el datapath, cablea las señales de control entre ambos, y expone hacia afuera lo que necesita el resto del sistema: `tx` (la línea serie de salida), `tx_done_tick` (avisa que terminó de mandar el byte) y recibe `din`/`tx_start` desde la interfaz.
+---
 
-## La diferencia clave de diseño que vas a notar al escribirlo
+## 2. Especificación
 
-En el RX, `s_reg` avanzaba automáticamente con cada `s_tick` sin que la FSM tuviera que pedirlo — porque el RX siempre está "escuchando" mientras está en un estado activo. En el TX pasa lo mismo, pero además vas a necesitar que el datapath **cargue el dato completo de una sola vez** al arrancar (`b_reg <= din` cuando la FSM pide `load`), algo que el RX nunca necesitó porque él arma el dato de a un bit, nunca lo recibe entero.
+El enunciado plantea implementar en la placa Basys 3 los módulos **transmisor (TX)** y **receptor (RX)** de una UART (_Universal Asynchronous Receiver Transmitter_), e integrarlos junto con una **interfaz de control** a la **ALU** desarrollada en el TP1, de modo que esta última pueda operarse a través del puerto serie de la placa en lugar de los switches físicos utilizados anteriormente.
+
+A continuacion se muestra el esquema general planteado en el enunciado: la ALU se conecta a un bus paralelo de 8 bits a través de un circuito de interfaz (INTF), que a su vez se comunica con el módulo UART mediante las líneas serie `Serial Out` y `Serial In`.
+
+```mermaid
+---
+title: Esquema de integración ALU–Interfaz–UART.
+---
+flowchart LR
+    ALU <-- "8 bits" --> INTF
+    INTF <-- "8 bits" --> UART
+    UART <-- "Serial In (RX)" --- RX_LINE([Serial In])
+    UART -- "Serial Out (TX)" --> TX_LINE([Serial Out])
+    CLK([Clock]) --> UART
+```
+
+### 2.1 Formato de trama
+
+De acuerdo con las diapositivas de la cátedra, cada byte transmitido por la UART se encapsula en una trama compuesta por un **bit de start**, los **bits de datos**, un **bit de paridad** y uno o más **bits de stop**.
+
+```mermaid
+---
+title: Formato de trama utilizado (bit de start, 8 bits de datos, bit de paridad, bit de stop).
+---
+packet
+0: "S"
+1-8: "D0-D7 (dato)"
+9: "PB"
+10: "P"
+```
+
+Para este trabajo se adoptaron los siguientes parámetros de trama:
+
+| Parámetro      | Valor     | Observación                                                                                      |
+| -------------- | --------- | ------------------------------------------------------------------------------------------------ |
+| Bits de datos  | 8         | Coincide con el ancho del bus de la ALU                                                          |
+| Bit de paridad | Sí, par   | Se recibe y se transmite, **no se valida** contra el dato                                        |
+| Bits de stop   | 1         | —                                                                                                |
+| Baud rate      | 19200 bps | Definido por la cátedra                                                                          |
+| Oversampling   | 16x       | El receptor muestrea cada bit en su punto medio para tolerar el desfasaje de reloj entre tx y rx |
+
+### 2.2 Generación del baud rate
+
+El **baudrate generator** es un contador sincrono cuya funcion principal es generar pulsos periodicos de habilitacion, llamados **ticks** a una frecuencia exacatmente **16 veces mayor** que la tasa de baudios configurada para UART. El receptor UART necesita esta freceunca de sobremeustreo para poder estimar y muestrear con precision el punto medio de cada bit de datos recibido sin necesidad de transmitir una señar de reloj por la linea serie.
+
+Con un **clock** de placa de $100 [MHz]$ y un **baud rate** de $19200 [bps]$ con **oversampling 16x**, la cantidad de ciclos de reloj entre cada _tick_ de muestreo es:
+
+$$
+M= \frac{f_{clock}}{16 \cdot \text{Tasa de Baudios}}
+$$
+
+$$
+M= \frac{100\,000\,000}{19200 \times 16} \approx 326
+$$
+
+El generador de baud rate se implementa entonces como un **contador módulo 326** que emite un pulso de un ciclo de clock cada vez que alcanza su valor máximo.
+
+### 2.3 Protocolo de comunicación con la ALU
+
+A diferencia del TP1, donde los operandos y el opcode se cargaban de forma independiente mediante switches y señales de selección dedicadas (`i_abc`), en este trabajo los tres valores deben transmitirse por un único canal serie. Dado que el enunciado no especifica un formato de mensaje, el grupo definió el siguiente protocolo:
+
+1. Se envían tres bytes en una secuencia fija: **operando A**, **operando B** y **opcode**.
+2. El byte de **opcode** contiene directamente el código de 6 bits definido en la Tabla 1 del TP1, tomando los 6 bits menos significativos del byte recibido.
+3. Al recibirse el tercer byte (opcode), la interfaz dispara automáticamente el cálculo en la ALU y la transmisión del resultado por el mismo puerto serie, sin requerir un comando adicional.
+
+Esta decisión de diseño simplifica la lógica de la interfaz a un contador de 3 posiciones, a costa de requerir que el emisor respete estrictamente el orden A → B → opcode en cada transacción.
+
+### 2.4 Sincronización de la línea de entrada
+
+La línea `rx` proviene de un dispositivo externo (la PC, a través del conversor USB-UART) cuyo reloj no guarda ninguna relación de fase con el `clock` de 100 MHz de la FPGA. Es, por lo tanto, una señal **asíncrona** respecto al dominio de reloj del diseño.
+
+Si esta señal ingresara directamente a los registros de `uart_rx_fsm` y `uart_rx_datapath`, un cambio de `rx` que ocurra dentro de la ventana de _setup/hold_ de un flanco de `clock` podría dejar a alguno de esos flip-flops en un estado **metaestable**: un voltaje intermedio, no interpretable de forma confiable como `0` o `1`, que tarda un tiempo indeterminado en resolverse. Si distintos flip-flops del receptor leyeran ese valor metaestable en el mismo ciclo, cada uno podría resolverlo hacia un lado distinto, dejando a la FSM y al datapath desincronizados entre sí.
+
+Para evitarlo, se instanció un sincronizador de dos flip-flops entre el puerto `rx` del módulo `top` y la entrada `rx` de `uart_rx`:
+
+```verilog
+reg r_rx_meta, r_rx_sync;
+
+always @(posedge clock)
+begin
+  if (i_reset)
+  begin
+    r_rx_meta <= 1'b1;
+    r_rx_sync <= 1'b1;
+  end
+  else
+  begin
+    r_rx_meta <= rx;
+    r_rx_sync <= r_rx_meta;
+  end
+end
+```
+
+El primer flip-flop (`r_rx_meta`) es el único expuesto directamente a la señal asíncrona, y dispone de un ciclo de clock completo (10 ns) para resolver una eventual metaestabilidad antes de ser leído por el segundo flip-flop (`r_rx_sync`). Esta es la señal que finalmente se conecta a `uart_rx`, garantizando que toda la lógica interna del receptor observe siempre el mismo valor de `rx` en cada ciclo de clock.
+
+Ambos registros se inicializan en `1` (no en `0`), ya que ese es el nivel de reposo de la línea UART; inicializarlos en `0` haría que, tras un reset, el receptor interprete erróneamente el reposo como el comienzo de un bit de start.
+
+Dado que el retardo introducido es de solo dos ciclos de clock (20 ns) frente a una duración de bit de aproximadamente 52 μs a 19200 baudios, la sincronización no afecta el muestreo de la trama.
+
+---
+
+## 3. Diseño
+
+### 3.1 Arquitectura general
+
+El sistema se estructuró en cinco bloques principales, más un sincronizador de entrada: `baudrate_gen`, `uart_rx`, `uart_tx`, `uart_interface` y la `alu` reutilizada sin modificaciones del TP1. El diagrama a continuacion muestra las conexiones entre
+todos los bloques.
+
+```mermaid
+---
+title:  Diagrama en bloques del diseño completo
+---
+flowchart LR
+    PCIN(["PC<br/>(USB-UART)"])
+    PCOUT(["PC<br/>(USB-UART)"])
+    LEDS(["LEDs Basys 3"])
+
+    subgraph TOP["top — FPGA (clock 100 MHz, i_reset)"]
+        direction LR
+
+        SYNC["Sincronizador<br/>2 flip-flops"]
+        BAUD["baudrate_gen (módulo 326)"]
+
+        subgraph RX["uart_rx"]
+            direction TB
+            RXFSM["uart_rx_fsm<br/><i>control</i>"]
+            RXDP["uart_rx_datapath<br/>s_reg · n_reg<br/>b_reg · p_reg"]
+            RXFSM -- "s_clr, n_clr, n_incr,<br/>b_shift, p_load" --> RXDP
+            RXDP -- "s_reg, n_reg" --> RXFSM
+        end
+
+        INTF["uart_interface<br/>byte_cnt<br/>tx_full · rx_empty"]
+        ALU["alu<br/><i>combinacional (TP1)</i>"]
+
+        subgraph TX["uart_tx"]
+            direction TB
+            TXFSM["uart_tx_fsm<br/><i>control</i>"]
+            TXDP["uart_tx_datapath<br/>s_reg · n_reg<br/>b_reg · p_reg"]
+            TXFSM -- "s_clr, n_clr, n_incr,<br/>b_load, b_shift, p_load" --> TXDP
+            TXDP -- "s_reg, n_reg, b0, p_reg" --> TXFSM
+        end
+
+        SYNC -- "rx sincronizada" --> RX
+        BAUD -. "s_tick" .-> RX
+        BAUD -. "s_tick" .-> TX
+
+        RX == "dout [8]<br/>rx_done" ==> INTF
+        INTF == "alu_a [8], alu_b [8]<br/>alu_opc [6]" ==> ALU
+        ALU == "resultado [8]" ==> INTF
+        INTF == "tx_din [8]<br/>tx_start" ==> TX
+        TX -- "tx_done" --> INTF
+    end
+
+    PCIN -- "rx (asíncrona)" --> SYNC
+    TX -- "tx" --> PCOUT
+    ALU -- "o_zero, o_overflow" --> LEDS
+    INTF -- "o_led [8]<br/>(= tx_din)" --> LEDS
+
+    classDef ext fill:#eceff1,stroke:#546e7a,color:#000
+    classDef sync fill:#fff3e0,stroke:#ef6c00,color:#000
+    classDef timing fill:#ede7f6,stroke:#5e35b1,color:#000
+    classDef ctrl fill:#e3f2fd,stroke:#1565c0,color:#000
+    classDef data fill:#e8f5e9,stroke:#2e7d32,color:#000
+    classDef core fill:#fce4ec,stroke:#ad1457,color:#000
+
+    class PCIN,PCOUT,LEDS ext
+    class SYNC sync
+    class BAUD timing
+    class RXFSM,TXFSM ctrl
+    class RXDP,TXDP data
+    class INTF,ALU core
+```
+
+_Diagrama en bloques del módulo `top`. Las flechas gruesas indican buses de datos, las punteadas la base de tiempo (`s_tick`) y las finas señales de control de 1 bit. Dentro de `uart_rx` y `uart_tx` se muestra la separación entre FSM (control, en azul) y datapath (registros, en verde). Las señales `clock` e `i_reset` llegan a todos los bloques secuenciales y se omiten por claridad._
+
+**Separación control/datapath.** Tanto `uart_rx` como `uart_tx` se dividieron internamente en **dos** módulos: uno de control (`*_fsm`), que implementa la máquina de estados y decide _cuándo_ actuar, y uno de datapath (`*_datapath`), que contiene los registros de trabajo y ejecuta las órdenes del control mediante pulsos de un ciclo (`s_clr`, `b_shift`, etc.). Esta separación permite verificar cada componente de forma aislada y mantiene la lógica de decisión de estados desacoplada del almacenamiento de datos.
+
+**Por qué no se comparte una única FSM entre RX y TX.** Si bien ambas máquinas de estado utilizan los mismos nombres (`IDLE`, `START`, `DATA`, `PARITY`, `STOP`), su comportamiento en cada estado es sustancialmente distinto: el receptor es un consumidor pasivo de la línea (muestrea `rx` y desplaza el valor hacia el shift register), mientras que el transmisor es un productor activo (genera el nivel de `tx` en cada estado a partir de un dato ya cargado). Unificarlas en un único módulo requeriría lógica condicional adicional para distinguir el modo de operación, incrementando la complejidad en lugar de reducirla. Se optó, en cambio, por dos FSMs independientes con una estructura análoga, lo que además preserva la operación _full-duplex_ de la UART (recepción y transmisión simultáneas, al ser líneas físicas independientes).
+
+### 3.2 Generador de baud rate (`baudrate_gen`)
+
+```mermaid
+---
+title: Puertos del generador de baud rate
+---
+flowchart LR
+    CLK([clock, 100MHz]) --> BAUD
+    RST([i_reset]) --> BAUD
+    BAUD["baudrate_gen<br/>contador modulo 326"]
+    BAUD --> TICK([o_baudrate])
+```
+
+El módulo implementa un contador módulo `COUNT_MAX` (326, según el cálculo de la Sección 2.2) que emite un pulso de un ciclo de clock (`o_baudrate`) cada vez que alcanza su valor máximo, y se reinicia. Este pulso constituye la base de tiempo compartida por `uart_rx` y `uart_tx` para el muestreo y la generación de cada bit, respectivamente.
+
+### 3.3 Módulo `uart_rx`
+
+#### 3.3.1 Arquitectura interna
+
+El receptor se compone de tres módulos:
+
+- **`uart_rx_fsm` (control):** determina en qué estado del proceso de recepción se encuentra (`IDLE`, `START`, `DATA`, `PARITY`, `STOP`) y en qué momento corresponde avanzar al siguiente. No accede directamente al dato recibido; lee únicamente `rx`, el pulso `s_tick` y los contadores del datapath (`s_reg`, `n_reg`), y en función de ellos emite pulsos de control de un ciclo hacia el datapath.
+- **`uart_rx_datapath` (registros de trabajo):** contiene los registros que ejecutan las órdenes de la FSM: el contador de ticks (`s_reg`), el contador de bits recibidos (`n_reg`), el shift register del dato (`b_reg`) y el registro de paridad (`p_reg`). Ninguno de estos registros cambia de valor si la FSM no lo solicita explícitamente.
+- **`uart_rx` (wrapper):** instancia ambos módulos, conecta las señales de control entre sí y expone hacia el resto del sistema únicamente `o_dout` (el byte recibido) y `o_rx_done` (aviso de dato válido).
+
+#### 3.3.2 Máquina de estados
+
+```mermaid
+---
+title: Diagrama de estados de uart_rx_fsm
+---
+flowchart LR
+    S1((IDLE))
+    S2((START))
+    S3((DATA))
+    S4((PARITY))
+    S5((STOP))
+    S1  --> |"rx = 1"| S1
+    S1  --> |"rx = 0"| S2
+    S2  --> |"s_tick && s_reg = 7"| S3
+    S3  --> |"s_tick && n_reg < 7"| S3
+    S3  --> |"s_tick && n_reg = 7"| S4
+    S4 --> |"s_tick"| S5
+    S5 --> |"s_tick"| S1
+```
+
+| Estado   | Condición de permanencia | Condición de transición                      | Acción al transicionar                                |
+| -------- | ------------------------ | -------------------------------------------- | ----------------------------------------------------- |
+| `IDLE`   | `rx = 1`                 | `rx = 0`                                     | `s_clr`                                               |
+| `START`  | —                        | `s_tick` y `s_reg = 7` (mitad del start bit) | `s_clr`, `n_clr`                                      |
+| `DATA`   | `n_reg < 7`              | `s_tick` y `s_reg = 15` y `n_reg = 7`        | `s_clr`, `b_shift` en cada bit; `PARITY` al completar |
+| `PARITY` | —                        | `s_tick` y `s_reg = 15`                      | `s_clr`, `p_load`                                     |
+| `STOP`   | —                        | `s_tick` y `s_reg = 15`                      | `rx_done`                                             |
+
+El umbral de `s_reg = 7` en `START` (en lugar de 15) permite confirmar el start bit en su punto medio, evitando iniciar la recepción ante un pulso espurio de corta duración en la línea. Los umbrales de `s_reg = 15` en los estados siguientes muestrean cada bit en su punto medio, el instante más alejado de los flancos y, por lo tanto, más estable frente a desfasajes entre los relojes de transmisor y receptor.
+
+Formalmente, esta FSM corresponde a una máquina de **Mealy**, ya que las condiciones del `case` dependen tanto del estado actual como de entradas (`s_tick`, `s_reg`, `n_reg`, `rx`). Sin embargo, las salidas de control solo cambian en los mismos flancos en que cambia el estado, por lo que el diseño no presenta los _glitches_ característicos de una máquina de Mealy con salidas combinacionales sensibles a ruido en la entrada.
+
+#### 3.3.3 Datapath
+
+El datapath mantiene cuatro registros:
+
+- **`s_reg`:** contador de ticks (0–15) que mide el avance dentro del bit actual. Se reinicia por pedido de la FSM (`s_clr`) y se incrementa en cada `s_tick`.
+- **`n_reg`:** contador de bits de datos recibidos (0–7).
+- **`b_reg`:** shift register de 8 bits donde se ensambla el dato. Cada pulso `b_shift` ejecuta `b_reg <= {rx, b_reg[7:1]}`: el bit entrante se inserta por la posición más significativa mientras los bits ya almacenados se desplazan una posición hacia el bit menos significativo. Dado que el protocolo UART transmite el bit menos significativo primero, este mecanismo garantiza que, tras ocho desplazamientos, cada bit recibido quede ubicado en su posición final correcta.
+- **`p_reg`:** almacena el bit de paridad recibido; se limita a consumir correctamente ese campo de la trama.
+
+### 3.4 Módulo `uart_tx`
+
+#### 3.4.1 Arquitectura interna
+
+El transmisor sigue la misma estructura de tres módulos que el receptor (`uart_tx_fsm`, `uart_tx_datapath`, `uart_tx` como wrapper), con dos diferencias funcionales relevantes:
+
+- El disparo de la transmisión no surge de una condición sobre la línea, sino de una señal externa, `i_tx_start`, generada por `uart_interface`.
+- La FSM genera activamente el nivel de `o_tx` en cada estado (`1` en reposo, `0` durante el start bit, el bit correspondiente del dato durante `DATA`, el bit de paridad durante `PARITY`, `1` durante el stop bit), a diferencia del RX, que nunca escribe sobre `rx`.
+
+#### 3.4.2 Máquina de estados
+
+```mermaid
+---
+title: Diagrama de estados de uart_tx_fsm
+---
+flowchart LR
+    S1((IDLE))
+    S2((START))
+    S3((DATA))
+    S4((PARITY))
+    S5((STOP))
+    S1  --> |"tx_start = 0"| S1
+    S1  --> |"tx_start = 1"| S2
+    S2  --> |"s_tick && s_reg = 15"| S3
+    S3  --> |"s_tick && n_reg < 7"| S3
+    S3  --> |"s_tick && n_reg = 7"| S4
+    S4 --> |"s_tick && s_reg = 15"| S5
+    S5 --> |"s_tick && s_reg = 15"| S1
+```
+
+| Estado   | `o_tx`              | Condición de transición | Acción al transicionar                              |
+| -------- | ------------------- | ----------------------- | --------------------------------------------------- |
+| `IDLE`   | `1`                 | `i_tx_start = 1`        | `s_clr`, `b_load`, `p_load`                         |
+| `START`  | `0`                 | `s_tick` y `s_reg = 15` | `s_clr`, `n_clr`                                    |
+| `DATA`   | bit 0 del shift reg | `s_tick` y `s_reg = 15` | `s_clr`, `b_shift`; `PARITY` al completar el 8º bit |
+| `PARITY` | bit de paridad      | `s_tick` y `s_reg = 15` | `s_clr`                                             |
+| `STOP`   | `1`                 | `s_tick` y `s_reg = 15` | `tx_done`                                           |
+
+A diferencia del RX, en `IDLE` el transmisor ejecuta dos acciones simultáneas al recibir `tx_start`: la carga completa del dato en el shift register (`b_load`) y el cálculo de la paridad (`p_load`), ambas resueltas en el mismo flanco de clock por tratarse de operaciones combinacionales sobre el mismo dato de entrada (`i_din`).
+
+#### 3.4.3 Datapath
+
+El datapath del TX reutiliza el mismo esquema de contadores que el RX (`s_reg`, `n_reg`), pero con dos diferencias en el manejo del dato:
+
+- **Shift register (`b_reg`):** admite dos operaciones excluyentes. La carga completa (`b_load`) ejecuta `b_reg <= i_din`, trayendo el byte entero de una vez. El desplazamiento (`b_shift`) ejecuta `b_reg <= {1'b0, b_reg[7:1]}`,  exponiendo en la posición 0 el próximo bit a transmitir; el valor insertado por la posición más significativa es indistinto, ya que el contador `n_reg` impide que esos bits lleguen a transmitirse.
+- **Paridad (`p_reg`):** a diferencia del RX, que solo almacena el bit recibido, aquí se calcula mediante el operador de reducción XOR sobre el dato completo: `p_reg <= ^i_din` (paridad par). Este cálculo es la base para que el receptor del otro extremo pueda, si se implementara la validación, verificar la integridad de la trama.
+
+### 3.5 Interfaz (`uart_interface`)
+
+```mermaid
+---
+title: Puertos y registros internos de uart_interface
+---
+flowchart TB
+    RXD([i_rx_dout, 8 bits]) --> INTF
+    RXDONE([i_rx_done]) --> INTF
+    TXDONE([i_tx_done]) --> INTF
+    ALURES([i_alu_resultado, 8 bits]) --> INTF
+
+    subgraph INTF["uart_interface"]
+        direction TB
+        REG["byte_cnt: 0=espera A, 1=espera B, 2=espera opcode<br/>r_tx_full: transmision en curso<br/>r_send_pending: resultado listo para enviar"]
+    end
+
+    INTF --> ALUA([o_alu_a, 8 bits])
+    INTF --> ALUB([o_alu_b, 8 bits])
+    INTF --> ALUOPC([o_alu_opc, 6 bits])
+    INTF --> TXDIN([o_tx_din, 8 bits])
+    INTF --> TXSTART([o_tx_start])
+```
+
+La interfaz resuelve el desacople entre el bus paralelo de la ALU (que opera en un único ciclo de clock) y la UART (donde cada byte tarda miles de ciclos en transmitirse o recibirse). Implementa el protocolo de tres bytes definido en la Sección 2.3 mediante un contador de dos bits, `byte_cnt`, que indica cuál de los tres registros (`o_alu_a`, `o_alu_b`, `o_alu_opc`) corresponde cargar con el próximo byte recibido. Al completarse el tercer byte, se activa internamente `r_send_pending`; dado que la ALU es combinacional, su resultado (`i_alu_resultado`) queda estable antes del siguiente flanco de clock, por lo que en el ciclo inmediato posterior la interfaz captura el resultado en `o_tx_din` y dispara `o_tx_start`.
+
+El registro `r_tx_full` evita que se inicie una nueva transmisión mientras la anterior está en curso, liberándose recién cuando `uart_tx` reporta `i_tx_done`.
+
+### 3.6 Módulo `top`
+
+```mermaid
+---
+title:  Integración de todos los bloques en el módulo top.
+---
+flowchart LR
+    RX_PIN([rx]) --> SYNC["Sincronizador<br/>r_rx_meta, r_rx_sync"]
+    SYNC --> RX[uart_rx]
+    BAUD[baudrate_gen] -- s_tick --> RX
+    BAUD -- s_tick --> TX[uart_tx]
+    RX --> INTF[uart_interface]
+    INTF --> ALU[alu]
+    ALU --> INTF
+    INTF --> TX
+    TX --> TX_PIN([tx])
+```
+
+El módulo `top` instancia y conecta los cinco bloques descritos en las subsecciones anteriores. Adicionalmente, incorpora el sincronizador de dos flip-flops descrito en la Sección 2.4, interpuesto entre el puerto `rx` y la entrada del módulo `uart_rx`, de forma que este último nunca observa la línea serie en su forma asíncrona original.
+
+### 3.7 Asignación de pines
+
+| Puerto                 | Recurso            | Función                                           |
+| ---------------------- | ------------------ | ------------------------------------------------- |
+| `clock`                | Oscilador 100 MHz  | Reloj del sistema                                 |
+| `i_reset`              | Botón (BTNC)       | Reset síncrono                                    |
+| `rx`                   | Pin USB-UART (RXD) | Entrada serie desde la PC                         |
+| `tx`                   | Pin USB-UART (TXD) | Salida serie hacia la PC                          |
+| `o_zero`, `o_overflow` | LEDs               | Flags de la ALU, expuestos para depuración visual |
 
 ---
 
@@ -160,216 +434,3 @@ En el RX, `s_reg` avanzaba automáticamente con cada `s_tick` sin que la FSM tuv
 |                       | (interno) `byte_cnt`                           | reg  | 2     | Contador de secuencia: 0=esperando A, 1=esperando B, 2=esperando opcode |
 |                       | (interno) `r_tx_full`                          | reg  | 1     | Evita reiniciar una transmisión mientras hay una en curso               |
 |                       | (interno) `r_send_pending`                     | reg  | 1     | "El resultado ya está listo, hay que mandarlo apenas se pueda"          |
-
-## Diagrama Mermaid (código para el informe)
-
-```mermaid
-flowchart LR
-    RXLINE([Línea rx serie]) --> RX
-
-    BAUD["baudrate_gen<br/>contador módulo 326"]
-
-    subgraph RX["uart_rx"]
-        direction TB
-        RXFSM["uart_rx_fsm<br/>(control)"]
-        RXDP["uart_rx_datapath<br/>s_reg, n_reg, b_reg, p_reg"]
-        RXFSM -- "s_clr, n_clr, n_incr,<br/>b_shift, p_load" --> RXDP
-        RXDP -- "s_reg, n_reg" --> RXFSM
-    end
-
-    subgraph TX["uart_tx"]
-        direction TB
-        TXFSM["uart_tx_fsm<br/>(control)"]
-        TXDP["uart_tx_datapath<br/>s_reg, n_reg, b_reg, p_reg"]
-        TXFSM -- "s_clr, n_clr, n_incr,<br/>b_load, b_shift, p_load" --> TXDP
-        TXDP -- "s_reg, n_reg, b0, p_reg" --> TXFSM
-    end
-
-    INTF["uart_interface<br/>byte_cnt, tx_full, rx_empty"]
-    ALU["alu<br/>(combinacional)"]
-
-    BAUD -- s_tick --> RX
-    BAUD -- s_tick --> TX
-
-    RX -- "dout [8 bits], rx_done" --> INTF
-    INTF -- "alu_a, alu_b [8 bits c/u]" --> ALU
-    INTF -- "alu_opc [6 bits]" --> ALU
-    ALU -- "resultado [8 bits], zero, overflow" --> INTF
-    INTF -- "tx_din [8 bits], tx_start" --> TX
-    TX -- tx_done --> INTF
-
-    TX --> TXLINE([Línea tx serie])
-```
-
-Este diagrama muestra el flujo completo: la línea serie entra por `rx`, el `baudrate_gen` sincroniza tanto RX como TX con su `tick`, el RX arma el byte y se lo pasa a la interfaz, la interfaz va acumulando A/B/opcode y alimenta la ALU (que responde casi instantáneamente por ser combinacional), y el resultado vuelve a salir por TX hacia la línea serie.
-
-Si tu informe usa LaTeX en vez de un editor que renderice Mermaid nativamente (Word/Notion/GitHub sí lo soportan, Overleaf necesita un paquete aparte), avisame y te paso una alternativa en TikZ o directo una imagen exportada.
-
-Van los 5, cada uno con las señales detalladas como "pines" del módulo, así el informe queda claro con solo mirar el dibujo.
-
-## 1. baudrate_gen
-
-```mermaid
-flowchart LR
-    CLK([clock<br/>reloj del sistema, 100MHz]) --> BAUD
-    RST([i_reset<br/>reset sincrono]) --> BAUD
-    BAUD["baudrate_gen<br/>contador modulo COUNT_MAX=326"]
-    BAUD --> TICK([o_baudrate<br/>pulso de 1 ciclo cada 326 ciclos<br/>= 16x el baud rate])
-```
-
-## 2. uart_rx (fsm + datapath + wrapper)
-
-```mermaid
-flowchart TB
-    RX([rx<br/>linea serie de entrada])
-    STICK([i_s_tick<br/>tick del baudrate_gen])
-
-    subgraph RXMOD["uart_rx"]
-        direction TB
-        subgraph FSM["uart_rx_fsm - control"]
-            F["decide el estado:<br/>IDLE - START - DATA - PARITY - STOP"]
-        end
-        subgraph DP["uart_rx_datapath - registros"]
-            D["s_reg: contador ticks 0-15<br/>n_reg: contador bits 0-7<br/>b_reg: shift register del dato<br/>p_reg: bit de paridad recibido"]
-        end
-        F -- "o_s_clr: reiniciar contador de ticks" --> D
-        F -- "o_n_clr: reiniciar contador de bits" --> D
-        F -- "o_n_incr: sumar 1 al contador de bits" --> D
-        F -- "o_b_shift: meter bit actual en shift reg" --> D
-        F -- "o_p_load: guardar bit de paridad" --> D
-        D -- "o_s_reg: valor actual del contador de ticks" --> F
-        D -- "o_n_reg: valor actual del contador de bits" --> F
-    end
-
-    RX --> F
-    RX --> D
-    STICK --> F
-    STICK --> D
-
-    D -- "o_b_reg" --> DOUT([o_dout, 8 bits<br/>byte recibido completo])
-    F --> DONE([o_rx_done<br/>pulso 1 ciclo: dato listo])
-```
-
-## 3. uart_tx (fsm + datapath + wrapper)
-
-```mermaid
-flowchart TB
-    DIN([i_din, 8 bits<br/>byte a transmitir])
-    START([i_tx_start<br/>pedido de arranque desde la interfaz])
-    STICK([i_s_tick<br/>tick del baudrate_gen])
-
-    subgraph TXMOD["uart_tx"]
-        direction TB
-        subgraph FSM["uart_tx_fsm - control"]
-            F["decide el estado:<br/>IDLE - START - DATA - PARITY - STOP<br/>genera la linea o_tx"]
-        end
-        subgraph DP["uart_tx_datapath - registros"]
-            D["s_reg: contador ticks 0-15<br/>n_reg: contador bits 0-7<br/>b_reg: shift register del dato<br/>p_reg: paridad calculada por XOR"]
-        end
-        F -- "o_s_clr / o_n_clr" --> D
-        F -- "o_b_load: carga i_din completo" --> D
-        F -- "o_b_shift: saca el proximo bit" --> D
-        F -- "o_p_load: calcula paridad" --> D
-        D -- "o_s_reg, o_n_reg" --> F
-        D -- "b0: bit 0 actual a transmitir" --> F
-        D -- "p_reg: bit de paridad ya calculado" --> F
-    end
-
-    DIN --> D
-    START --> F
-    STICK --> F
-    STICK --> D
-
-    F --> TXOUT([o_tx<br/>linea serie de salida])
-    F --> DONE([o_tx_done<br/>pulso 1 ciclo: frame enviado])
-```
-
-## 4. alu
-
-```mermaid
-flowchart LR
-    A([i_a, 8 bits con signo<br/>operando A]) --> ALU
-    B([i_b, 8 bits con signo<br/>operando B]) --> ALU
-    OPC([i_opc, 6 bits<br/>codigo de operacion]) --> ALU
-    ALU["alu<br/>combinacional, sin clock<br/>ADD SUB AND OR XOR SRA SRL NOR"]
-    ALU --> RES([o_resultado, 8 bits<br/>resultado de la operacion])
-    ALU --> ZERO([o_zero<br/>1 si o_resultado == 0])
-    ALU --> OVF([o_overflow<br/>1 si hubo overflow, solo ADD/SUB])
-```
-
-## 5. uart_interface
-
-```mermaid
-flowchart TB
-    RXD([i_rx_dout, 8 bits<br/>byte recibido]) --> INTF
-    RXDONE([i_rx_done<br/>aviso de dato nuevo]) --> INTF
-    TXDONE([i_tx_done<br/>aviso de fin de transmision]) --> INTF
-    ALURES([i_alu_resultado, 8 bits<br/>resultado ya calculado]) --> INTF
-
-    subgraph INTF["uart_interface"]
-        direction TB
-        REG["byte_cnt: 0=espera A, 1=espera B, 2=espera opcode<br/>r_tx_full: hay una transmision en curso<br/>r_send_pending: resultado listo para mandar"]
-    end
-
-    INTF --> ALUA([o_alu_a, 8 bits<br/>operando A capturado])
-    INTF --> ALUB([o_alu_b, 8 bits<br/>operando B capturado])
-    INTF --> ALUOPC([o_alu_opc, 6 bits<br/>opcode capturado])
-    INTF --> TXDIN([o_tx_din, 8 bits<br/>resultado a transmitir])
-    INTF --> TXSTART([o_tx_start<br/>pulso: dispara la transmision])
-```
-
-Todos usan `flowchart` estándar, así que renderizan igual en GitHub, VS Code (con la extensión de Mermaid), Notion o Word con plugin — si tu informe va en LaTeX/Overleaf avisame y te los paso a TikZ.
-
-## Sincronizador en Rx
-
-Un flip-flop copia su entrada en el flanco del clock, pero con una condición: la entrada tiene que estar quieta un instante antes y un instante después del flanco. Esos instantes se llaman setup y hold, y son del orden de los picosegundos.
-
-```
-clock        ____|‾‾‾‾|____|‾‾‾‾|___
-                 ↑ flanco
-entrada   ════╳══[quieta]═══════════   ✔ la cambiaste lejos del flanco
-entrada   ═══════╳══════════════════   ✘ la cambiaste justo en el flanco
-
-
-```
-
-Si la entrada cambia justo dentro de esa ventana, el flip-flop no sabe si guardar 0 o 1. Puede quedar un rato en un valor intermedio, ni 0 ni 1, antes de caer para algún lado. Eso es la metaestabilidad. Es como una moneda que cae de canto y tambalea antes de decidir.
-
-En la Basys 3, 0 V es un 0 y 3,3 V es un 1. Cuando la entrada cambia justo en el flanco, la salida puede quedar un rato en un voltaje intermedio, por ejemplo 1,6 V. Ese voltaje es inestable, así que tarde o temprano cae a 0 o a 1 por sí solo:
-
-```
-
-3.3V ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ╱‾‾‾‾‾‾ (terminó en 1)
-                  ─ ────────╯
-1.6V ─ ─ ─ ─ ────╯ ← metaestable: no es ni 0 ni 1
-
-0V ─ ─ ─ ─ ─ ─ ─ ─╲**\*\***\_\_**\*\*** (o terminó en 0)
-↑ flanco
-```
-
-El problema de la metaestabilidad son tres cosas:
-
-1. No sabés a qué valor va a caer. Puede ser 0 o 1.
-2. No sabés cuánto va a tardar. Casi siempre se resuelve en fracciones de nanosegundo, pero no hay un tiempo máximo garantizado. La probabilidad de que siga indeciso baja exponencialmente, pero nunca llega a cero.
-3. Mientras está en el valor intermedio, cada compuerta que lo lee lo puede interpretar distinto. Una puede ver un 0 y otra un 1. Ese es el caso del estado que pasa a START mientras el contador no se limpia, que te conté antes.
-
-Con el sincronizador, el punto 1 no importa: si FF1 cae a 0 o a 1, el receptor ve el flanco un ciclo antes o un ciclo después, y 10 ns no cambian nada. Lo que el sincronizador resuelve son los puntos 2 y 3. FF1 tiene 10 ns para decidirse antes de que alguien lo lea, y lo lee un único flip-flop (FF2), no varios.
-
-### Qué hace el sincronizador
-
-```
-
-          ┌────┐  r_rx_meta  ┌────┐  r_rx_sync
-rx ──────►│ FF1│────────────►│ FF2│──────────► uart_rx
-(asínc.)  └────┘             └────┘ (ya sincronizada)
-
-```
-
-- FF1 es el único que recibe rx directo. Si justo cae en la ventana prohibida, puede quedar metaestable, pero tiene un ciclo entero (10 ns) para decidirse antes de que lo lea FF2. En 10 ns prácticamente siempre se decide: la probabilidad de que siga indeciso baja exponencialmente con el tiempo.
-- FF2 lee a FF1 cuando ya está estable, y su salida cambia sincronizada con el clock, como cualquier otra señal interna.
-- Ahora uart_rx recibe una señal que cambia solo en los flancos. Todos sus flip-flops (estado, contador, shift register) ven el mismo valor en el mismo ciclo, y se acaba la inconsistencia.
-
-El costo es que la FPGA ve rx con 20 ns de retraso. Un bit a 19200 baudios dura unos 52.000 ns, así que ese retraso no se nota.
-
-En sintesis: Toda señal que viene de afuera, sin relación con nuestro clock, se pasa por 2 flip-flops antes de usarla, para que la lógica interna la vea cambiar siempre
-en un flanco y todos los registros lean el mismo valor. Eso aplica a rx y también a botones y switches.
