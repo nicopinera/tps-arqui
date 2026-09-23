@@ -1,0 +1,6 @@
+\section{Conclusiones}
+Se diseñó e implementó en la Basys 3 una ALU parametrizable que soporta las ocho operaciones pedidas, junto con los \textit{flags} de zero y \textit{overflow}. Separar la ALU, puramente combinacional, del módulo top que la adapta a la placa permitió mantenerla independiente del hardware, de modo que puede reutilizarse sin cambios en el trabajo final.
+
+La simulación, tanto comportamental como post-implementación, confirmó el funcionamiento esperado en los casos extremos de cada operación, en particular en los límites del rango en complemento a dos, donde aparece el \textit{overflow}.
+
+La síntesis mostró que el diseño ocupa una fracción mínima de la FPGA (77 LUTs y 22 registros), y que no se infirieron \textit{latches}. El análisis de tiempos indicó que el camino crítico atraviesa el sumador y la detección de cero. Como la salida de la ALU no está registrada, ese camino no queda acotado por el reloj; al integrarla en el procesador convendrá registrarla, para poder verificar que opere dentro de un ciclo.
