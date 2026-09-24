@@ -1,6 +1,6 @@
-# Trabajo Practico 2 - Arquitectura de Computadoras
+# Trabajo Práctico 2 - Arquitectura de Computadoras
 
-## Modulo UART
+## Módulo UART
 
 ## Nombre
 
@@ -13,13 +13,13 @@
 
 ---
 
-## Indice
+## Índice
 
-1. [Introduccion](#1---introduccion)
+1. [Introducción](#1---introducción)
 
 ---
 
-## 1 - Introduccion
+## 1 - Introducción
 
 La comunicación entre sistemas digitales que no comparten una señal de reloj común, requiere protocolos de transmisión asíncrona que resuelvan el problema de sincronización sin necesidad de una línea de clock adicional. La **UART (Universal Asynchronous Receiver Transmitter)** es uno de los protocolos más difundidos para este propósito, utilizado ampliamente en sistemas embebidos y comunicación con periféricos por su simplicidad de implementación y bajo requerimiento de hardware.
 
@@ -33,7 +33,7 @@ Para el diseño de los módulos RX y TX se adoptó una arquitectura de separaci�
 
 El enunciado plantea implementar en la placa Basys 3 los módulos **transmisor (TX)** y **receptor (RX)** de una UART (_Universal Asynchronous Receiver Transmitter_), e integrarlos junto con una **interfaz de control** a la **ALU** desarrollada en el TP1, de modo que esta última pueda operarse a través del puerto serie de la placa en lugar de los switches físicos utilizados anteriormente.
 
-A continuacion se muestra el esquema general planteado en el enunciado: la ALU se conecta a un bus paralelo de 8 bits a través de un circuito de interfaz (INTF), que a su vez se comunica con el módulo UART mediante las líneas serie `Serial Out` y `Serial In`.
+A continuación se muestra el esquema general planteado en el enunciado: la ALU se conecta a un bus paralelo de 8 bits a través de un circuito de interfaz (INTF), que a su vez se comunica con el módulo UART mediante las líneas serie `Serial Out` y `Serial In`.
 
 ```mermaid
 ---
@@ -74,7 +74,7 @@ Para este trabajo se adoptaron los siguientes parámetros de trama:
 
 ### 2.2 Generación del baud rate
 
-El **baudrate generator** es un contador sincrono cuya funcion principal es generar pulsos periodicos de habilitacion, llamados **ticks** a una frecuencia exacatmente **16 veces mayor** que la tasa de baudios configurada para UART. El receptor UART necesita esta freceunca de sobremeustreo para poder estimar y muestrear con precision el punto medio de cada bit de datos recibido sin necesidad de transmitir una señar de reloj por la linea serie.
+El **baudrate generator** es un contador síncrono cuya función principal es generar pulsos periódicos de habilitación, llamados **ticks**, a una frecuencia exactamente **16 veces mayor** que la tasa de baudios configurada para UART. El receptor UART necesita esta frecuencia de sobremuestreo para poder estimar y muestrear con precisión el punto medio de cada bit de datos recibido sin necesidad de transmitir una señal de reloj por la línea serie.
 
 Con un **clock** de placa de $100 [MHz]$ y un **baud rate** de $19200 [bps]$ con **oversampling 16x**, la cantidad de ciclos de reloj entre cada _tick_ de muestreo es:
 
@@ -136,7 +136,7 @@ Dado que el retardo introducido es de solo dos ciclos de clock (20 ns) frente a 
 
 ### 3.1 Arquitectura general
 
-El sistema se estructuró en cinco bloques principales, más un sincronizador de entrada: `baudrate_gen`, `uart_rx`, `uart_tx`, `uart_interface` y la `alu` reutilizada sin modificaciones del TP1. El diagrama a continuacion muestra las conexiones entre
+El sistema se estructuró en cinco bloques principales, más un sincronizador de entrada: `baudrate_gen`, `uart_rx`, `uart_tx`, `uart_interface` y la `alu` reutilizada sin modificaciones del TP1. El diagrama a continuación muestra las conexiones entre
 todos los bloques.
 
 ```mermaid
@@ -219,7 +219,7 @@ title: Puertos del generador de baud rate
 flowchart LR
     CLK([clock, 100MHz]) --> BAUD
     RST([i_reset]) --> BAUD
-    BAUD["baudrate_gen<br/>contador modulo 326"]
+    BAUD["baudrate_gen<br/>contador módulo 326"]
     BAUD --> TICK([o_baudrate])
 ```
 
@@ -338,7 +338,7 @@ flowchart TB
 
     subgraph INTF["uart_interface"]
         direction TB
-        REG["byte_cnt: 0=espera A, 1=espera B, 2=espera opcode<br/>r_tx_full: transmision en curso<br/>r_send_pending: resultado listo para enviar"]
+        REG["byte_cnt: 0=espera A, 1=espera B, 2=espera opcode<br/>r_tx_full: transmisión en curso<br/>r_send_pending: resultado listo para enviar"]
     end
 
     INTF --> ALUA([o_alu_a, 8 bits])
