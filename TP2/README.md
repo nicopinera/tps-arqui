@@ -15,25 +15,40 @@
 
 ## Índice
 
-- [1. Introducción](#1-introducción)
-- [2. Especificación](#2-especificación)
-  - [2.1 Formato de trama](#21-formato-de-trama)
-  - [2.2 Generación del baud rate](#22-generación-del-baud-rate)
-  - [2.3 Protocolo de comunicación con la ALU](#23-protocolo-de-comunicación-con-la-alu)
-  - [2.4 Sincronización de la línea de entrada](#24-sincronización-de-la-línea-de-entrada)
-- [3. Diseño](#3-diseño)
-  - [3.1 Arquitectura general](#31-arquitectura-general)
-  - [3.2 Generador de baud rate (baudrate_gen)](#32-generador-de-baud-rate-baudrate_gen)
-  - [3.3 Módulo uart_rx](#33-módulo-uart_rx)
-  - [3.4 Módulo uart_tx](#34-módulo-uart_tx)
-  - [3.5 Interfaz (uart_interface)](#35-interfaz-uart_interface)
-  - [3.6 Módulo top](#36-módulo-top)
-  - [3.7 Asignación de pines](#37-asignación-de-pines)
-- [4. Síntesis e implementación](#4-síntesis-e-implementación)
-  - [4.1 Utilización de recursos](#41-utilización-de-recursos)
-  - [4.2 Análisis de tiempos](#42-análisis-de-tiempos)
-  - [4.3 Consumo de potencia](#43-consumo-de-potencia)
-- [Anexo: Tabla resumen de señales y flags](#anexo-tabla-resumen-de-señales-y-flags)
+- [Trabajo Práctico 2 - Arquitectura de Computadoras](#trabajo-práctico-2---arquitectura-de-computadoras)
+  - [Módulo UART](#módulo-uart)
+  - [Integrantes](#integrantes)
+  - [UNC - Facultad de Ciencias Exactas, Físicas y Naturales](#unc---facultad-de-ciencias-exactas-físicas-y-naturales)
+  - [Cátedra: Arquitectura de Computadoras](#cátedra-arquitectura-de-computadoras)
+  - [Índice](#índice)
+  - [1. Introducción](#1-introducción)
+  - [2. Especificación](#2-especificación)
+    - [2.1 Formato de trama](#21-formato-de-trama)
+    - [2.2 Generación del baud rate](#22-generación-del-baud-rate)
+    - [2.3 Protocolo de comunicación con la ALU](#23-protocolo-de-comunicación-con-la-alu)
+    - [2.4 Sincronización de la línea de entrada](#24-sincronización-de-la-línea-de-entrada)
+  - [3. Diseño](#3-diseño)
+    - [3.1 Arquitectura general](#31-arquitectura-general)
+    - [3.2 Generador de baud rate (`baudrate_gen`)](#32-generador-de-baud-rate-baudrate_gen)
+    - [3.3 Módulo `uart_rx`](#33-módulo-uart_rx)
+      - [3.3.1 Arquitectura interna](#331-arquitectura-interna)
+      - [3.3.2 Máquina de estados](#332-máquina-de-estados)
+      - [3.3.3 Datapath](#333-datapath)
+    - [3.4 Módulo `uart_tx`](#34-módulo-uart_tx)
+      - [3.4.1 Arquitectura interna](#341-arquitectura-interna)
+      - [3.4.2 Máquina de estados](#342-máquina-de-estados)
+      - [3.4.3 Datapath](#343-datapath)
+    - [3.5 Interfaz (`uart_interface`)](#35-interfaz-uart_interface)
+    - [3.6 Módulo `top`](#36-módulo-top)
+    - [3.7 Asignación de pines](#37-asignación-de-pines)
+  - [4. Síntesis e implementación](#4-síntesis-e-implementación)
+    - [4.1 Utilización de recursos](#41-utilización-de-recursos)
+    - [4.2 Análisis de tiempos](#42-análisis-de-tiempos)
+      - [4.2.1 Camino crítico (setup)](#421-camino-crítico-setup)
+      - [4.2.2 Hold](#422-hold)
+      - [4.2.3 Caminos sin restricción](#423-caminos-sin-restricción)
+    - [4.3 Consumo de potencia](#43-consumo-de-potencia)
+  - [Anexo: Tabla resumen de señales y flags](#anexo-tabla-resumen-de-señales-y-flags)
 
 ---
 
@@ -510,34 +525,34 @@ El reporte de potencia estima un consumo total de **0,073 W**, de los cuales 0,0
 | Módulo                | Señal                                          | Dir. | Ancho | Qué significa                                                           |
 | --------------------- | ---------------------------------------------- | ---- | ----- | ----------------------------------------------------------------------- |
 | **baudrate_gen**      | `clock`, `i_reset`                             | in   | 1     | Reloj del sistema y reset síncrono                                      |
-|                       | `o_baudrate`                                   | out  | 1     | Pulso de 1 ciclo cada 326 ciclos de clock (el `tick`, 16x el baud rate) |
+|                       | `o_baudrate`                                   | out  | 1     | Pulso de 1 ciclo cada 326 ciclos de clock                               |
 | **uart_rx_fsm**       | `rx`                                           | in   | 1     | Línea serie de entrada                                                  |
 |                       | `i_s_tick`                                     | in   | 1     | Tick del baudrate_gen                                                   |
-|                       | `i_s_reg`                                      | in   | 4     | Lee el contador de ticks actual (para saber si llegó a 7 o a 15)        |
-|                       | `i_n_reg`                                      | in   | 3     | Lee el contador de bits actual (para saber si ya van 8)                 |
-|                       | `o_s_clr`                                      | out  | 1     | Pulso: "reiniciá el contador de ticks"                                  |
-|                       | `o_n_clr`                                      | out  | 1     | Pulso: "reiniciá el contador de bits"                                   |
-|                       | `o_n_incr`                                     | out  | 1     | Pulso: "sumá 1 al contador de bits"                                     |
-|                       | `o_b_shift`                                    | out  | 1     | Pulso: "meté el bit actual de `rx` en el shift register"                |
-|                       | `o_p_load`                                     | out  | 1     | Pulso: "guardá el bit actual como paridad"                              |
-|                       | `o_rx_done`                                    | out  | 1     | Pulso final: "ya armé el byte completo, es válido"                      |
+|                       | `i_s_reg`                                      | in   | 4     | Lee el contador de ticks actual                                         |
+|                       | `i_n_reg`                                      | in   | 3     | Lee el contador de bits actual                                          |
+|                       | `o_s_clr`                                      | out  | 1     | Pulso: reiniciá el contador de ticks                                    |
+|                       | `o_n_clr`                                      | out  | 1     | Pulso: reiniciá el contador de bits                                     |
+|                       | `o_n_incr`                                     | out  | 1     | Pulso: sumá 1 al contador de bits                                       |
+|                       | `o_b_shift`                                    | out  | 1     | Pulso: meté el bit actual de `rx` en el shift reg.                      |
+|                       | `o_p_load`                                     | out  | 1     | Pulso: guardá el bit actual como paridad                                |
+|                       | `o_rx_done`                                    | out  | 1     | Pulso final: ya armé el byte, es válido                                 |
 | **uart_rx_datapath**  | `i_din` — n/a (no tiene, el dato lo arma solo) |      |       |                                                                         |
 |                       | `o_s_reg`                                      | out  | 4     | Contador de ticks (0-15)                                                |
 |                       | `o_n_reg`                                      | out  | 3     | Contador de bits recibidos (0-7)                                        |
-|                       | `o_b_reg`                                      | out  | 8     | Shift register — el byte que se va armando                              |
-|                       | `o_p_reg`                                      | out  | 1     | Bit de paridad recibido (guardado sin validar)                          |
+|                       | `o_b_reg`                                      | out  | 8     | Shift register, byte que se arma                                        |
+|                       | `o_p_reg`                                      | out  | 1     | Bit de paridad recibido                                                 |
 | **uart_rx (wrapper)** | `rx`, `i_s_tick`                               | in   | 1     | Pasan directo a fsm y datapath                                          |
 |                       | `o_dout`                                       | out  | 8     | El byte recibido = `w_b_reg` del datapath                               |
 |                       | `o_rx_done`                                    | out  | 1     | = `o_rx_done` de la fsm                                                 |
 | **uart_tx_fsm**       | `i_tx_start`                                   | in   | 1     | Pedido externo: "arrancá a transmitir"                                  |
-|                       | `i_b0`                                         | in   | 1     | Bit 0 actual del shift register (el que hay que sacar por `tx` ahora)   |
+|                       | `i_b0`                                         | in   | 1     | Bit 0 actual del shift register (el que hay que sacar por `tx`)         |
 |                       | `i_p_reg`                                      | in   | 1     | Bit de paridad ya calculado                                             |
-|                       | `o_b_load`                                     | out  | 1     | Pulso: "cargá el dato completo (`din`) en el shift register"            |
-|                       | `o_b_shift`                                    | out  | 1     | Pulso: "corré el shift register para exponer el próximo bit"            |
-|                       | `o_tx`                                         | out  | 1     | La línea serie de salida (1=reposo, 0=start, bit por bit en DATA, etc.) |
-|                       | `o_tx_done`                                    | out  | 1     | Pulso final: "ya mandé el frame completo"                               |
+|                       | `o_b_load`                                     | out  | 1     | Pulso: cargá el dato completo (`din`) en el shift register              |
+|                       | `o_b_shift`                                    | out  | 1     | Pulso: corré el shift register para exponer el próximo bit              |
+|                       | `o_tx`                                         | out  | 1     | La línea serie de salida (1=reposo, 0=start, bit por bit en DATA)       |
+|                       | `o_tx_done`                                    | out  | 1     | Pulso final: ya mandé el frame completo                                 |
 | **uart_tx_datapath**  | `i_din`                                        | in   | 8     | El byte completo a transmitir                                           |
-|                       | `o_b_reg`                                      | out  | 8     | Shift register — se vacía bit a bit hacia `tx`                          |
+|                       | `o_b_reg`                                      | out  | 8     | Shift register, se vacía bit a bit hacia `tx`                           |
 |                       | `o_p_reg`                                      | out  | 1     | Paridad calculada por XOR de `i_din`                                    |
 | **uart_tx (wrapper)** | `i_din`, `i_tx_start`                          | in   | —     | Pasan directo a fsm/datapath                                            |
 |                       | `o_tx`                                         | out  | 1     | = `o_tx` de la fsm                                                      |
@@ -545,8 +560,8 @@ El reporte de potencia estima un consumo total de **0,073 W**, de los cuales 0,0
 | **alu**               | `i_a`, `i_b`                                   | in   | 8 c/u | Operandos (con signo)                                                   |
 |                       | `i_opc`                                        | in   | 6     | Código de operación                                                     |
 |                       | `o_resultado`                                  | out  | 8     | Resultado de la operación                                               |
-|                       | `o_zero`                                       | out  | 1     | 1 si `o_resultado == 0`                                                 |
-|                       | `o_overflow`                                   | out  | 1     | 1 si hubo overflow (solo ADD/SUB)                                       |
+|                       | `o_zero`                                       | out  | 1     | Flag Zero                                                               |
+|                       | `o_overflow`                                   | out  | 1     | Flag Overflow                                                           |
 | **uart_interface**    | `i_rx_dout`, `i_rx_done`                       | in   | —     | Vienen del `uart_rx`                                                    |
 |                       | `i_tx_done`                                    | in   | 1     | Viene del `uart_tx`                                                     |
 |                       | `i_alu_resultado`                              | in   | 8     | Viene de la `alu`                                                       |
@@ -554,4 +569,4 @@ El reporte de potencia estima un consumo total de **0,073 W**, de los cuales 0,0
 |                       | `o_tx_din`, `o_tx_start`                       | out  | —     | Van hacia el `uart_tx`, para mandar el resultado                        |
 |                       | (interno) `byte_cnt`                           | reg  | 2     | Contador de secuencia: 0=esperando A, 1=esperando B, 2=esperando opcode |
 |                       | (interno) `r_tx_full`                          | reg  | 1     | Evita reiniciar una transmisión mientras hay una en curso               |
-|                       | (interno) `r_send_pending`                     | reg  | 1     | "El resultado ya está listo, hay que mandarlo apenas se pueda"          |
+|                       | (interno) `r_send_pending`                     | reg  | 1     | El resultado ya está listo, hay que mandarlo apenas se pueda            |
