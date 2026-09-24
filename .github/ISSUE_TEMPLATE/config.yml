@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: PRD del procesador RISC-V segmentado
+    url: https://github.com/nicopinera/tps-arqui/blob/main/docs/PRD-pipeline-riscv.md
+    about: Hitos, épicas, historias de usuario, ADRs y Definición de "Hecho" del TP final.

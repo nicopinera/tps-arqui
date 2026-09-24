@@ -1,0 +1,85 @@
+name: Épica
+description: Épica de un hito (ej. H3-E1 Unidades de riesgo). Agrupa historias de usuario.
+title: "[HX-EY] "
+labels: ["epica"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Título sugerido: `[H3-E1] Unidades de riesgo`.
+
+  - type: input
+    id: id
+    attributes:
+      label: ID de la épica
+      placeholder: "H3-E1"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: hito
+    attributes:
+      label: Hito al que pertenece
+      options:
+        - "Hito 1 — Fundaciones, diseño y toolchain de ensamblado (v0.1)"
+        - "Hito 2 — Núcleo del pipeline sin riesgos (v0.2)"
+        - "Hito 3 — Manejo de riesgos y verificación (v0.3)"
+        - "Hito 4 — Debug Unit y control por UART (v0.4)"
+        - "Hito 5 — Interfaz de usuario en PC (v0.5)"
+        - "Hito 6 — Timing, integración final y entrega (v1.0)"
+    validations:
+      required: true
+
+  - type: input
+    id: issue-hito
+    attributes:
+      label: Issue del hito
+      placeholder: "#12"
+
+  - type: textarea
+    id: objetivo
+    attributes:
+      label: Objetivo de la épica
+      description: Qué capacidad del sistema queda resuelta al cerrar la épica.
+    validations:
+      required: true
+
+  - type: textarea
+    id: historias
+    attributes:
+      label: Historias de usuario
+      description: Una línea por historia, enlazando su issue.
+      value: |
+        - [ ] #  US-X01 —
+        - [ ] #  US-X02 —
+    validations:
+      required: true
+
+  - type: dropdown
+    id: pista
+    attributes:
+      label: Pista
+      options:
+        - "A — Hardware del núcleo"
+        - "B — Debug Unit y software de PC"
+        - "Ambas"
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencias
+    attributes:
+      label: Dependencias
+      description: Otras épicas, historias o ADRs que tienen que estar listos antes.
+      placeholder: "US-103 (diseño del datapath), ADR-007"
+
+  - type: textarea
+    id: cierre
+    attributes:
+      label: Criterios de cierre
+      value: |
+        - [ ] Todas las historias cumplen la Definición de "Hecho" (sección 11)
+        - [ ] Módulos críticos de la épica con la cobertura del catálogo (sección 12.2)
+        - [ ] Contratos (`docs/interfaces/`, `docs/protocolo.md`) actualizados si cambiaron
+    validations:
+      required: true

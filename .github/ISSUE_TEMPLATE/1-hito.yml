@@ -1,0 +1,96 @@
+name: Hito
+description: Hito del plan (sección 10 del PRD). Al cerrarse se libera una versión MINOR.
+title: "[Hito X] "
+labels: ["hito"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Un **hito** agrupa épicas y se cierra con un release (`vX.Y.0`) según la sección 13.3 del PRD.
+        Título sugerido: `[Hito 2] Núcleo del pipeline sin riesgos (v0.2)`.
+
+  - type: dropdown
+    id: hito
+    attributes:
+      label: Hito
+      options:
+        - "Hito 1 — Fundaciones, diseño y toolchain de ensamblado (v0.1)"
+        - "Hito 2 — Núcleo del pipeline sin riesgos (v0.2)"
+        - "Hito 3 — Manejo de riesgos y verificación (v0.3)"
+        - "Hito 4 — Debug Unit y control por UART (v0.4)"
+        - "Hito 5 — Interfaz de usuario en PC (v0.5)"
+        - "Hito 6 — Timing, integración final y entrega (v1.0)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: objetivo
+    attributes:
+      label: Objetivo del hito
+      description: Qué se puede hacer al final del hito que antes no se podía.
+    validations:
+      required: true
+
+  - type: textarea
+    id: epicas
+    attributes:
+      label: Épicas
+      description: Una línea por épica, enlazando su issue.
+      value: |
+        - [ ] #  HX-E1 —
+        - [ ] #  HX-E2 —
+        - [ ] #  HX-E3 —
+    validations:
+      required: true
+
+  - type: textarea
+    id: adrs
+    attributes:
+      label: Decisiones previas requeridas (ADR)
+      description: ADRs que tienen que estar aprobados antes o durante el hito.
+      placeholder: "ADR-005 (memorias), ADR-006 (resolución de saltos), ..."
+
+  - type: input
+    id: esfuerzo
+    attributes:
+      label: Esfuerzo total estimado
+      placeholder: "~24 días·persona"
+
+  - type: dropdown
+    id: pista
+    attributes:
+      label: Pista
+      options:
+        - "A — Hardware del núcleo"
+        - "B — Debug Unit y software de PC"
+        - "Ambas"
+    validations:
+      required: true
+
+  - type: input
+    id: semanas
+    attributes:
+      label: Semanas del cronograma
+      placeholder: "Semanas 3–5"
+
+  - type: textarea
+    id: cierre
+    attributes:
+      label: Checklist de cierre y release (sección 13.3)
+      value: |
+        - [ ] Todas las épicas cerradas
+        - [ ] `make sim-all`, `make verify` y `pytest` en verde sobre `develop`
+        - [ ] (Desde Hito 4) `verify_board.py` pasa en placa
+        - [ ] `make build` desde árbol limpio; WNS ≥ 0 y WHS ≥ 0
+        - [ ] `CHANGELOG.md`: `[Unreleased]` movido a `[vX.Y.0] - AAAA-MM-DD`
+        - [ ] Merge `--no-ff` de `develop` a `main` y tag anotado `vX.Y.0`
+        - [ ] GitHub Release con `top.bit`, `timing_summary.rpt`, `utilization.rpt` y paquete de PC
+        - [ ] `docs/catalogo-criticidad.md` revisado
+    validations:
+      required: true
+
+  - type: textarea
+    id: notas
+    attributes:
+      label: Riesgos / notas
+      description: Historias candidatas a recortar, dependencias con la otra pista, etc.

@@ -1,0 +1,137 @@
+name: Historia de usuario
+description: Historia de usuario (US-XXX) con criterios de aceptación, según la sección 10 del PRD.
+title: "[US-XXX] "
+labels: ["historia"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Título sugerido: `[US-302] Detección de load-use y stall`.
+        Rama: `feature/us-302-load-use` → PR a `develop`.
+
+  - type: input
+    id: id
+    attributes:
+      label: ID de la historia
+      placeholder: "US-302"
+    validations:
+      required: true
+
+  - type: input
+    id: epica
+    attributes:
+      label: Épica
+      description: ID e issue de la épica.
+      placeholder: "H3-E1 — #15"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: esfuerzo
+    attributes:
+      label: Esfuerzo
+      options:
+        - "S (1–2 días·persona)"
+        - "M (3–5 días·persona)"
+        - "L (6–10 días·persona)"
+        - "XL (> 10 días·persona) — partir en historias más chicas"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: prioridad
+    attributes:
+      label: Prioridad
+      options:
+        - "Urgente — bloqueante, detiene otras historias"
+        - "Alta — impacto directo en la entrega del hito"
+        - "Media — importante pero no bloquea"
+        - "Baja — mejora o refinamiento"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: pista
+    attributes:
+      label: Pista
+      options:
+        - "A — Hardware del núcleo"
+        - "B — Debug Unit y software de PC"
+        - "Ambas"
+    validations:
+      required: true
+
+  - type: input
+    id: dependencias
+    attributes:
+      label: Dependencias
+      placeholder: "US-209, ADR-007"
+
+  - type: textarea
+    id: objetivo
+    attributes:
+      label: Objetivo funcional
+      description: Qué problema resuelve y para qué.
+    validations:
+      required: true
+
+  - type: textarea
+    id: narrativa
+    attributes:
+      label: Narrativa
+      value: "Como <perfil>, quiero <acción>, para <beneficio>."
+    validations:
+      required: true
+
+  - type: textarea
+    id: detalle
+    attributes:
+      label: Detalle técnico
+      description: Módulos, señales, algoritmos, formatos. Marcar con _(sujeto a ADR-0XX)_ lo que dependa de un ADR pendiente.
+    validations:
+      required: true
+
+  - type: textarea
+    id: criterios
+    attributes:
+      label: Criterios de aceptación
+      description: Verificables y numerados.
+      value: |
+        - [ ] **AC1.**
+        - [ ] **AC2.**
+        - [ ] **AC3.**
+    validations:
+      required: true
+
+  - type: textarea
+    id: reglas
+    attributes:
+      label: Reglas de negocio / NFR involucrados
+      placeholder: "R-EJ-2, R-EJ-6, NFR-1"
+
+  - type: textarea
+    id: testing
+    attributes:
+      label: Testing mínimo
+      description: Testbenches, programas de `asm/tests/`, tests de `pytest`, pruebas manuales en placa.
+    validations:
+      required: true
+
+  - type: textarea
+    id: archivos
+    attributes:
+      label: Archivos a crear / modificar
+      render: text
+      placeholder: |
+        hw/rtl/core/hazard_unit.v
+        hw/tb/core/tb_hazard_unit.v
+        asm/tests/hazards/load_use.asm
+
+  - type: checkboxes
+    id: criticidad
+    attributes:
+      label: Criticidad
+      options:
+        - label: Toca un módulo crítico (sección 12.2 del PRD)
+        - label: Cambia un contrato (interfaz del núcleo, protocolo o contenido de latches)
+        - label: Requiere aprobar un ADR antes de empezar
