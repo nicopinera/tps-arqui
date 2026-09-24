@@ -2,7 +2,7 @@
 
 ## Módulo UART
 
-## Nombre
+## Integrantes
 
 - Krede, Julian
 - Piñera, Nicolas
@@ -15,11 +15,29 @@
 
 ## Índice
 
-1. [Introducción](#1---introducción)
+- [1. Introducción](#1-introducción)
+- [2. Especificación](#2-especificación)
+  - [2.1 Formato de trama](#21-formato-de-trama)
+  - [2.2 Generación del baud rate](#22-generación-del-baud-rate)
+  - [2.3 Protocolo de comunicación con la ALU](#23-protocolo-de-comunicación-con-la-alu)
+  - [2.4 Sincronización de la línea de entrada](#24-sincronización-de-la-línea-de-entrada)
+- [3. Diseño](#3-diseño)
+  - [3.1 Arquitectura general](#31-arquitectura-general)
+  - [3.2 Generador de baud rate (baudrate_gen)](#32-generador-de-baud-rate-baudrate_gen)
+  - [3.3 Módulo uart_rx](#33-módulo-uart_rx)
+  - [3.4 Módulo uart_tx](#34-módulo-uart_tx)
+  - [3.5 Interfaz (uart_interface)](#35-interfaz-uart_interface)
+  - [3.6 Módulo top](#36-módulo-top)
+  - [3.7 Asignación de pines](#37-asignación-de-pines)
+- [4. Síntesis e implementación](#4-síntesis-e-implementación)
+  - [4.1 Utilización de recursos](#41-utilización-de-recursos)
+  - [4.2 Análisis de tiempos](#42-análisis-de-tiempos)
+  - [4.3 Consumo de potencia](#43-consumo-de-potencia)
+- [Anexo: Tabla resumen de señales y flags](#anexo-tabla-resumen-de-señales-y-flags)
 
 ---
 
-## 1 - Introducción
+## 1. Introducción
 
 La comunicación entre sistemas digitales que no comparten una señal de reloj común, requiere protocolos de transmisión asíncrona que resuelvan el problema de sincronización sin necesidad de una línea de clock adicional. La **UART (Universal Asynchronous Receiver Transmitter)** es uno de los protocolos más difundidos para este propósito, utilizado ampliamente en sistemas embebidos y comunicación con periféricos por su simplicidad de implementación y bajo requerimiento de hardware.
 
@@ -321,7 +339,7 @@ A diferencia del RX, en `IDLE` el transmisor ejecuta dos acciones simultáneas a
 
 El datapath del TX reutiliza el mismo esquema de contadores que el RX (`s_reg`, `n_reg`), pero con dos diferencias en el manejo del dato:
 
-- **Shift register (`b_reg`):** admite dos operaciones excluyentes. La carga completa (`b_load`) ejecuta `b_reg <= i_din`, trayendo el byte entero de una vez. El desplazamiento (`b_shift`) ejecuta `b_reg <= {1'b0, b_reg[7:1]}`,  exponiendo en la posición 0 el próximo bit a transmitir; el valor insertado por la posición más significativa es indistinto, ya que el contador `n_reg` impide que esos bits lleguen a transmitirse.
+- **Shift register (`b_reg`):** admite dos operaciones excluyentes. La carga completa (`b_load`) ejecuta `b_reg <= i_din`, trayendo el byte entero de una vez. El desplazamiento (`b_shift`) ejecuta `b_reg <= {1'b0, b_reg[7:1]}`, exponiendo en la posición 0 el próximo bit a transmitir; el valor insertado por la posición más significativa es indistinto, ya que el contador `n_reg` impide que esos bits lleguen a transmitirse.
 - **Paridad (`p_reg`):** a diferencia del RX, que solo almacena el bit recibido, aquí se calcula mediante el operador de reducción XOR sobre el dato completo: `p_reg <= ^i_din` (paridad par). Este cálculo es la base para que el receptor del otro extremo pueda, si se implementara la validación, verificar la integridad de la trama.
 
 ### 3.5 Interfaz (`uart_interface`)
@@ -384,7 +402,110 @@ El módulo `top` instancia y conecta los cinco bloques descritos en las subsecci
 
 ---
 
-## Tabla resumen de señales y flags
+## 4. Síntesis e implementación
+
+El diseño se sintetizó e implementó con Vivado 2025.2 para la FPGA Artix-7 (XC7A35T-1CPG236C) de la Basys 3, utilizando las restricciones de `tp2-constraint.xdc`.
+
+### 4.1 Utilización de recursos
+
+La siguiente tabla resume los recursos utilizados luego de la implementación, junto con los valores obtenidos en el TP1 como referencia:
+
+| Recurso         | TP2 (total) | TP1 (total) | Disponible | Utilización TP2 |
+| --------------- | ----------: | ----------: | ---------: | --------------: |
+| Slice LUTs      |         123 |          77 |      20800 |          0,59 % |
+| Slice Registers |          95 |          22 |      41600 |          0,23 % |
+| F7 Muxes        |          11 |          11 |      16300 |          0,07 % |
+| CARRY4          |           4 |           — |       8150 |          0,05 % |
+| Slices          |          44 |          23 |       8150 |          0,54 % |
+| Bonded IOB      |          14 |          23 |        106 |         13,21 % |
+| BUFGCTRL        |           1 |           1 |         32 |          3,13 % |
+
+Con la configuración por defecto (`flatten_hierarchy = rebuilt`), Vivado optimiza a través de los límites entre módulos y el reporte jerárquico deja de discriminar correctamente por bloque. Para obtener el desglose se repitió la síntesis con `-flatten_hierarchy none`, lo que da un total levemente mayor de LUTs (127) y la misma cantidad de registros:
+
+| Instancia       | Flip-flops | Celdas LUT | Detalle de los registros                                                                 |
+| --------------- | ---------: | ---------: | ---------------------------------------------------------------------------------------- |
+| `top`           |          2 |          0 | Sincronizador de `rx` (`r_rx_meta`, `r_rx_sync`)                                         |
+| `u_baud`        |         10 |         13 | Contador de 9 bits + `o_baudrate`                                                        |
+| `u_rx/fsm`      |          5 |         10 | Registro de estado, codificado _one-hot_ (5 estados)                                     |
+| `u_rx/datapath` |         15 |          8 | `s_reg` (4) + `n_reg` (3) + `b_reg` (8); `p_reg` eliminado                               |
+| `u_tx/fsm`      |          3 |         13 | Registro de estado, codificación binaria secuencial                                      |
+| `u_tx/datapath` |         16 |         20 | `s_reg` (4) + `n_reg` (3) + `b_reg` (8) + `p_reg` (1)                                    |
+| `u_intf`        |         44 |         10 | `byte_cnt` (3, _one-hot_) + A (8) + B (8) + opcode (6) + `o_tx_din` (8 × 2) + 3 banderas |
+| `u_alu`         |          0 |         78 | —                                                                                        |
+| **Total**       |     **95** |            |                                                                                          |
+
+_La suma de las celdas LUT por módulo es mayor que el total de Slice LUTs porque Vivado combina dos funciones lógicas pequeñas en una misma LUT física (LUT6 de doble salida)._
+
+Del reporte se desprenden las siguientes observaciones:
+
+- **La ALU sigue siendo puramente combinacional.** No utiliza ningún registro y ocupa prácticamente los mismos recursos que en el TP1 (≈ 75 LUTs, los 11 multiplexores F7 y las 4 cadenas `CARRY4` del sumador/restador). Esto confirma que se reutilizó sin modificaciones y que no se infirieron _latches_.
+- **Codificación de las FSM.** Vivado detectó las tres máquinas de estado del diseño y eligió una codificación distinta para cada una, según lo que resultara más conveniente para la lógica de transición y salidas:
+
+  | FSM                           | Codificación en el RTL | Codificación elegida por Vivado | Flip-flops |
+  | ----------------------------- | ---------------------- | ------------------------------- | ---------: |
+  | `uart_rx_fsm` (`state_reg`)   | binaria, 3 bits        | _one-hot_                       |          5 |
+  | `uart_tx_fsm` (`state_reg`)   | binaria, 3 bits        | secuencial (sin cambios)        |          3 |
+  | `uart_interface` (`byte_cnt`) | binaria, 2 bits        | _one-hot_                       |          3 |
+
+- **El registro de paridad del receptor fue eliminado.** Como la paridad recibida no se valida (Sección 2.1), `p_reg` de `uart_rx_datapath` no tiene ninguna carga y la síntesis lo removió. Por eso el datapath del RX tiene 15 flip-flops y el del TX, que sí utiliza su `p_reg` para transmitir, tiene 16.
+- **Replicación de `o_tx_din`.** Los 8 bits de `o_tx_din` alimentan tanto al datapath del transmisor como a los LEDs (`o_led`). En la optimización, Vivado replicó estos registros (sufijo `_lopt_replica`): una copia maneja los buffers de salida de los LEDs y la otra la lógica interna del TX. Esto explica los 44 flip-flops de la interfaz, frente a los 36 que surgen del código.
+- **Entradas/salidas.** Los 14 IOB corresponden a `clock`, `i_reset`, `rx`, `tx`, los 8 bits de `o_led`, `o_zero` y `o_overflow`. La reducción respecto del TP1 (23 IOB) se debe a que los 8 switches de datos y los 3 de selección fueron reemplazados por las dos líneas serie. El único BUFG es el buffer global del reloj.
+
+En conjunto, el agregado de la UART y de la interfaz incrementa el diseño en unas 46 LUTs y 73 flip-flops respecto del TP1, y el total sigue ocupando menos del 1 % de la lógica disponible en la FPGA.
+
+### 4.2 Análisis de tiempos
+
+| WNS      | TNS      | WHS      | THS      | WPWS     | Endpoints | Endpoints con falla |
+| -------- | -------- | -------- | -------- | -------- | --------: | ------------------: |
+| 4,899 ns | 0,000 ns | 0,153 ns | 0,000 ns | 4,500 ns |       178 |                   0 |
+
+A diferencia del TP1, donde WNS y WHS resultaban infinitos por no existir ningún camino restringido por el reloj, en este diseño **la ALU queda ubicada entre dos registros del mismo dominio de reloj**: sus entradas provienen de `o_alu_a`, `o_alu_b` y `o_alu_opc`, y su resultado es capturado en `o_tx_din`, ambos dentro de `uart_interface`. Vivado puede entonces comparar el retardo de la ALU contra el período de 10 ns, y los 178 _endpoints_ quedan restringidos.
+
+#### 4.2.1 Camino crítico (setup)
+
+El camino con menor _slack_ va desde `u_intf/o_alu_a_reg[7]` hasta `u_intf/o_tx_din_reg[0]_lopt_replica`, con un retardo de datos de 4,895 ns (1,087 ns de lógica y 3,808 ns de ruteo) y 4 niveles lógicos:
+
+| Etapa                                                   | Recursos         | Tiempo acumulado (ns) |
+| ------------------------------------------------------- | ---------------- | --------------------: |
+| Distribución del reloj hasta el registro                | IBUF, BUFG       |                 5,145 |
+| Salida del registro `o_alu_a[7]`                        | FDRE             |                 5,564 |
+| Lógica de desplazamiento y selección por opcode         | LUT6, LUT3, LUT6 |                 8,632 |
+| Multiplexor final del bit 0 del resultado               | LUT5             |                 9,410 |
+| Ruteo hasta la entrada D de `o_tx_din[0]`               | —                |                10,040 |
+| **Tiempo requerido** (flanco siguiente + reloj − setup) |                  |            **14,939** |
+| **Slack**                                               |                  |             **4,899** |
+
+El camino es coherente con la estructura de la ALU: el bit 7 de A (el bit de signo, con un _fan-out_ de 27) solo puede influir en el bit 0 del resultado a través de los desplazamientos a derecha (SRA/SRL con B ≥ 7), que se implementan como redes de multiplexores. El segundo camino en criticidad (_slack_ de 4,999 ns) va desde `o_alu_b[0]` a `o_tx_din[3]` a través de la cadena `CARRY4` del sumador/restador, por lo que ambas operaciones tienen retardos muy similares. Como en el TP1, el ruteo representa la mayor parte del retardo (≈ 78 %).
+
+A partir del _slack_ puede estimarse la frecuencia máxima de operación del diseño:
+
+$$
+f_{max} \approx \frac{1}{T - WNS} = \frac{1}{10\,\text{ns} - 4{,}899\,\text{ns}} \approx 196\,\text{MHz}
+$$
+
+Esto valida la decisión de diseño de la Sección 3.5: la interfaz captura el resultado de la ALU **un único ciclo de reloj** después de cargar el opcode (`r_send_pending`), y el análisis confirma que ese ciclo alcanza con amplio margen para que el resultado se estabilice.
+
+#### 4.2.2 Hold
+
+El peor caso de _hold_ (0,153 ns) se da entre dos bits contiguos del shift register del transmisor (`o_b_reg[4]` → `o_b_reg[3]`), el camino más corto posible entre dos registros: una sola LUT y un ruteo local dentro del mismo _slice_. El _slack_ es positivo, por lo que no hay violaciones.
+
+#### 4.2.3 Caminos sin restricción
+
+El reporte de _Check Timing_ advierte 2 puertos de entrada sin `set_input_delay` (`rx`, `i_reset`) y 11 puertos de salida sin `set_output_delay` (`tx`, `o_led[7:0]`, `o_zero`, `o_overflow`). En este diseño esto no representa un problema:
+
+- `rx` es asíncrona respecto del reloj de la FPGA y **no debe** analizarse como un camino síncrono: su tratamiento es precisamente el sincronizador de dos flip-flops de la Sección 2.4. Lo correcto sería declararlo explícitamente con `set_false_path -from [get_ports rx]` y marcar ambos registros con el atributo `(* ASYNC_REG = "TRUE" *)`, para que Vivado los ubique en el mismo _slice_ y maximice el tiempo de resolución de la metaestabilidad.
+- `i_reset` proviene de un pulsador, cuyos cambios son mucho más lentos que el período del reloj.
+- Las salidas hacia los LEDs y la línea `tx` son observadas por una persona o por un receptor UART que muestrea cada bit en su punto medio (≈ 52 μs), por lo que unos pocos nanosegundos de retardo en el pin son irrelevantes.
+
+Por último, el WPWS de 4,5 ns es el mismo que en el TP1 y verifica que los semiperíodos del reloj de 100 MHz superan el ancho de pulso mínimo exigido por los flip-flops.
+
+### 4.3 Consumo de potencia
+
+El reporte de potencia estima un consumo total de **0,073 W**, de los cuales 0,072 W corresponden a la potencia estática del dispositivo y apenas 0,001 W a la potencia dinámica del diseño. Esto es esperable: la mayor parte de la lógica (UART e interfaz) solo conmuta al ritmo de los _ticks_ del baud rate o de los bytes recibidos, y la ALU solo cambia de entradas una vez por transacción.
+
+---
+
+## Anexo: Tabla resumen de señales y flags
 
 | Módulo                | Señal                                          | Dir. | Ancho | Qué significa                                                           |
 | --------------------- | ---------------------------------------------- | ---- | ----- | ----------------------------------------------------------------------- |
