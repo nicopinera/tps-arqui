@@ -5,38 +5,34 @@
 **Plazo objetivo:** 10 a 12 semanas desde el inicio del desarrollo (2,5 a 3 meses)
 **Plataforma:** Basys 3 (Artix-7 XC7A35T-1CPG236C)
 
-> **Cómo leer este documento:** todo lo marcado como **ADR pendiente** es una decisión que el equipo todavía no tomó. En la sección 9 cada una tiene su contexto, alternativas y una recomendación. Hasta que se aprueben, las historias de usuario que dependen de ellas describen la **opción recomendada** y lo aclaran con la etiqueta _(sujeto a ADR-0XX)_.
-
 ---
 
 ## 1. Descripción General del Producto
 
 ### 1.1 Planteamiento del problema
 
-El trabajo final pide pasar de dos bloques aislados que ya funcionan en placa (una ALU de 8 bits del TP1 y una UART del TP2) a un **procesador completo**, programable desde la PC y observable ciclo a ciclo. Hoy no existe ninguna de las piezas centrales.
+El trabajo final pide pasar de dos bloques aislados que ya funcionan en placa (ALU de 8 bits y UART) a un **procesador completo**, programable desde la PC y observable ciclo a ciclo.
 
-| #   | Problema                                                       | Impacto (técnico)                                                                    | Línea base actual                                                                                 |
-| --- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| 1   | No existe un datapath segmentado RISC-V                        | No se puede ejecutar ningún programa                                                 | 0 de 5 etapas implementadas; 0 de 4 latches (IF/ID, ID/EX, EX/MEM, MEM/WB)                        |
-| 2   | La ALU del TP1 no cubre RV32I                                  | No soporta operandos de 32 bits ni comparaciones con/sin signo                       | 8 bits; 6 de 10 operaciones R-type necesarias (faltan SLL, SLT, SLTU; NOR sobra); opcodes propios |
-| 3   | No hay manejo de riesgos                                       | Cualquier dependencia de datos o salto produce resultados incorrectos                | 0 mecanismos (forwarding, stall, flush)                                                           |
-| 4   | La interfaz UART solo sabe operar la ALU                       | No hay forma de mandar comandos (cargar, ejecutar, paso a paso, leer estado)         | 1 protocolo fijo de 3 bytes (A → B → opcode) en `uart_interface.v`                                |
-| 5   | No hay forma de cargar programas sin resintetizar              | Cada programa nuevo requeriría regenerar el bitstream (~minutos por iteración)       | 0 herramientas de ensamblado; 0 mecanismos de carga dinámica                                      |
-| 6   | El estado interno del procesador no es observable              | Imposible depurar riesgos o verificar resultados en placa                            | Solo 8 LEDs visibles; 0 bytes de estado enviados a la PC                                          |
-| 7   | No hay interfaz de usuario para interactuar con la placa       | La defensa y la depuración dependerían de mandar bytes a mano con una terminal serie | 0 interfaces (CLI/TUI/GUI)                                                                        |
-| 8   | El comportamiento temporal del sistema completo es desconocido | No se sabe si 100 MHz es viable con memorias, forwarding y Debug Unit                | Diseño TP2 (UART+ALU): WNS 4,899 ns a 100 MHz (f_max ≈ 196 MHz); pipeline: no medido              |
+| #   | Problema                                                       | Impacto (técnico)                                                              | Línea base actual                                                                 |
+| --- | -------------------------------------------------------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| 1   | No existe un datapath segmentado RISC-V                        | No se puede ejecutar ningún programa                                           | 0 de 5 etapas implementadas; 0 de 4 latches (IF/ID, ID/EX, EX/MEM, MEM/WB)        |
+| 2   | La ALU del TP1 no cubre RV32I                                  | No soporta operandos de 32 bits ni comparaciones con/sin signo                 | 8 bits; 6 de 10 operaciones R-type necesarias (faltan SLL, SLT, SLTU; NOR sobra); |
+| 3   | No hay manejo de riesgos                                       | Cualquier dependencia de datos o salto produce resultados incorrectos          | 0 mecanismos (forwarding, stall, flush)                                           |
+| 4   | La interfaz UART solo sabe operar la ALU                       | No hay forma de mandar comandos (cargar, ejecutar, paso a paso, leer estado)   | 1 protocolo fijo de 3 bytes (A → B → opcode)                                      |
+| 5   | No hay forma de cargar programas sin resintetizar              | Cada programa nuevo requeriría regenerar el bitstream                          | 0 herramientas de ensamblado; 0 mecanismos de carga dinámica                      |
+| 6   | El estado interno del procesador no es observable              | Imposible depurar riesgos o verificar resultados en placa                      | Solo 8 LEDs visibles; 0 bytes de estado enviados a la PC                          |
+| 7   | No hay interfaz para interactuar con la placa                  | La defensa y la depuración dependerían de mandar bytes a mano con una terminal | 0 interfaces (CLI/TUI/GUI)                                                        |
+| 8   | El comportamiento temporal del sistema completo es desconocido | No se sabe si 100 MHz es viable con memorias, forwarding y Debug Unit          | Diseño TP2: WNS 4,899 ns a 100 MHz; pipeline: no medido                           |
 
-**Síntesis:** hoy se tiene una UART verificada en placa (`uart_rx`, `uart_tx`, `baudrate_gen`, sincronizador de 2 flip-flops) y una ALU combinacional de 8 bits. Falta el procesador segmentado con manejo de riesgos, una Debug Unit que reemplace a `uart_interface`, un toolchain en la PC (ensamblador, carga y eventualmente un simulador de referencia), una interfaz para observar el estado, y el cierre del análisis temporal del sistema integrado.
+**Síntesis:** hoy se tiene una UART verificada en placa y una ALU combinacional de 8 bits. Falta el procesador segmentado con manejo de riesgos, una Debug Unit que reemplace a `uart_interface`, un toolchain en la PC (ensamblador, carga y eventualmente un simulador de referencia), una interfaz para observar el estado, y el cierre del análisis temporal del sistema integrado.
 
 ### 1.2 Visión del producto
 
 Un **procesador RISC-V (subconjunto de RV32I) segmentado en 5 etapas sobre la Basys 3, completamente observable y controlable desde la PC**: se escribe un programa en assembly, se ensambla, se carga por UART sin resintetizar, y se ejecuta en modo continuo o ciclo a ciclo, viendo en una interfaz cómo avanzan las instrucciones por el pipeline, cómo cambian los registros y la memoria, y dónde actúan forwarding, stalls y flushes.
 
-Es un **proyecto de aprendizaje** (trabajo final de la materia). El objetivo no es solo que funcione, sino poder **explicar y justificar cada decisión** en el informe y en la defensa. Por eso el documento pone el mismo peso en los ADRs que en el código.
-
 **Pilares:**
 
-1. **Corrección:** cada instrucción se comporta según la especificación RV32I oficial (no según las diapositivas, que tienen errores — ver sección 17).
+1. **Corrección:** cada instrucción se comporta según la especificación RV32I oficial (no según las diapositivas, que tienen errores).
 2. **Observabilidad:** todo el estado relevante (32 registros, 4 latches, memoria de datos usada, PC) se puede ver en cualquier ciclo.
 3. **Reprogramabilidad:** cargar un programa nuevo es una operación de segundos, sin abrir Vivado.
 4. **Clock intacto:** el reloj nunca pasa por lógica; toda la pausa/avance del procesador se hace con señales de habilitación.
@@ -44,9 +40,9 @@ Es un **proyecto de aprendizaje** (trabajo final de la materia). El objetivo no 
 
 ### 1.3 Metas y no metas
 
-**En el alcance (v1.0):**
+**En el alcance:**
 
-- **Pipeline de 5 etapas** (IF, ID, EX, MEM, WB) con las **32 instrucciones** del enunciado más una instrucción **HALT** (codificación: ADR-004).
+- **Pipeline de 5 etapas** (IF, ID, EX, MEM, WB) con las **32 instrucciones** del enunciado más una instrucción **HALT**.
 - **Manejo de riesgos:**
   - _Estructurales:_ memorias de instrucciones y de datos separadas (arquitectura Harvard).
   - _De datos:_ estrategia definida en ADR-007 (recomendado: forwarding completo + stall por load-use).
@@ -60,28 +56,18 @@ Es un **proyecto de aprendizaje** (trabajo final de la materia). El objetivo no 
 - **Análisis temporal:** camino crítico, skew, frecuencia óptima y aplicación de esa frecuencia con Clock Wizard si corresponde (ADR-016).
 - **Informe final** que responda todas las preguntas del enunciado.
 
-**Fuera de alcance (v1.0):**
-
-- **Resto de RV32I:** `auipc`, `blt`, `bge`, `bltu`, `bgeu`, `fence`, `ecall`, `ebreak`, CSRs. No los pide el enunciado.
-- **Extensiones** (M: multiplicación/división, C: instrucciones comprimidas, etc.).
-- **Excepciones e interrupciones**, incluyendo instrucción ilegal y accesos desalineados (se define un comportamiento simple en ADR-018, no una trampa).
-- **Predicción dinámica de saltos**, caché y jerarquía de memoria.
-- **Compilación desde C.** Solo se soporta assembly escrito a mano.
-- **Breakpoints por hardware** y ejecución "hasta la dirección X" → roadmap (sección 16).
-- **Navegación hacia atrás en hardware** (el hardware no puede "deshacer" ciclos; el historial se guarda del lado de la PC, ver US-506).
-
 ### 1.4 Métricas de éxito
 
-| Métrica                                                    | Definición / cómo se mide                                                                                                                                | Objetivo                                  |
-| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| **⭐ North Star — Programas de prueba correctos en placa** | % de programas de la suite (`asm/tests/` + `asm/demos/`) cuyo estado final leído desde la FPGA (registros + memoria usada) coincide con el esperado      | **100 %**                                 |
-| Cobertura de instrucciones                                 | Instrucciones del enunciado con al menos un programa de prueba autoverificable                                                                           | **32/32 + HALT**                          |
-| Cobertura de riesgos                                       | Casos verificados en simulación: forwarding EX/MEM→EX, MEM/WB→EX, load-use, doble dependencia, `x0` como destino, branch tomado/no tomado, `jal`, `jalr` | **100 % de los casos listados en US-304** |
-| Reprogramación                                             | Cargas consecutivas de programas distintos sin reprogramar el bitstream, todas con resultado correcto                                                    | **≥ 5 seguidas**                          |
-| Equivalencia paso a paso vs. continuo                      | Mismo programa ejecutado en ambos modos termina con el mismo estado final                                                                                | **100 % de la suite**                     |
-| Pipeline vacío al terminar                                 | Tras detectar HALT y drenar, los 4 latches tienen `valid = 0`                                                                                            | **Siempre**                               |
-| Timing                                                     | WNS y WHS del reporte post-implementación a la frecuencia elegida                                                                                        | **≥ 0 ns** (0 endpoints con falla)        |
-| Latencia de un paso                                        | Tiempo desde que el usuario pide un STEP hasta que la GUI muestra el estado nuevo                                                                        | **< 1 s** (ver NFR-4)                     |
+| Métrica                                | Definición / cómo se mide                                                                                                                      | Objetivo                                  |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| Programas de prueba correctos en placa | % de prog de la suite (`asm/tests/` + `asm/demos/`) cuyo estado final leído desde la FPGA (registros + memoria usada) coincide con el esperado | **100 %**                                 |
+| Cobertura de instrucciones             | Instrucciones del enunciado con al menos un programa de prueba autoverificable                                                                 | **32/32 + HALT**                          |
+| Cobertura de riesgos                   | Casos verificados en simulación: forwarding EX/MEM→EX, MEM/WB→EX, load-use, doble dependencia, branch tomado/no tomado, `jal`, `jalr`          | **100 % de los casos listados en US-304** |
+| Reprogramación                         | Cargas consecutivas de programas distintos sin reprogramar el bitstream, todas con resultado correcto                                          | **≥ 5 seguidas**                          |
+| paso a paso vs. continuo               | Mismo programa ejecutado en ambos modos termina con el mismo estado final                                                                      | **100 % de la suite**                     |
+| Pipeline vacío al terminar             | Tras detectar HALT y drenar, los 4 latches tienen `valid = 0`                                                                                  | **Siempre**                               |
+| Timing                                 | WNS y WHS del reporte post-implementación a la frecuencia elegida                                                                              | **≥ 0 ns**                                |
+| Latencia de un paso                    | Tiempo desde que el usuario pide un STEP hasta que la GUI muestra el estado nuevo                                                              | **< 1 s** (ver NFR-4)                     |
 
 ---
 
@@ -91,65 +77,65 @@ Esta sección fija el vocabulario técnico del proyecto. Se incluye porque el en
 
 ### 2.1 Glosario
 
-| Término                                | Significado                                                                                                                                                                                                                                       |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **ISA** (Instruction Set Architecture) | El "contrato" entre software y hardware: qué instrucciones existen y qué hacen. Acá: un subconjunto de **RV32I** (RISC-V, 32 bits, enteros).                                                                                                      |
-| **Pipeline / segmentación**            | Dividir la ejecución de una instrucción en etapas, cada una en un ciclo, para que en cada ciclo haya hasta 5 instrucciones en vuelo (una por etapa).                                                                                              |
-| **IF / ID / EX / MEM / WB**            | _Instruction Fetch_ (buscar la instrucción), _Instruction Decode_ (decodificar y leer registros), _Execute_ (ALU), _Memory access_ (load/store), _Write Back_ (escribir el resultado en el banco de registros).                                   |
-| **Latch / registro de segmentación**   | Banco de flip-flops entre dos etapas (IF/ID, ID/EX, EX/MEM, MEM/WB). Congela todo lo que una instrucción necesita para seguir: datos **y** señales de control. El enunciado les dice "latches"; técnicamente son registros disparados por flanco. |
-| **Riesgo (hazard)**                    | Situación en la que la instrucción siguiente no puede ejecutarse en el ciclo que le toca. Tres tipos: estructural, de datos y de control.                                                                                                         |
-| **Forwarding / bypass**                | Llevar un resultado desde EX/MEM o MEM/WB directamente a la entrada de la ALU, sin esperar a que se escriba en el banco de registros.                                                                                                             |
-| **Stall / burbuja**                    | Frenar las etapas tempranas del pipeline un ciclo e insertar una instrucción "vacía" (NOP) en la siguiente. Necesario, por ejemplo, cuando una instrucción usa el dato de un `lw` inmediatamente anterior (**load-use**).                         |
-| **Flush**                              | Anular (convertir en burbuja) instrucciones que se buscaron de forma especulativa y que no debían ejecutarse, típicamente después de un salto tomado.                                                                                             |
-| **Clock enable (CE)**                  | Entrada de habilitación de un flip-flop: si está en 0, el flip-flop mantiene su valor aunque llegue el flanco. Es la forma correcta de "pausar" lógica sin tocar el reloj.                                                                        |
-| **Clock gating**                       | Apagar el reloj pasándolo por una compuerta lógica. **Prohibido por el enunciado** ("el clock no debe verse intervenido") y mala práctica en FPGA: introduce skew y glitches.                                                                     |
-| **Skew**                               | Diferencia en el tiempo de llegada del **mismo flanco de reloj** a dos flip-flops distintos. Lo causa la red de distribución del reloj (y cualquier lógica metida en ella), no la lógica de datos.                                                |
-| **Camino crítico**                     | El camino de datos registro→registro con mayor retardo. Define la frecuencia máxima.                                                                                                                                                              |
-| **WNS / WHS**                          | _Worst Negative Slack_ (margen de setup) y _Worst Hold Slack_ (margen de hold) del reporte de timing de Vivado. Si ambos son ≥ 0, el diseño cumple a esa frecuencia.                                                                              |
-| **MMCM / Clock Wizard**                | Bloque de hardware del Artix-7 (y el IP de Vivado que lo configura) que genera relojes de otras frecuencias a partir del de 100 MHz, por la red dedicada de reloj. Usarlo **no** es intervenir el clock.                                          |
-| **BRAM / memoria distribuida**         | Dos formas de implementar memoria en la FPGA: bloques dedicados (lectura sincrónica, 1 ciclo de latencia) o LUTs (lectura combinacional). Ver ADR-005.                                                                                            |
-| **Golden model / ISS**                 | _Instruction Set Simulator_: un simulador en software que ejecuta el programa instrucción por instrucción según la ISA, sin pipeline. Sirve como referencia para comparar resultados. Ver ADR-014.                                                |
-| **HALT**                               | Instrucción de parada. **No existe en RV32I**: el equipo define su codificación (ADR-004).                                                                                                                                                        |
+| Término                             | Significado                                                                                                                                                                           |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Instruction Set Architecture        | El contrato entre software y hardware: qué instrucciones existen y qué hacen. Un subconjunto de **RV32I** (RISC-V, 32 bits, enteros).                                                 |
+| **Pipeline**                        | Dividir la ejecución de una instrucción en etapas, cada una en un ciclo, para que en cada ciclo haya hasta 5 instrucciones en vuelo.                                                  |
+| **IF / ID / EX / MEM / WB**         | Buscar la instrucción, Decodificar y leer registros,_Execute_, _Memory access_ (load/store), _Write Back_ (escribir el resultado en el banco de registros).                           |
+| **Latch, registro de segmentación** | Banco de flip-flops entre dos etapas (IF/ID, ID/EX, EX/MEM, MEM/WB). Congela todo lo que una instrucción necesita para seguir: datos **y** señales de control.                        |
+| **Riesgo (hazard)**                 | Situación en la que la instrucción siguiente no puede ejecutarse en el ciclo que le toca. Tres tipos: estructural, de datos y de control.                                             |
+| **Forwarding / bypass**             | Llevar un resultado desde EX/MEM o MEM/WB directamente a la entrada de la ALU, sin esperar a que se escriba en el banco de registros.                                                 |
+| **Stall**                           | Frenar las etapas tempranas del pipeline un ciclo e insertar una instrucción "vacía" (NOP) en la siguiente.                                                                           |
+| **Flush**                           | Anular instrucciones que se buscaron de forma especulativa y que no debían ejecutarse, típicamente después de un salto tomado.                                                        |
+| **Clock enable (CE)**               | Entrada de habilitación de un flip-flop: si está en 0, el flip-flop mantiene su valor aunque llegue el flanco. Es la forma correcta de "pausar" lógica sin tocar el reloj.            |
+| **Clock gating**                    | Apagar el reloj pasándolo por una compuerta lógica. **Prohibido por el enunciado** ("el clock no debe verse intervenido") y mala práctica en FPGA: introduce skew y glitches.         |
+| **Skew**                            | Diferencia en el tiempo de llegada del **mismo flanco de reloj** a dos flip-flops distintos. Lo causa la red de distribución del reloj (y cualquier lógica metida en ella)            |
+| **Camino crítico**                  | El camino de datos registro→registro con mayor retardo. Define la frecuencia máxima.                                                                                                  |
+| **WNS / WHS**                       | _Worst Negative Slack_ (margen de setup) y _Worst Hold Slack_ (margen de hold) del reporte de timing de Vivado. Si ambos son ≥ 0, el diseño cumple a esa frecuencia.                  |
+| **MMCM / Clock Wizard**             | Bloque de hardware del Artix-7 que genera relojes de otras frecuencias a partir del de 100 MHz, por la red dedicada de reloj. Usarlo **no** es intervenir el clock.                   |
+| **BRAM / memoria distribuida**      | Dos formas de implementar memoria en la FPGA: bloques dedicados (lectura sincrónica, 1 ciclo de latencia) o LUTs (lectura combinacional).                                             |
+| **Golden model / ISS**              | _Instruction Set Simulator_: un simulador en software que ejecuta el programa instrucción por instrucción según la ISA, sin pipeline. Sirve como referencia para comparar resultados. |
+| **HALT**                            | Instrucción de parada. **No existe en RV32I**: el equipo define su codificación.                                                                                                      |
 
 ### 2.2 Instrucciones a implementar (referencia de codificación)
 
 Fuente: especificación oficial RISC-V (volumen no privilegiado, RV32I). Esta tabla es la **fuente única de verdad** para el control del procesador, el ensamblador y el golden model — se implementa una sola vez en software (US-105) y se refleja en `control_unit.v` / `alu_control.v`.
 
-| #   | Instrucción | Formato   | opcode                           | funct3 | funct7    | Operación                                                                           |
-| --- | ----------- | --------- | -------------------------------- | ------ | --------- | ----------------------------------------------------------------------------------- |
-| 1   | `add`       | R         | `0110011`                        | `000`  | `0000000` | rd = rs1 + rs2                                                                      |
-| 2   | `sub`       | R         | `0110011`                        | `000`  | `0100000` | rd = rs1 − rs2                                                                      |
-| 3   | `sll`       | R         | `0110011`                        | `001`  | `0000000` | rd = rs1 << rs2[4:0]                                                                |
-| 4   | `slt`       | R         | `0110011`                        | `010`  | `0000000` | rd = (rs1 < rs2) con signo                                                          |
-| 5   | `sltu`      | R         | `0110011`                        | `011`  | `0000000` | rd = (rs1 < rs2) sin signo                                                          |
-| 6   | `xor`       | R         | `0110011`                        | `100`  | `0000000` | rd = rs1 ^ rs2                                                                      |
-| 7   | `srl`       | R         | `0110011`                        | `101`  | `0000000` | rd = rs1 >> rs2[4:0] (lógico)                                                       |
-| 8   | `sra`       | R         | `0110011`                        | `101`  | `0100000` | rd = rs1 >>> rs2[4:0] (aritmético)                                                  |
-| 9   | `or`        | R         | `0110011`                        | `110`  | `0000000` | rd = rs1 \| rs2                                                                     |
-| 10  | `and`       | R         | `0110011`                        | `111`  | `0000000` | rd = rs1 & rs2                                                                      |
-| 11  | `addi`      | I         | `0010011`                        | `000`  | —         | rd = rs1 + imm                                                                      |
-| 12  | `slti`      | I         | `0010011`                        | `010`  | —         | rd = (rs1 < imm) con signo                                                          |
-| 13  | `sltiu`     | I         | `0010011`                        | `011`  | —         | rd = (rs1 < imm) sin signo (imm se extiende con signo y luego se compara sin signo) |
-| 14  | `xori`      | I         | `0010011`                        | `100`  | —         | rd = rs1 ^ imm                                                                      |
-| 15  | `ori`       | I         | `0010011`                        | `110`  | —         | rd = rs1 \| imm                                                                     |
-| 16  | `andi`      | I         | `0010011`                        | `111`  | —         | rd = rs1 & imm                                                                      |
-| 17  | `slli`      | I         | `0010011`                        | `001`  | `0000000` | rd = rs1 << shamt (shamt = imm[4:0])                                                |
-| 18  | `srli`      | I         | `0010011`                        | `101`  | `0000000` | rd = rs1 >> shamt                                                                   |
-| 19  | `srai`      | I         | `0010011`                        | `101`  | `0100000` | rd = rs1 >>> shamt                                                                  |
-| 20  | `lb`        | I         | `0000011`                        | `000`  | —         | rd = sext(M[rs1+imm][7:0])                                                          |
-| 21  | `lh`        | I         | `0000011`                        | `001`  | —         | rd = sext(M[rs1+imm][15:0])                                                         |
-| 22  | `lw`        | I         | `0000011`                        | `010`  | —         | rd = M[rs1+imm][31:0]                                                               |
-| 23  | `lbu`       | I         | `0000011`                        | `100`  | —         | rd = zext(M[rs1+imm][7:0])                                                          |
-| 24  | `lhu`       | I         | `0000011`                        | `101`  | —         | rd = zext(M[rs1+imm][15:0])                                                         |
-| 25  | `jalr`      | I         | `1100111`                        | `000`  | —         | rd = PC+4; PC = (rs1+imm) & ~1                                                      |
-| 26  | `sb`        | S         | `0100011`                        | `000`  | —         | M[rs1+imm][7:0] = rs2[7:0]                                                          |
-| 27  | `sh`        | S         | `0100011`                        | `001`  | —         | M[rs1+imm][15:0] = rs2[15:0]                                                        |
-| 28  | `sw`        | S         | `0100011`                        | `010`  | —         | M[rs1+imm][31:0] = rs2                                                              |
-| 29  | `beq`       | B         | `1100011`                        | `000`  | —         | si rs1 == rs2: PC = PC + imm                                                        |
-| 30  | `bne`       | B         | `1100011`                        | `001`  | —         | si rs1 != rs2: PC = PC + imm                                                        |
-| 31  | `lui`       | U         | `0110111`                        | —      | —         | rd = imm[31:12] << 12                                                               |
-| 32  | `jal`       | J         | `1101111`                        | —      | —         | rd = PC+4; PC = PC + imm                                                            |
-| 33  | `halt`      | (ADR-004) | propuesto `0001011` (_custom-0_) | —      | —         | Detiene la búsqueda de instrucciones y drena el pipeline                            |
+| #   | Instrucción | Formato | opcode              | funct3 | funct7    | Operación                                                                             |
+| --- | ----------- | ------- | ------------------- | ------ | --------- | ------------------------------------------------------------------------------------- |
+| 1   | `add`       | R       | `0110011`           | `000`  | `0000000` | `rd = rs1 + rs2`                                                                      |
+| 2   | `sub`       | R       | `0110011`           | `000`  | `0100000` | `rd = rs1 − rs2`                                                                      |
+| 3   | `sll`       | R       | `0110011`           | `001`  | `0000000` | `rd = rs1 << rs2[4:0]`                                                                |
+| 4   | `slt`       | R       | `0110011`           | `010`  | `0000000` | `rd = (rs1 < rs2) con signo`                                                          |
+| 5   | `sltu`      | R       | `0110011`           | `011`  | `0000000` | `rd = (rs1 < rs2) sin signo`                                                          |
+| 6   | `xor`       | R       | `0110011`           | `100`  | `0000000` | `rd = rs1 ^ rs2`                                                                      |
+| 7   | `srl`       | R       | `0110011`           | `101`  | `0000000` | `rd = rs1 >> rs2[4:0]` (lógico)                                                       |
+| 8   | `sra`       | R       | `0110011`           | `101`  | `0100000` | `rd = rs1 >>> rs2[4:0]` (aritmético)                                                  |
+| 9   | `or`        | R       | `0110011`           | `110`  | `0000000` | `rd = rs1 \| rs2`                                                                     |
+| 10  | `and`       | R       | `0110011`           | `111`  | `0000000` | `rd = rs1 & rs2`                                                                      |
+| 11  | `addi`      | I       | `0010011`           | `000`  | —         | `rd = rs1 + imm`                                                                      |
+| 12  | `slti`      | I       | `0010011`           | `010`  | —         | `rd = (rs1 < imm)` con signo                                                          |
+| 13  | `sltiu`     | I       | `0010011`           | `011`  | —         | `rd = (rs1 < imm)` sin signo (imm se extiende con signo y luego se compara sin signo) |
+| 14  | `xori`      | I       | `0010011`           | `100`  | —         | `rd = rs1 ^ imm`                                                                      |
+| 15  | `ori`       | I       | `0010011`           | `110`  | —         | `rd = rs1 \| imm`                                                                     |
+| 16  | `andi`      | I       | `0010011`           | `111`  | —         | `rd = rs1 & imm`                                                                      |
+| 17  | `slli`      | I       | `0010011`           | `001`  | `0000000` | `rd = rs1 << shamt (shamt = imm[4:0])`                                                |
+| 18  | `srli`      | I       | `0010011`           | `101`  | `0000000` | `rd = rs1 >> shamt`                                                                   |
+| 19  | `srai`      | I       | `0010011`           | `101`  | `0100000` | `rd = rs1 >>> shamt`                                                                  |
+| 20  | `lb`        | I       | `0000011`           | `000`  | —         | `rd = sext(M[rs1+imm][7:0])`                                                          |
+| 21  | `lh`        | I       | `0000011`           | `001`  | —         | `rd = sext(M[rs1+imm][15:0])`                                                         |
+| 22  | `lw`        | I       | `0000011`           | `010`  | —         | `rd = M[rs1+imm][31:0]`                                                               |
+| 23  | `lbu`       | I       | `0000011`           | `100`  | —         | `rd = zext(M[rs1+imm][7:0])`                                                          |
+| 24  | `lhu`       | I       | `0000011`           | `101`  | —         | `rd = zext(M[rs1+imm][15:0])`                                                         |
+| 25  | `jalr`      | I       | `1100111`           | `000`  | —         | `rd = PC+4; PC = (rs1+imm) & ~1`                                                      |
+| 26  | `sb`        | S       | `0100011`           | `000`  | —         | `M[rs1+imm][7:0] = rs2[7:0]`                                                          |
+| 27  | `sh`        | S       | `0100011`           | `001`  | —         | `M[rs1+imm][15:0] = rs2[15:0]`                                                        |
+| 28  | `sw`        | S       | `0100011`           | `010`  | —         | `M[rs1+imm][31:0] = rs2`                                                              |
+| 29  | `beq`       | B       | `1100011`           | `000`  | —         | `si rs1 == rs2: PC = PC + imm`                                                        |
+| 30  | `bne`       | B       | `1100011`           | `001`  | —         | `si rs1 != rs2: PC = PC + imm`                                                        |
+| 31  | `lui`       | U       | `0110111`           | —      | —         | `rd = imm[31:12] << 12`                                                               |
+| 32  | `jal`       | J       | `1101111`           | —      | —         | `rd = PC+4; PC = PC + imm`                                                            |
+| 33  | `halt`      | ADR-004 | propuesto `0001011` | —      | —         | Detiene la búsqueda de instrucciones y drena el pipeline                              |
 
 **Observaciones que impactan el diseño:**
 
@@ -173,24 +159,7 @@ Fuente: especificación oficial RISC-V (volumen no privilegiado, RV32I). Esta ta
 
 ---
 
-## 3. Perfiles de Usuario
-
-| Perfil                                     | Rol y contexto                                                                                                            | Objetivo principal                                                                                                 | Problema actual                                                          |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
-| **Equipo desarrollador** (Julián, Nicolás) | Diseñan, simulan e implementan el procesador y el software de PC. Trabajan en Linux (y Windows), con Vivado y la Basys 3. | Verificar rápido si un cambio de hardware rompe algo, y depurar riesgos viendo el pipeline ciclo a ciclo           | Sin herramientas, cada prueba en placa implica resintetizar y mirar LEDs |
-| **Docente evaluador** (cátedra)            | Evalúa el funcionamiento en la defensa y el informe                                                                       | Ver que el procesador ejecuta correctamente programas propios o sugeridos, y que las decisiones están justificadas | —                                                                        |
-| **Usuario de la interfaz en la defensa**   | Cualquiera de los dos anteriores, frente a la GUI con la placa conectada                                                  | Escribir/cargar un programa, correrlo, avanzar paso a paso y entender qué pasa en cada etapa sin leer bytes crudos | La UART actual solo acepta 3 bytes para la ALU                           |
-
-### Perfil ampliado del usuario principal (equipo en sesión de depuración)
-
-- **Escenario típico:** un programa de prueba de forwarding da un valor incorrecto en `x5`. El equipo lo corre paso a paso, ve en qué ciclo la instrucción consumidora entra a EX, y comprueba en el latch ID/EX si el valor de `rs1` llegó forwardeado o el viejo del banco de registros.
-- **Qué necesita ver de un vistazo:** qué instrucción (desensamblada, no en hexadecimal) hay en cada etapa; si hubo stall o flush en ese ciclo; qué registros cambiaron respecto del paso anterior.
-- **Qué necesita hacer rápido:** editar el assembly, volver a ensamblar y recargar en segundos, sin tocar Vivado.
-- **Qué le evita horas de debugging:** poder comparar automáticamente el estado de la placa contra lo que "debería" dar el programa (golden model, ADR-014).
-
----
-
-## 4. Arquitectura de Datos
+## 3. Arquitectura de Datos
 
 En este proyecto "datos" son las estructuras de información que viajan entre la PC y la FPGA, y las que viven dentro del procesador. Se documentan acá porque son el contrato entre el equipo de hardware y el de software: si cambia un campo del latch, cambian el serializador de la Debug Unit, el decodificador de la PC y la vista de la GUI.
 
@@ -215,11 +184,11 @@ En este proyecto "datos" son las estructuras de información que viajan entre la
 | **EX/MEM** | `alu_result`, `store_data` (rs2 ya forwardeado), `rd`, `pc_plus4`, `funct3`                | `reg_write`, `mem_read`, `mem_write`, `result_src`                                                                            | `valid`, `halt`, `instr`                            |
 | **MEM/WB** | `alu_result`, `mem_data` (ya extendido), `pc_plus4`, `rd`                                  | `reg_write`, `result_src`                                                                                                     | `valid`, `halt`, `instr`                            |
 
-**Por qué se agrega `instr` a los latches posteriores:** no la necesita el datapath, pero sin ella la GUI no puede mostrar "qué instrucción está en EX". El costo es 96 flip-flops extra; se justifica en el informe como lógica de depuración (y puede excluirse con un parámetro `DEBUG_TRACE`).
+**Por qué se agrega `instr` a los latches posteriores:** no la necesita el datapath, pero sin ella la GUI no puede mostrar qué instrucción está en EX. El costo es 96 flip-flops extra; se justifica en el informe como lógica de depuración (y puede excluirse con un parámetro `DEBUG_TRACE`).
 
 **Por qué `valid`:** distingue una burbuja (stall/flush/reset) de una instrucción real que casualmente codifica como `addi x0,x0,0`. Es lo que permite afirmar "el pipeline está vacío".
 
-**Señales de riesgo del ciclo** (no son parte de un latch, pero viajan en el snapshot): `stall`, `flush_if_id`, `flush_id_ex`, `fwd_a[1:0]`, `fwd_b[1:0]`. Sin ellas la GUI no podría marcar dónde actuó cada mecanismo (US-504).
+**Señales de riesgo del ciclo** (no son parte de un latch, pero viajan en el snapshot): `stall`, `flush_if_id`, `flush_id_ex`, `fwd_a[1:0]`, `fwd_b[1:0]`. Sin ellas la GUI no podría marcar dónde actuó cada mecanismo.
 
 ### 4.3 Reglas de integridad
 
@@ -257,19 +226,19 @@ erDiagram
 
 ### 4.5 Presupuesto de volcado (dimensionamiento)
 
-| Contenido                                         | Tamaño aproximado              |
-| ------------------------------------------------- | ------------------------------ |
-| 32 registros × 4 bytes                            | 128 B                          |
-| 4 latches (según 4.2, empaquetados a byte)        | ~70 B                          |
-| PC, contador de ciclos, estado de la Debug Unit   | ~10 B                          |
-| Memoria usada (depende del programa y de ADR-008) | 0 a N × 8 B (dirección + dato) |
-| **Total típico**                                  | **~210 B + memoria**           |
+| Contenido                                       | Tamaño aproximado              |
+| ----------------------------------------------- | ------------------------------ |
+| 32 registros × 4 bytes                          | 128 B                          |
+| 4 latches (empaquetados a byte)                 | ~70 B                          |
+| PC, contador de ciclos, estado de la Debug Unit | ~10 B                          |
+| Memoria usada (depende del programa)            | 0 a N × 8 B (dirección + dato) |
+| **Total típico**                                | **~210 B + memoria**           |
 
 A 19200 bps con trama de 11 bits (start + 8 datos + paridad + stop) se transmiten ~1745 B/s → **~120 ms por snapshot** sin memoria. A 115200 bps → **~20 ms**. Ambos cumplen NFR-4, pero el volcado de una memoria grande a 19200 bps puede tardar segundos: es el principal argumento de ADR-002.
 
 ---
 
-## 5. Arquitectura de Software
+## 4. Arquitectura de Software
 
 Por acuerdo del equipo, esta sección no desarrolla la arquitectura interna del Verilog ni del assembly (se resuelve en US-103 con el diagrama del datapath). Solo se incluye un **mapa de módulos de hardware** para ubicar las rutas de archivos que aparecen en las historias de usuario, y la **arquitectura completa del software de PC**.
 
@@ -315,15 +284,15 @@ flowchart LR
 
 ### 5.2 Software de PC — capas y responsabilidades _(sujeto a ADR-011 y ADR-012)_
 
-Se asume Python (ADR-011, recomendado). La organización es en capas, al estilo de los proyectos anteriores del equipo, pero adaptada a una herramienta y no a un sistema con base de datos:
+Se asume Python (ADR-011, recomendado). La organización es en capas, pero adaptada a una herramienta y no a un sistema con base de datos:
 
-| Capa                                               | Responsabilidad                                                                                  | Ejemplos                                                                                      |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
-| **Núcleo ISA** (`isa/`)                            | Tabla única de instrucciones: formatos, opcodes, codificación y decodificación de campos         | `InstructionSpec`, `encode()`, `decode()`                                                     |
-| **Herramientas** (`assembler/`, `disasm/`, `iss/`) | Ensamblar, desensamblar, simular. Dependen solo del núcleo ISA                                   | `Assembler`, `Disassembler`, `GoldenModel`                                                    |
-| **Protocolo** (`protocol/`)                        | Codificar comandos y decodificar snapshots; abstraer el transporte                               | `CommandCodec`, `SnapshotDecoder`, `Transport` (interfaz), `SerialTransport`, `FakeTransport` |
-| **Sesión / aplicación** (`session/`)               | Casos de uso: cargar, correr, paso, volcar; historial de snapshots; comparación con golden model | `DebugSession`, `SnapshotHistory`, `StateDiff`                                                |
-| **Presentación** (`cli/`, `ui/`)                   | Interfaz con el usuario. Única capa que conoce el framework elegido en ADR-012                   | `cli/main.py`, `ui/app.py` y vistas                                                           |
+| Capa                                               | Responsabilidad                                                                                  |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| **Núcleo ISA** (`isa/`)                            | Tabla única de instrucciones: formatos, opcodes, codificación y decodificación de campos         |
+| **Herramientas** (`assembler/`, `disasm/`, `iss/`) | Ensamblar, desensamblar, simular. Dependen solo del núcleo ISA                                   |
+| **Protocolo** (`protocol/`)                        | Codificar comandos y decodificar snapshots; abstraer el transporte                               |
+| **Sesión / aplicación** (`session/`)               | Casos de uso: cargar, correr, paso, volcar; historial de snapshots; comparación con golden model |
+| **Presentación** (`cli/`, `ui/`)                   | Interfaz con el usuario. Única capa que conoce el framework elegido en ADR-012                   |
 
 ### 5.3 Regla de dependencias
 
@@ -401,7 +370,7 @@ tools/
 
 ---
 
-## 6. Acuerdo de Ingeniería y Estándares
+## 5. Acuerdo de Ingeniería y Estándares
 
 ### 6.1 Principios de desarrollo
 
@@ -422,34 +391,9 @@ tools/
 - Parámetros para anchos (`NBIT`, `ADDR_BITS`, etc.), nunca números mágicos.
 - **Prohibido** cualquier expresión que involucre `clock` fuera de `@(posedge clock)`.
 
-### 6.3 Calidad y pruebas
-
-- **Hardware:** testbenches autoverificables (comparan contra valores esperados e imprimen `PASS`/`FAIL` con un contador de errores). Simulador según ADR-015.
-- **Assembly:** cada programa de prueba termina escribiendo en memoria una "firma" (ej. `0x600D` en una dirección fija si pasó, `0xBAD0 + n` si falló el chequeo n) antes del HALT, para que el resultado sea verificable automáticamente.
-- **Python:** `pytest` para ensamblador, desensamblador, codec y golden model; `ruff` como linter. Cobertura objetivo en sección 12.
-- **Síntesis:** todo merge a `develop` que toque RTL debe sintetizar sin _critical warnings_ y sin latches inferidos (se revisa el reporte de síntesis).
-
-### 6.4 Gestión de tareas — prioridad y esfuerzo
-
-| Prioridad | Descripción                            |
-| --------- | -------------------------------------- |
-| Urgente   | Bloqueante; detiene otras historias    |
-| Alta      | Impacto directo en la entrega del hito |
-| Media     | Importante pero no bloquea             |
-| Baja      | Mejora o refinamiento                  |
-
-| Tamaño | Esfuerzo estimado                                  |
-| ------ | -------------------------------------------------- |
-| S      | 1–2 días·persona                                   |
-| M      | 3–5 días·persona                                   |
-| L      | 6–10 días·persona                                  |
-| XL     | > 10 días·persona (partir en historias más chicas) |
-
-"Día·persona" = una jornada de trabajo efectivo de un integrante en el proyecto.
-
 ---
 
-## 7. Reglas de Negocio Consolidadas
+## 6. Reglas de Negocio Consolidadas
 
 Reglas que aplican a todo el sistema. Las específicas de una historia están dentro de esa historia.
 
@@ -482,7 +426,7 @@ Reglas que aplican a todo el sistema. Las específicas de una historia están de
 
 ---
 
-## 8. Requisitos No Funcionales (NFR)
+## 7. Requisitos No Funcionales (NFR)
 
 | ID     | Requisito                            | Medición / Umbral                                                                                                        | Severidad  |
 | ------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ | ---------- |
@@ -499,34 +443,34 @@ Reglas que aplican a todo el sistema. Las específicas de una historia están de
 
 ---
 
-## 9. Registro de Decisiones Arquitectónicas (ADR)
+## 8. Registro de Decisiones Arquitectónicas (ADR)
 
 ### 9.1 Tabla resumen
 
-| ID      | Título                                                    | Estado                                   | Recomendación                                                             | Bloquea                |
-| ------- | --------------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------- | ---------------------- |
-| ADR-001 | Control de ejecución por clock enable                     | **Aprobado** (impuesto por el enunciado) | `i_enable` global al núcleo; sin clock gating                             | Hito 2                 |
-| ADR-002 | Parámetros de la UART                                     | Pendiente                                | Reutilizar RX/TX del TP2; subir a 115200 bps                              | US-401                 |
-| ADR-003 | Protocolo de comandos de la Debug Unit                    | Pendiente                                | Comando de 1 byte + tramas con cabecera, longitud y checksum              | US-104, Hito 4, US-501 |
-| ADR-004 | Codificación de HALT                                      | Pendiente                                | Opcode _custom-0_ (`0001011`), palabra `0x0000000B`                       | US-105, US-203         |
-| ADR-005 | Implementación de memorias                                | Pendiente                                | BRAM inferida (o IP Block Memory Generator) con lectura sincrónica        | US-204                 |
-| ADR-006 | Punto de resolución de saltos                             | Pendiente                                | Branches y `jalr` en EX; `jal` en ID                                      | US-303                 |
-| ADR-007 | Estrategia de riesgos de datos y banco de registros       | Pendiente                                | Forwarding completo + stall load-use; bypass interno en el banco          | US-202, Hito 3         |
-| ADR-008 | Tamaños de memoria y definición de "memoria usada"        | Pendiente                                | IMEM 1 KiB, DMEM 1 KiB; bitmap de palabras escritas                       | US-204, US-405         |
-| ADR-009 | Política de reprogramación                                | Pendiente                                | Limpiar pipeline, registros y DMEM; rellenar IMEM con HALT                | US-403                 |
-| ADR-010 | Comportamiento sin instrucción de parada                  | Pendiente                                | Relleno con HALT + comando ABORT + límite de ciclos opcional              | US-406                 |
-| ADR-011 | Lenguaje del software de PC                               | Pendiente                                | Python 3.11+                                                              | Hito 1 (US-105)        |
-| ADR-012 | Tecnología de la interfaz de usuario                      | Pendiente                                | Textual (TUI) o Flet/PySide6 (GUI) — ver análisis                         | Hito 5                 |
-| ADR-013 | Ensamblador propio vs. toolchain externo                  | Pendiente                                | Ensamblador propio de dos pasadas                                         | US-106                 |
-| ADR-014 | Simulador de referencia (golden model)                    | Pendiente                                | Sí, ISS propio en Python                                                  | US-107, US-305, US-506 |
-| ADR-015 | Simulador HDL y framework de verificación                 | Pendiente                                | Vivado xsim con testbenches Verilog; Icarus opcional                      | US-102                 |
-| ADR-016 | Frecuencia de operación y generación de reloj             | Pendiente                                | Decidir con datos de US-601; Clock Wizard si 100 MHz no cierra            | Hito 6                 |
-| ADR-017 | Formato de volcado de latches                             | Pendiente                                | Campos de la sección 4.2, empaquetados a byte, orden fijo                 | US-103, US-405         |
-| ADR-018 | Accesos desalineados, endianness e instrucciones ilegales | Pendiente                                | Little-endian; desalineado = se ignoran bits bajos; ilegal = NOP          | US-204                 |
-| ADR-019 | Reutilización de la ALU del TP1                           | Pendiente                                | Reescribirla a 32 bits con opcodes internos nuevos, manteniendo el estilo | US-201                 |
-| ADR-020 | Versión de Vivado de referencia                           | Pendiente                                | Fijar una sola versión para ambos integrantes                             | US-101                 |
+| ID      | Título                                                    | Estado       | Recomendación                                                             | Bloquea                |
+| ------- | --------------------------------------------------------- | ------------ | ------------------------------------------------------------------------- | ---------------------- |
+| ADR-001 | Control de ejecución por clock enable                     | **Aprobado** | `i_enable` global al núcleo; sin clock gating                             | Hito 2                 |
+| ADR-002 | Parámetros de la UART                                     | Pendiente    | Reutilizar RX/TX del TP2; subir a 115200 bps                              | US-401                 |
+| ADR-003 | Protocolo de comandos de la Debug Unit                    | Pendiente    | Comando de 1 byte + tramas con cabecera, longitud y checksum              | US-104, Hito 4, US-501 |
+| ADR-004 | Codificación de HALT                                      | Pendiente    | Opcode _custom-0_ (`0001011`), palabra `0x0000000B`                       | US-105, US-203         |
+| ADR-005 | Implementación de memorias                                | Pendiente    | BRAM inferida (o IP Block Memory Generator) con lectura sincrónica        | US-204                 |
+| ADR-006 | Punto de resolución de saltos                             | Pendiente    | Branches y `jalr` en EX; `jal` en ID                                      | US-303                 |
+| ADR-007 | Estrategia de riesgos de datos y banco de registros       | Pendiente    | Forwarding completo + stall load-use; bypass interno en el banco          | US-202, Hito 3         |
+| ADR-008 | Tamaños de memoria y definición de "memoria usada"        | Pendiente    | IMEM 1 KiB, DMEM 1 KiB; bitmap de palabras escritas                       | US-204, US-405         |
+| ADR-009 | Política de reprogramación                                | Pendiente    | Limpiar pipeline, registros y DMEM; rellenar IMEM con HALT                | US-403                 |
+| ADR-010 | Comportamiento sin instrucción de parada                  | Pendiente    | Relleno con HALT + comando ABORT + límite de ciclos opcional              | US-406                 |
+| ADR-011 | Lenguaje del software de PC                               | Pendiente    | Python 3.11+                                                              | Hito 1 (US-105)        |
+| ADR-012 | Tecnología de la interfaz de usuario                      | Pendiente    | Textual (TUI) o Flet/PySide6 (GUI) — ver análisis                         | Hito 5                 |
+| ADR-013 | Ensamblador propio vs. toolchain externo                  | Pendiente    | Ensamblador propio de dos pasadas                                         | US-106                 |
+| ADR-014 | Simulador de referencia (golden model)                    | Pendiente    | Sí, ISS propio en Python                                                  | US-107, US-305, US-506 |
+| ADR-015 | Simulador HDL y framework de verificación                 | Pendiente    | Vivado xsim con testbenches Verilog; Icarus opcional                      | US-102                 |
+| ADR-016 | Frecuencia de operación y generación de reloj             | Pendiente    | Decidir con datos de US-601; Clock Wizard si 100 MHz no cierra            | Hito 6                 |
+| ADR-017 | Formato de volcado de latches                             | Pendiente    | Campos de la sección 4.2, empaquetados a byte, orden fijo                 | US-103, US-405         |
+| ADR-018 | Accesos desalineados, endianness e instrucciones ilegales | Pendiente    | Little-endian; desalineado = se ignoran bits bajos; ilegal = NOP          | US-204                 |
+| ADR-019 | Reutilización de la ALU del TP1                           | Pendiente    | Reescribirla a 32 bits con opcodes internos nuevos, manteniendo el estilo | US-201                 |
+| ADR-020 | Versión de Vivado de referencia                           | Pendiente    | Fijar una sola versión para ambos integrantes                             | US-101                 |
 
-**Estructura canónica de un ADR** (`docs/adr/template.md`): Contexto → Decisión → Alternativas consideradas → Consecuencias (positivas / negativas / restricciones). Se escriben en `docs/adr/ADR-0XX-titulo.md` y se referencian en el informe.
+**Estructura canónica de un ADR**: Contexto → Decisión → Alternativas consideradas → Consecuencias (positivas / negativas / restricciones). Se escriben en `docs/adr/ADR-0XX-titulo.md` y se referencian en el informe.
 
 ### 9.2 Detalle de cada ADR
 
@@ -698,7 +642,7 @@ Reglas que aplican a todo el sistema. Las específicas de una historia están de
 
 ---
 
-## 10. Hitos, Épicas e Historias de Usuario
+## 9. Hitos, Épicas e Historias de Usuario
 
 ### 10.0 Visión general del plan
 
@@ -711,8 +655,6 @@ Reglas que aplican a todo el sistema. Las específicas de una historia están de
 | 5         | v0.5    | Interfaz de usuario en PC                     | 3      | 6         | ~17 días·persona      |
 | 6         | v1.0    | Timing, integración final y entrega           | 3      | 5         | ~12 días·persona      |
 | **Total** |         |                                               | **16** | **39**    | **~105 días·persona** |
-
-> **Capacidad vs. esfuerzo:** 2 personas × 10–12 semanas × 5 días = 100–120 días·persona **si la dedicación fuera completa**. Con dedicación parcial (cursado, pasantía) el plan está ajustado: las historias marcadas con prioridad **Baja** son las primeras candidatas a recortar, y el Hito 5 tiene un "mínimo viable" definido (CLI + vista de pipeline) por si hace falta.
 
 **Paralelismo entre integrantes:** a partir del Hito 2 el trabajo se divide en dos **pistas** que avanzan en paralelo y se juntan en la integración en placa (US-407):
 
@@ -777,8 +719,6 @@ flowchart LR
 - **Detalle técnico:**
   - **Estructura de carpetas** según sección 14 (`hw/`, `asm/`, `tools/`, `docs/`).
   - **Migración del TP2:** copiar `baudrate_gen.v`, `uart_rx*.v`, `uart_tx*.v` a `hw/rtl/uart/` sin modificaciones (los cambios de ADR-002 van en US-401). `uart_interface.v` y la `alu.v` del TP1 se guardan en `hw/rtl/legacy/` solo como referencia, fuera del proyecto de síntesis.
-  - **Script `hw/scripts/create_project.tcl`:** crea el proyecto para `xc7a35tcpg236-1`, agrega fuentes de `hw/rtl/**`, testbenches de `hw/tb/**`, restricciones de `hw/constraints/basys3.xdc`, e IPs de `hw/ip/**` si los hay.
-  - **Script `hw/scripts/build.tcl`:** síntesis + implementación + bitstream + reportes (`report_timing_summary`, `report_utilization`, `report_power`, `report_clock_networks`) a `hw/reports/`.
   - **`Makefile`** en la raíz con objetivos `project`, `sim`, `build`, `program`, `test-py`.
   - **`.gitignore`** para Vivado (`*.runs/`, `*.cache/`, `*.sim/`, `*.hw/`, `*.ip_user_files/`, `.Xil/`, `*.jou`, `*.log`, `*.str`) y Python (`__pycache__/`, `.venv/`).
 - **Criterios de Aceptación:**
@@ -807,10 +747,7 @@ hw/
 │   └── legacy/
 │       ├── alu_tp1.v            ✅ (solo referencia)
 │       └── uart_interface.v     ✅ (solo referencia, se reemplaza)
-├── constraints/basys3.xdc
-└── scripts/
-    ├── create_project.tcl
-    └── build.tcl
+└── constraints/basys3.xdc
 docs/adr/template.md
 ```
 
@@ -1930,7 +1867,7 @@ docs/defensa/sesiones/*.json
 
 ---
 
-## 11. Definición de "Hecho" (DoD)
+## 10. Definición de "Hecho" (DoD)
 
 Una historia de usuario se considera **Hecha** cuando cumple **todos** los puntos que le apliquen:
 
@@ -1949,7 +1886,7 @@ Una historia de usuario se considera **Hecha** cuando cumple **todos** los punto
 
 ---
 
-## 12. Catálogo Técnico de Criticidad
+## 11. Catálogo Técnico de Criticidad
 
 ### 12.1 Severidad de defectos
 
@@ -1979,46 +1916,7 @@ Un módulo es **crítico** si cumple al menos uno: decide qué instrucción se e
 
 ---
 
-## 13. Proceso de Liberación de Versiones
-
-### 13.1 Versionado semántico
-
-`vMAJOR.MINOR.PATCH`:
-
-- **MINOR** sube al cerrar cada hito: H1 → `v0.1.0`, H2 → `v0.2.0`, …, H6 → `v1.0.0` (versión de entrega).
-- **PATCH** para correcciones sin funcionalidad nueva (ej. `v0.4.1`).
-- **Versión del protocolo** (ADR-003) independiente: cambia solo si cambia el formato de comandos o snapshot; el software de PC verifica con `PING` que la versión del hardware sea compatible.
-
-### 13.2 Estrategia de ramas
-
-| Rama                         | Propósito                                                                            |
-| ---------------------------- | ------------------------------------------------------------------------------------ |
-| `main`                       | Solo versiones cerradas (merge desde `develop` al cerrar un hito), cada una con tag. |
-| `develop`                    | Integración; recibe los PR de `feature/`.                                            |
-| `feature/us-XXX-descripcion` | Una rama por historia de usuario. Ej. `feature/us-302-load-use`.                     |
-| `hotfix/descripcion`         | Corrección urgente sobre una versión ya entregada o por entregar.                    |
-
-### 13.3 Proceso de release paso a paso
-
-1. Verificar en `develop`: `make sim-all`, `make verify`, `pytest` en verde; a partir del Hito 4, `verify_board.py` en placa.
-2. Generar el bitstream con `make build` desde un árbol limpio.
-3. Mover `[Unreleased]` a `[vX.Y.0] - AAAA-MM-DD` en `CHANGELOG.md`.
-4. Merge `--no-ff` de `develop` a `main`; tag anotado `vX.Y.0` con la descripción del hito.
-5. Crear el GitHub Release adjuntando: `top.bit`, `timing_summary.rpt`, `utilization.rpt` y el paquete del software de PC. Así, la defensa se puede hacer programando la placa con el bitstream del release, sin sintetizar.
-
-### 13.4 Formato del `CHANGELOG.md`
-
-**Keep a Changelog**: sección `[Unreleased]` arriba; una sección por versión con `Added`, `Changed`, `Fixed`, `Removed`. Se separan los cambios de hardware y de software con prefijos `[hw]` / `[sw]`.
-
-### 13.5 Hotfix
-
-1. `git checkout -b hotfix/descripcion main`.
-2. Corrección mínima + programa o test de regresión que falle sin el fix.
-3. PATCH en `CHANGELOG.md`, merge a `main` con tag y también a `develop`.
-
----
-
-## 14. Estructura de Repositorio Final
+## 12. Estructura de Repositorio Final
 
 ```text
 tp-final-riscv/
@@ -2065,7 +1963,7 @@ tp-final-riscv/
 
 ---
 
-## 15. Convenciones Rápidas
+## 13. Convenciones Rápidas
 
 - **Idioma:** documentación, comentarios e informe en español; nombres de módulos, señales, clases y funciones siguiendo el estilo del TP2 (identificadores en inglés técnico con prefijos `i_`/`o_`/`r_`/`w_`). _Si el equipo prefiere nombres en español en Python, se fija acá y se aplica a todo `tools/`._
 - **Un módulo Verilog por archivo**, con el mismo nombre que el archivo.
@@ -2078,23 +1976,7 @@ tp-final-riscv/
 
 ---
 
-## 16. Roadmap Futuro (fuera de alcance v1.0)
-
-> Ideas de mejora, **no son compromisos de entrega**. Cada una se corresponde con un ítem de "Fuera de alcance" (sección 1.3) o con una alternativa descartada en un ADR.
-
-- **Resto de RV32I:** `auipc`, `blt`, `bge`, `bltu`, `bgeu` (cambios mínimos: comparador con signo/sin signo en el branch). Permitiría correr programas generados por un compilador C.
-- **Resolución de branches en ID** (ADR-006 alternativa b): penalidad de 1 ciclo, con forwarding hacia ID. Buen experimento para comparar CPI.
-- **Predicción de saltos** estática (backward taken / forward not taken) o dinámica con BHT de 2 bits.
-- **Breakpoints por hardware** y comando "correr hasta PC = X".
-- **Extensión M** (multiplicación/división) con una unidad multiciclo que genere stalls.
-- **Excepciones** por instrucción ilegal y accesos desalineados.
-- **Sección `.data` en el ensamblador** con un comando `LOAD_DATA` para inicializar la DMEM.
-- **Visualización animada del datapath** (diagrama del procesador con los caminos activos resaltados en cada ciclo).
-- **Verificación con cocotb** reutilizando el golden model directamente en la simulación del RTL.
-
----
-
-## 17. Incoherencias y Errores de la Presentación del TP
+## 14. Incoherencias y Errores de la Presentación del TP
 
 Revisión de la presentación `TRABAJO_FINAL_2026.pdf` contra la especificación oficial de RISC-V. Se documenta para: (1) no implementar algo mal por seguir la diapositiva; (2) dejar asentado en el informe cada interpretación que tomó el equipo; (3) llevar preguntas concretas a la cátedra.
 
@@ -2135,22 +2017,3 @@ Revisión de la presentación `TRABAJO_FINAL_2026.pdf` contra la especificación
 | C1  | "Paso a paso: enviando un comando se ejecuta **un ciclo de clock**" vs. "El clock no debe verse intervenido en ninguna parte del proyecto".    | Se resuelve con _clock enable_: el reloj corre siempre, y lo que se habilita por un ciclo es el avance del procesador (ADR-001).                                                                                                         |
 | C2  | "Investiguen … Clock Wizard" vs. "el clock no debe verse intervenido".                                                                         | Generar una frecuencia distinta con el MMCM por la red dedicada de reloj **no** es intervenirlo; lo prohibido es meter lógica en el camino del reloj (compuertas, divisores con flip-flops usados como reloj). Se explica en el informe. |
 | C3  | "Tipo J … la dirección a la que se salta es la almacenada en rd" (describe `jalr`) vs. `jalr` listado correctamente dentro de I-Type al final. | La diapositiva de tipo J mezcla la semántica de `jal` y `jalr`; se sigue la especificación (E1).                                                                                                                                         |
-
-### 17.4 Errores menores y de redacción
-
-- "Riegos" → **Riesgos**; "Instucciones" (varias diapositivas) → **Instrucciones**; "Imediatas" → **Inmediatas**; "Inmediato Superior" vs. "Imediatas" (inconsistencia ortográfica del mismo término); "un condición" → **una condición**; "inspirence" → **inspírense**; "Disenien" → **Diseñen**; "Asegurense del que hagan" → **Asegúrense de que lo que hagan**.
-- La diapositiva de campos de instrucción muestra solo el formato R como si fuera general; los formatos I, S, B, U y J tienen otra distribución del inmediato (se muestran después, pero sin decirlo).
-- La tabla de tipo I rotula el inmediato de los loads como "address" (dirección): en realidad es un **desplazamiento** que se suma a `rs1` para formar la dirección.
-- En la figura de `beq`, el campo `imm[4:1|11]` está bien, pero combinado con E2 la figura completa no permite reconstruir la instrucción correctamente.
-- La figura de `lui` usa `imm[31:12]` como nombre del campo, correcto, pero la descripción dice "inmediato de 20 bits para cargar la parte más significativa" sin aclarar que los 12 bits bajos del registro quedan en **cero** (no se conservan).
-
-### 17.5 Preguntas sugeridas para la cátedra
-
-1. ¿Se espera RV32I (32 bits)? La diapositiva de tipo I muestra `ld`, que es de RV64.
-2. ¿Hay alguna codificación sugerida para HALT, o queda a criterio del grupo?
-3. ¿"Memoria de datos usada" significa las posiciones escritas por el programa, o alguna otra definición?
-4. ¿Qué nivel de detalle se espera del volcado de latches: solo datos, o también señales de control?
-5. ¿Se mantiene 19200 bps como en el TP2 o se puede elegir otra velocidad?
-6. ¿Es aceptable resolver los riesgos de datos con stalls en lugar de forwarding, o se espera forwarding?
-7. ¿Formato y extensión del informe? ¿Duración y modalidad de la defensa (programas propios o provistos por la cátedra)?
-8. ¿Cuál es el libro de referencia indicado en la bibliografía?
