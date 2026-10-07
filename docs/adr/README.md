@@ -1,0 +1,26 @@
+# Registro de Decisiones Arquitectónicas (ADR)
+
+Cada decisión no trivial del proyecto tiene su ADR con contexto, alternativas y consecuencias. Plantilla: [template.md](template.md).
+
+| ID                                                          | Título                                                    | Estado     | Decisión                                                                                   |
+| ----------------------------------------------------------- | --------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------ |
+| [ADR-001](ADR-001-control-ejecucion-clock-enable.md)        | Control de ejecución por clock enable                     | Aprobado   | `i_enable` como CE de todo el núcleo; sin clock gating ni BUFGCE                           |
+| [ADR-002](ADR-002-parametros-uart.md)                       | Parámetros de la UART                                     | Aprobado   | 19200 bps 8E1 como el TP2; paridad validada; `COUNT_MAX` parametrizado                     |
+| [ADR-003](ADR-003-protocolo-debug-unit.md)                  | Protocolo de comandos de la Debug Unit                    | Aprobado   | Comando ASCII de 1 byte + args binarios; respuestas en trama con XOR; `RUN` = ACK + snapshot |
+| [ADR-004](ADR-004-codificacion-halt.md)                     | Codificación de HALT                                      | Aprobado   | Opcode _custom-0_, palabra `0x0000000B`; detección por opcode                              |
+| [ADR-005](ADR-005-implementacion-memorias.md)               | Implementación de memorias                                | Aprobado   | Memoria distribuida inferida (lectura combinacional)                                       |
+| [ADR-006](ADR-006-resolucion-saltos.md)                     | Punto de resolución de saltos                             | Aprobado   | `jal` en ID; `beq`/`bne`/`jalr` en EX; predict not-taken                                   |
+| [ADR-007](ADR-007-riesgos-datos-banco-registros.md)         | Riesgos de datos y banco de registros                     | Aprobado   | Forwarding completo + stall load-use; bypass interno en el banco                           |
+| [ADR-008](ADR-008-tamanos-memoria-memoria-usada.md)         | Tamaños de memoria y "memoria usada"                      | Aprobado   | IMEM y DMEM de 256 palabras; bitmap de escritas + `DUMP_MEM`                               |
+| [ADR-009](ADR-009-politica-reprogramacion.md)               | Política de reprogramación                                | Aprobado   | `LOAD` limpia todo y rellena IMEM con HALT; `RESET` igual sin tocar IMEM                   |
+| [ADR-010](ADR-010-comportamiento-sin-halt.md)               | Comportamiento sin instrucción de parada                  | Aprobado   | Relleno con HALT + HALT automático del ensamblador + `ABORT`                               |
+| [ADR-011](ADR-011-lenguaje-software-pc.md)                  | Lenguaje del software de PC                               | Aprobado   | Python 3.11+; identificadores mixtos como en el PRD                                        |
+| [ADR-012](ADR-012-tecnologia-interfaz-usuario.md)           | Tecnología de la interfaz de usuario                      | Aprobado   | Flet (GUI) + CLI                                                                           |
+| [ADR-013](ADR-013-ensamblador-propio.md)                    | Ensamblador propio vs. toolchain externo                  | Aprobado   | Propio de dos pasadas; pseudo `nop`, `mv`, `j`, `ret`; GNU solo para validar               |
+| [ADR-014](ADR-014-golden-model.md)                          | Simulador de referencia (golden model)                    | Aprobado   | ISS propio en Python + firma en memoria                                                    |
+| [ADR-015](ADR-015-simulador-hdl-verificacion.md)            | Simulador HDL y framework de verificación                 | Aprobado   | xsim + Verilog-2001 portable; CI con Python e Icarus                                       |
+| [ADR-016](ADR-016-frecuencia-generacion-reloj.md)           | Frecuencia de operación y generación de reloj             | Propuesto  | Criterio fijado (barrido, WNS ≥ 0,3 ns); se aprueba con datos de US-601/602                |
+| [ADR-017](ADR-017-formato-volcado-latches.md)               | Formato de volcado de latches                             | Aprobado   | Campo a campo alineado a byte, flags agrupados, LE; `instr` con `DEBUG_TRACE`              |
+| [ADR-018](ADR-018-desalineados-endianness-ilegales.md)      | Desalineados, endianness e instrucciones ilegales         | Aprobado   | Little-endian; desalineado = ignorar bits bajos; ilegal = detener con estado `ILLEGAL`     |
+| [ADR-019](ADR-019-reutilizacion-alu-tp1.md)                 | Reutilización de la ALU del TP1                           | Aprobado   | ALU nueva de 32 bits con `alu_ctrl` de 4 bits; comparador de branches aparte               |
+| [ADR-020](ADR-020-version-vivado.md)                        | Versión de Vivado de referencia                           | Aprobado   | Vivado 2025.2                                                                              |
