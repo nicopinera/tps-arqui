@@ -18,3 +18,29 @@
 *.vrb
 *.xdv
 *.dvi
+
+# Vivado: el proyecto es local y no se versiona (NFR-8, ADR-020)
+*.xpr
+*.runs/
+*.cache/
+*.sim/
+*.hw/
+*.ip_user_files/
+*.gen/
+*.srcs/
+.Xil/
+*.jou
+*.str
+*.backup.*
+vivado_pid*.zip
+xsim.dir/
+*.wdb
+*.pb
+
+# Python
+__pycache__/
+.venv/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.coverage
