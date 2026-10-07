@@ -28,26 +28,26 @@ NFR-8 exige que el proyecto se regenere desde el repositorio con un solo script,
 
 ## Alternativas consideradas
 
-| Opción                                | Ventajas                                                                                         | Desventajas                                                                                  |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
-| **(a) 2025.2** (elegida)              | Es la versión con la que el TP2 ya funciona en placa; los módulos de UART migran sin riesgo; los números son comparables con el informe del TP2 | Quien tenga solo 2026.1 tiene que instalar 2025.2 (instalación de varios GB)                 |
-| (b) 2026.1                            | Versión más nueva                                                                                | Hay que volver a validar la migración del TP2; el otro integrante tiene que actualizar        |
-| (c) Sin versión fija                  | Nadie instala nada                                                                               | IP bloqueados, proyectos que no abren y números de timing que cambian según quién sintetiza  |
+| Opción                   | Ventajas                                                                                                                                        | Desventajas                                                                                 |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| **(a) 2025.2** (elegida) | Es la versión con la que el TP2 ya funciona en placa; los módulos de UART migran sin riesgo; los números son comparables con el informe del TP2 | Quien tenga solo 2026.1 tiene que instalar 2025.2 (instalación de varios GB)                |
+| (b) 2026.1               | Versión más nueva                                                                                                                               | Hay que volver a validar la migración del TP2; el otro integrante tiene que actualizar      |
+| (c) Sin versión fija     | Nadie instala nada                                                                                                                              | IP bloqueados, proyectos que no abren y números de timing que cambian según quién sintetiza |
 
 ## Consecuencias
 
-**Positivas**
+**Positivas:**
 
 - La migración del TP2 (US-101, AC3) se hace en la misma versión con la que se verificó.
 - Los resultados de síntesis e implementación son reproducibles entre las dos máquinas.
 - La comparación de recursos y frecuencia con el TP2 (US-603) es directa.
 
-**Negativas**
+**Negativas:**
 
 - Puede ser necesario tener dos versiones de Vivado instaladas en una de las máquinas.
 - No se aprovechan mejoras de 2026.1 (no hay ninguna conocida que el proyecto necesite).
 
-**Restricciones que impone**
+**Restricciones que impone:**
 
 - `create_project.tcl` aborta si la versión no es 2025.2.
 - Un cambio de versión durante el proyecto requiere un nuevo ADR que reemplace a este, y repetir las mediciones de timing antes de usarlas en el informe.

@@ -8,11 +8,11 @@
 
 ## Contexto
 
-El enunciado exige "contar con una instrucción HALT o de stop", pero esa instrucción **no existe en RV32I** y no se da ninguna codificación (PRD §14, A2). La codificación que se elija afecta a:
+El enunciado exige "contar con una instrucción HALT o de stop", pero esa instrucción **no existe en RV32I** y no se da ninguna codificación. La codificación que se elija afecta a:
 
 - el decodificador (`control_unit.v`), que tiene que reconocerla en ID (R-EJ-3);
-- el ensamblador, el desensamblador y el golden model, que la comparten desde la tabla ISA (US-105);
-- la respuesta a "¿qué pasa si el programa no tiene HALT?" (ADR-010), porque algunas codificaciones hacen que la memoria vacía se detenga sola.
+- el ensamblador, el desensamblador y el golden model, que la comparten desde la tabla ISA;
+- la respuesta a "¿qué pasa si el programa no tiene HALT?", porque algunas codificaciones hacen que la memoria vacía se detenga sola.
 
 ## Decisión
 
@@ -23,12 +23,12 @@ El enunciado exige "contar con una instrucción HALT o de stop", pero esa instru
 
 ## Alternativas consideradas
 
-| Opción                                     | Ventajas                                                                                                | Desventajas                                                                                                                          |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| (a) `0x00000000`                           | La especificación la define como ilegal a propósito; una IMEM en cero se detiene sola                    | Esconde el problema de "programa sin HALT", que el enunciado quiere que se analice; una DMEM o IMEM sin inicializar "parece" correcta |
-| (b) `0xFFFFFFFF`                           | También es ilegal en RV32I                                                                               | Mismo razonamiento que (a), sin la ventaja de la memoria en cero                                                                     |
-| (c) Reusar `ecall` (`0x00000073`)          | Semántica parecida: devolver el control al entorno                                                       | `ecall` es parte de RV32I con otro significado; un programa real que la use se comportaría distinto                                  |
-| **(d) _custom-0_ `0x0000000B`** (elegida)  | RISC-V reserva ese espacio para extensiones propias; no choca con ninguna instrucción estándar           | Las herramientas estándar (GNU `as`, RARS) no la conocen: hay que escribirla como `.word 0x0000000B`                                  |
+| Opción                                    | Ventajas                                                                                       | Desventajas                                                                                                                           |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| (a) `0x00000000`                          | La especificación la define como ilegal a propósito; una IMEM en cero se detiene sola          | Esconde el problema de "programa sin HALT", que el enunciado quiere que se analice; una DMEM o IMEM sin inicializar "parece" correcta |
+| (b) `0xFFFFFFFF`                          | También es ilegal en RV32I                                                                     | Mismo razonamiento que (a), sin la ventaja de la memoria en cero                                                                      |
+| (c) Reusar `ecall` (`0x00000073`)         | Semántica parecida: devolver el control al entorno                                             | `ecall` es parte de RV32I con otro significado; un programa real que la use se comportaría distinto                                   |
+| **(d) _custom-0_ `0x0000000B`** (elegida) | RISC-V reserva ese espacio para extensiones propias; no choca con ninguna instrucción estándar | Las herramientas estándar (GNU `as`, RARS) no la conocen: hay que escribirla como `.word 0x0000000B`                                  |
 
 Se elige (d) porque es la opción correcta según la especificación: es exactamente para lo que existe el espacio _custom_. Además mantiene separados "terminar el programa" y "ejecutar memoria vacía", que es lo que pide analizar ADR-010.
 
@@ -36,24 +36,19 @@ Se elige (d) porque es la opción correcta según la especificación: es exactam
 
 ## Consecuencias
 
-**Positivas**
+**Positivas:**
 
 - No hay conflicto con ninguna instrucción de RV32I, ni con las 32 del enunciado ni con las que no se implementan.
 - Es fácil de defender en el informe: se cita la sección de la especificación que reserva _custom-0_.
 - El comparador del decodificador es de 7 bits, igual que para el resto de los opcodes.
 
-**Negativas**
+**Negativas:**
 
 - `0x00000000` no es HALT: ejecutar memoria en cero termina con estado `ILLEGAL` (ADR-018), no con `HALTED`. La terminación normal de un programa sin HALT depende del relleno de ADR-009 / ADR-010.
 - El test contra el toolchain GNU (ADR-013, US-106 AC2) cubre solo las 32 instrucciones estándar; HALT se prueba aparte.
 
-**Restricciones que impone**
+**Restricciones que impone:**
 
 - El opcode de HALT es una constante compartida hardware/software: se define en `docs/protocolo.md` y se refleja en `du_defs.vh` / `control_unit.v` e `isa/instrucciones.py` (PRD §13).
 - El ensamblador acepta `halt` como mnemónico nativo y agrega uno al final si falta (R-PR-1, ADR-013).
 - El `du_loader` rellena con `0x0000000B` las posiciones de IMEM que no carga el programa (ADR-009).
-
-## Referencias
-
-- PRD §2.2 (fila 33), §6 (R-EJ-3 a R-EJ-5, R-PR-1), §8 (ADR-004), §14 (A2).
-- _The RISC-V Instruction Set Manual, Volume I: Unprivileged ISA_ — mapa de opcodes base (espacio _custom-0_) y la palabra `0x00000000` como instrucción ilegal.

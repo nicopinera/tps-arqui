@@ -8,7 +8,7 @@
 
 ## Contexto
 
-El enunciado pide dos cosas que parecen contradecirse (PRD §14, C1):
+El enunciado pide dos cosas que parecen contradecirse:
 
 1. Un **modo paso a paso** en el que "enviando un comando se ejecuta un ciclo de clock".
 2. Que "el clock no debe verse intervenido en ninguna parte del proyecto".
@@ -24,44 +24,30 @@ Además, la Debug Unit y la UART tienen que seguir funcionando mientras el proce
   - latches IF/ID, ID/EX, EX/MEM y MEM/WB,
   - banco de registros (puerto de escritura),
   - puertos de escritura de IMEM y DMEM del lado del núcleo,
-  - puertos de lectura sincrónica de BRAM del lado del núcleo (si ADR-005 elige BRAM).
+  - puertos de lectura sincrónica de BRAM del lado del núcleo.
 - Si `i_enable = 0`, ninguno de esos elementos cambia aunque llegue el flanco de reloj.
 - La Debug Unit genera `i_enable`:
   - **STEP:** un pulso de exactamente 1 ciclo de reloj (R-EJ-2).
   - **RUN:** nivel sostenido en 1 hasta que se detecta el fin de la ejecución (R-EJ-5) o llega un `ABORT`.
-- El reloj llega a **todos** los flip-flops por la red global (BUFG, o MMCM según ADR-016), sin pasar por ninguna compuerta, divisor ni buffer con enable.
+- El reloj llega a **todos** los flip-flops por la red global (BUFG, o MMCM), sin pasar por ninguna compuerta, divisor ni buffer con enable.
 - La UART y la Debug Unit **siempre** están habilitadas.
-
-## Alternativas consideradas
-
-| Opción                               | Descripción                                                 | Ventajas                                                                          | Desventajas                                                                                                                                                                  |
-| ------------------------------------ | ----------------------------------------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **(a) Clock enable** (elegida)       | `i_enable` entra como CE en cada flip-flop del núcleo       | Un solo dominio de reloj; timing limpio y analizable; respeta el enunciado        | `i_enable` tiene un fan-out muy grande                                                                                                                                       |
-| (b) Clock gating con AND             | `clk_core = clock & enable`                                 | Trivial de escribir                                                               | **Prohibido por el enunciado**. Introduce skew y glitches, y en FPGA saca el reloj de la red dedicada                                                                       |
-| (c) `BUFGCE`                         | Buffer global de reloj con enable (primitiva de Xilinx)     | Técnicamente válido en Xilinx, sin glitches, y mantiene la red dedicada            | Sigue siendo "intervenir el clock" en el sentido del enunciado; crea un segundo reloj derivado que hay que restringir y analizar aparte; no es portable                     |
-
-Se descarta (b) porque está prohibida y es mala práctica. Se descarta (c) porque, aunque funciona, la cátedra pide explícitamente no tocar el reloj y además complica el análisis de timing de US-601. La opción (a) cumple las dos condiciones del enunciado sin agregar complejidad de reloj.
 
 ## Consecuencias
 
-**Positivas**
+**Positivas:**
 
 - Un único dominio de reloj para todo el diseño: el análisis de timing (WNS/WHS, skew) es directo.
-- La Debug Unit y la UART funcionan mientras el núcleo está congelado, así que se puede volcar el estado en cualquier ciclo (R-DU-3).
+- La Debug Unit y la UART funcionan mientras el núcleo está congelado, así que se puede volcar el estado en cualquier ciclo.
 - STEP y RUN usan el mismo mecanismo, lo que facilita cumplir R-EJ-7 (mismo resultado en ambos modos).
 - Cumple NFR-2: no hay lógica en la red de reloj, y se puede verificar con `report_clock_networks`.
 
-**Negativas**
+**Negativas:**
 
 - `i_enable` llega a cientos de flip-flops (fan-out alto) y puede aparecer en el camino crítico. Se mide en US-601; si hace falta, se registra o se replica (Vivado `MAX_FANOUT`).
 - Cada elemento de estado del núcleo tiene que respetar `i_enable` explícitamente. Si se olvida en uno solo (por ejemplo, el enable del puerto de lectura de la BRAM), un stall o un paso cambia estado que no debía cambiar.
 
-**Restricciones que impone**
+**Restricciones que impone:**
 
-- Prohibida cualquier expresión que involucre `clock` fuera de `@(posedge clock)` (PRD §5, estilo de Verilog).
+- Prohibida cualquier expresión que involucre `clock` fuera de `@(posedge clock)`.
 - Prohibido escribir el banco de registros en el flanco de bajada: se resuelve con bypass interno (ADR-007).
 - Los testbenches del núcleo tienen que probar que, con `i_enable = 0`, ningún elemento de estado cambia durante N ciclos.
-
-## Referencias
-
-- PRD §1.2 (pilar 4: "Clock intacto"), §4.1 (regla de oro del hardware), §6 (R-EJ-1, R-EJ-2), §7 (NFR-2), §14 (C1, C2).

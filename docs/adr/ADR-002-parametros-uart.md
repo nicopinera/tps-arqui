@@ -14,11 +14,11 @@ Los módulos `uart_rx` y `uart_tx` del TP2 están verificados en placa con estos
 - La paridad se **recibe pero no se valida**.
 - `COUNT_MAX = 326` está fijo para un reloj de 100 MHz (sobremuestreo ×16).
 
-El enunciado no dice si hay que mantener esos parámetros (PRD §14, A6). La velocidad del enlace determina cuánto tarda cada snapshot y cada carga de programa:
+El enunciado no dice si hay que mantener esos parámetros. La velocidad del enlace determina cuánto tarda cada snapshot y cada carga de programa:
 
 | Operación                                   | Bytes aprox. | 19200 bps (~1745 B/s) | 115200 bps (~10 470 B/s) |
 | ------------------------------------------- | ------------ | --------------------- | ------------------------ |
-| Snapshot sin memoria (PRD §3.5, ADR-017)    | ~221 B       | ~130 ms               | ~21 ms                   |
+| Snapshot sin memoria                        | ~221 B       | ~130 ms               | ~21 ms                   |
 | Snapshot con DMEM completa usada (256 pal.) | ~1760 B      | ~1,0 s                | ~0,17 s                  |
 | `LOAD` de 256 instrucciones                 | ~1030 B      | ~0,6 s                | ~0,1 s                   |
 
@@ -31,50 +31,24 @@ El enunciado no dice si hay que mantener esos parámetros (PRD §14, A6). La vel
    - `uart_rx` levanta una señal de error de paridad (`o_parity_err`),
    - la Debug Unit aborta el comando en curso y responde `NACK` con un código de error de paridad (se define en `docs/protocolo.md`, US-104).
 4. **`COUNT_MAX` pasa a ser un parámetro calculado**, no un número fijo:
-   `COUNT_MAX = round(CLK_FREQ_HZ / (16 × BAUD))`, con `CLK_FREQ_HZ` y `BAUD` como parámetros del `top`. Así la UART sigue andando si ADR-016 cambia la frecuencia. El error de baud resultante tiene que ser < 2 %.
-
-## Alternativas consideradas
-
-**Velocidad**
-
-| Opción                         | Ventajas                                                                                     | Desventajas                                                                                                    |
-| ------------------------------ | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| **(a) 19200 bps** (elegida)    | Ya probada en placa; cero riesgo de integración; mismo setup de terminal que el TP2           | ~6 veces más lenta; un volcado con mucha memoria usada supera 1 s                                              |
-| (b) 115200 bps                 | Snapshot en ~20 ms; el paso a paso con volcado de memoria es casi instantáneo                 | Hay que volver a validar el enlace en placa; más sensible a errores de muestreo si cambia la frecuencia        |
-
-Se elige (a) para no sumar riesgo a la integración: la UART es la única pieza del sistema que hoy anda en placa, y con 19200 bps el caso típico igual cumple NFR-4 (< 1 s por paso). Como `BAUD` queda parametrizado, pasar a 115200 bps más adelante es cambiar un parámetro y repetir la prueba de eco (ver Consecuencias).
-
-**Paridad**
-
-| Opción                              | Ventajas                                                                         | Desventajas                                                                      |
-| ----------------------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| **(a) Validar y descartar** (elegida) | Cuesta un XOR y un flip-flop; detecta errores de 1 bit por byte antes del checksum | Hay que agregar la señal de error y su manejo en la Debug Unit                    |
-| (b) Quitar la paridad (8N1)         | Trama de 10 bits, ~10 % más rápida                                                | Toda la detección queda en el checksum, que solo se ve al final de la trama       |
-| (c) Mantener sin validar            | No toca el código del TP2                                                         | Se transmite un bit que no sirve para nada                                        |
-
-Se elige (a) porque es barata, aporta a NFR-6 (robustez del enlace) y detecta el error en el byte donde ocurre. El checksum de ADR-003 cubre lo que la paridad no detecta (por ejemplo, dos bits invertidos en el mismo byte o bytes perdidos).
+   `COUNT_MAX = round(CLK_FREQ_HZ / (16 × BAUD))`, con `CLK_FREQ_HZ` y `BAUD` como parámetros del `top`. Así la UART sigue andando si se cambia la frecuencia. El error de baud resultante tiene que ser < 2 %.
 
 ## Consecuencias
 
-**Positivas**
+**Positivas:**
 
 - La migración del TP2 no cambia el comportamiento eléctrico ni temporal de la UART: se reutiliza tal cual y solo se agrega la validación de paridad.
 - Los errores de transmisión se detectan en dos niveles: paridad por byte y checksum por trama.
 - La UART deja de depender de que el reloj sea de 100 MHz.
 
-**Negativas**
+**Negativas:**
 
-- Un snapshot con toda la DMEM usada tarda ~1 s y queda **en el límite de NFR-4**. El caso típico (~221 B + pocas palabras) sí cumple. Si las demos lo necesitan, se reevalúa subir a 115200 bps (roadmap, PRD §15.3).
+- Un snapshot con toda la DMEM usada tarda ~1 s y queda **en el límite de NFR-4**. El caso típico (~221 B + pocas palabras) sí cumple. Si las demos lo necesitan, se reevalúa subir a 115200 bps.
 - El historial del paso a paso en la GUI se siente más lento que con 115200 bps.
 
-**Restricciones que impone**
+**Restricciones que impone:**
 
 - `uart_rx` agrega la salida `o_parity_err`; la Debug Unit tiene que manejarla en todos sus estados de recepción.
 - `docs/protocolo.md` define un código de `NACK` para errores de paridad.
 - El software de PC abre el puerto con `baudrate=19200, parity=PARITY_EVEN, stopbits=1, bytesize=8`.
 - Si cambia `BAUD` o `CLK_FREQ_HZ`, se repite la prueba de eco de US-401 en placa antes de seguir.
-
-## Referencias
-
-- PRD §3.5 (presupuesto de volcado), §7 (NFR-4, NFR-5, NFR-6), §8 (ADR-002), §14 (A6).
-- Informe del TP2 (cálculo de `COUNT_MAX`).

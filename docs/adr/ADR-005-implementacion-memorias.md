@@ -36,39 +36,34 @@ El enunciado sugiere investigar los IP de memoria de Vivado, pero no exige usarl
 
 ## Alternativas consideradas
 
-| Opción                                         | Ventajas                                                                                                                                       | Desventajas                                                                                                                                                                               |
-| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **(a) Memoria distribuida** (elegida)          | Datapath idéntico al del libro; no hay que realinear el PC; los stalls no necesitan enable en el puerto de lectura; simula sin IP; fácil de explicar | Consume LUTs; la lectura combinacional queda dentro del camino IF→IF/ID y MEM→MEM/WB y puede alargar el camino crítico; no escala a memorias grandes                                       |
-| (b) BRAM inferida, dual port, lectura sincrónica | No consume LUTs; muy rápida; es lo que sugiere el enunciado                                                                                    | Obliga a presentar a la IMEM el **próximo** PC (la salida de la BRAM hace de parte del latch IF/ID) y a leer en el flanco de fin de MEM; el puerto de lectura tiene que respetar `i_enable` y los stalls |
-| (c) IP _Block Memory Generator_ (true dual port) | Configuración guiada, robusta                                                                                                                  | Mismos cambios de datapath que (b), más dependencia de un `.xci` versionado y del IP para simular                                                                                        |
-| (d) Mixto (IMEM distribuida, DMEM en BRAM)     | Mantiene IF simple                                                                                                                             | Dos estilos de memoria distintos para explicar y probar; MEM se complica igual                                                                                                            |
+| Opción                                           | Ventajas                                                                                                                                             | Desventajas                                                                                                                                                                                              |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **(a) Memoria distribuida** (elegida)            | Datapath idéntico al del libro; no hay que realinear el PC; los stalls no necesitan enable en el puerto de lectura; simula sin IP; fácil de explicar | Consume LUTs; la lectura combinacional queda dentro del camino IF→IF/ID y MEM→MEM/WB y puede alargar el camino crítico; no escala a memorias grandes                                                     |
+| (b) BRAM inferida, dual port, lectura sincrónica | No consume LUTs; muy rápida; es lo que sugiere el enunciado                                                                                          | Obliga a presentar a la IMEM el **próximo** PC (la salida de la BRAM hace de parte del latch IF/ID) y a leer en el flanco de fin de MEM; el puerto de lectura tiene que respetar `i_enable` y los stalls |
+| (c) IP _Block Memory Generator_ (true dual port) | Configuración guiada, robusta                                                                                                                        | Mismos cambios de datapath que (b), más dependencia de un `.xci` versionado y del IP para simular                                                                                                        |
+| (d) Mixto (IMEM distribuida, DMEM en BRAM)       | Mantiene IF simple                                                                                                                                   | Dos estilos de memoria distintos para explicar y probar; MEM se complica igual                                                                                                                           |
 
 Se elige (a) porque baja el riesgo en la parte más difícil del proyecto, el pipeline con riesgos: la temporización de IF y MEM es la del libro, y el diagrama de US-103 no necesita una lógica especial para alinear el PC con una lectura sincrónica. El costo en LUTs es chico para 256 palabras, y el impacto en el camino crítico se mide en US-601.
 
 ## Consecuencias
 
-**Positivas**
+**Positivas:**
 
 - IF, MEM y la hazard unit se diseñan como en el libro: menos casos especiales y menos fuentes de bugs.
 - Un stall congela el PC y el latch IF/ID con `i_enable` / `stall`, y la instrucción leída no cambia porque depende solo del PC. La restricción de ADR-001 sobre el enable del puerto de lectura de BRAM **no aplica**.
 - La simulación no depende de modelos de IP: los testbenches corren igual en xsim y en Icarus (ADR-015).
 - El volcado de la DMEM por la Debug Unit es combinacional: se pone una dirección y el dato está listo en el mismo ciclo.
 
-**Negativas**
+**Negativas:**
 
 - Consumo de LUTs: 256 × 32 bits de memoria distribuida ocupan del orden de 128 LUTs por puerto de lectura (con RAM256X1S), y la DMEM se replica para el segundo puerto. Sigue lejos del límite de NFR-3 (< 50 % de LUTs).
 - La lectura combinacional suma retardo a las etapas IF y MEM; MEM ya tiene la extensión de signo de `lb`/`lh` detrás. Si en US-601 aparece en el camino crítico, la salida es bajar la frecuencia (ADR-016) o migrar a BRAM (alternativa b).
 - No se usa la BRAM, que el enunciado sugiere investigar: en el informe se justifica la elección y se explica qué cambiaría con BRAM.
 - La memoria distribuida no se puede limpiar con un reset de un ciclo: la limpieza de ADR-009 la recorre palabra por palabra.
 
-**Restricciones que impone**
+**Restricciones que impone:**
 
 - `DEPTH` y `ADDR_BITS` son parámetros (ADR-008); agrandar mucho las memorias obliga a reevaluar esta decisión.
 - El puerto de escritura del núcleo se habilita con `mem_write && valid && i_enable` (R-EJ-6, ADR-001).
 - El multiplexor del puerto de escritura de la DMEM selecciona la Debug Unit solo cuando el núcleo está detenido.
 - En el informe (US-604) se reportan los LUTs que ocupan las memorias y si aparecen en el camino crítico.
-
-## Referencias
-
-- PRD §2.1 (BRAM / memoria distribuida), §2.3 (riesgo estructural), §3.3 (reglas de integridad), §7 (NFR-3), §8 (ADR-005); US-103, US-204, US-210.
-- Xilinx UG474 (_7 Series FPGAs CLB User Guide_), memoria distribuida; UG901 (_Vivado Synthesis_), plantillas de inferencia de RAM.
