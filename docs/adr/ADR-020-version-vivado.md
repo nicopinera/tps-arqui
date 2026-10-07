@@ -14,16 +14,15 @@ El informe del TP2 se hizo con **Vivado 2025.2**, y al menos una máquina del eq
 - los IP (`.xci`: Clock Wizard, Block Memory Generator) quedan bloqueados (_locked_) si se abren en una versión distinta a la que los generó, y hay que actualizarlos;
 - los resultados de síntesis e implementación (recursos, WNS/WHS) pueden variar, lo que afecta a los números del informe.
 
-NFR-8 exige que el proyecto se regenere desde el repositorio con un solo script, sin pasos manuales.
+NFR-8 exige que el repositorio contenga solo fuentes y que cualquiera pueda armar su proyecto local agregándolos a Vivado; para eso, los dos integrantes tienen que usar la misma versión.
 
 ## Decisión
 
 - **La versión de referencia es Vivado 2025.2**, la misma del TP2.
 - Se declara en:
-  - el `README.md` (sección de requisitos);
-  - `hw/scripts/create_project.tcl`, que verifica la versión al arrancar (`version -short`) y aborta con un mensaje claro si no coincide.
-- **No se versiona el proyecto de Vivado**: se regenera con `make project` desde los scripts TCL (US-101).
-- **Si se usa IP** (Clock Wizard en ADR-016): se versiona el `.xci` en `hw/ip/` y se regenera desde el script. No se versionan los productos generados del IP.
+  - el `TP3/README.md` (sección de requisitos), junto con la lista de fuentes que hay que agregar al proyecto.
+- **No se versiona el proyecto de Vivado** (`.xpr` ni carpetas generadas): cada integrante crea su proyecto local en 2025.2 y agrega los fuentes de `TP3/hw/` a mano (US-101).
+- **Si se usa IP** (Clock Wizard en ADR-016): se versiona solo el `.xci` en `TP3/hw/ip/`; al agregarlo al proyecto, Vivado regenera sus productos, que no se versionan.
 - Todos los números del informe (recursos, timing, potencia) se obtienen con 2025.2.
 
 ## Alternativas consideradas
@@ -49,7 +48,7 @@ NFR-8 exige que el proyecto se regenere desde el repositorio con un solo script,
 
 **Restricciones que impone:**
 
-- `create_project.tcl` aborta si la versión no es 2025.2.
+- Antes de sintetizar, cada integrante verifica en Vivado que la versión sea 2025.2 (la indica el `TP3/README.md`); un proyecto abierto con otra versión no se usa para los números del informe.
 - Un cambio de versión durante el proyecto requiere un nuevo ADR que reemplace a este, y repetir las mediciones de timing antes de usarlas en el informe.
 - El CI (ADR-015) no usa Vivado: corre Python e Icarus, así que no depende de esta versión.
 

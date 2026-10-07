@@ -13,16 +13,16 @@
 
 El trabajo final pide pasar de dos bloques aislados que ya funcionan en placa (ALU de 8 bits y UART) a un **procesador completo**, programable desde la PC y observable ciclo a ciclo.
 
-| #   | Problema                                                       | Impacto (técnico)                                                              | Línea base actual                                                                 |
-| --- | -------------------------------------------------------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| 1   | No existe un datapath segmentado RISC-V                        | No se puede ejecutar ningún programa                                           | 0 de 5 etapas implementadas; 0 de 4 latches (IF/ID, ID/EX, EX/MEM, MEM/WB)        |
-| 2   | La ALU del TP1 no cubre RV32I                                  | No soporta operandos de 32 bits ni comparaciones con/sin signo                 | 8 bits; 6 de 10 operaciones R-type necesarias (faltan SLL, SLT, SLTU; NOR sobra); |
-| 3   | No hay manejo de riesgos                                       | Cualquier dependencia de datos o salto produce resultados incorrectos          | 0 mecanismos (forwarding, stall, flush)                                           |
-| 4   | La interfaz UART solo sabe operar la ALU                       | No hay forma de mandar comandos (cargar, ejecutar, paso a paso, leer estado)   | 1 protocolo fijo de 3 bytes (A → B → opcode)                                      |
-| 5   | No hay forma de cargar programas sin resintetizar              | Cada programa nuevo requeriría regenerar el bitstream                          | 0 herramientas de ensamblado; 0 mecanismos de carga dinámica                      |
-| 6   | El estado interno del procesador no es observable              | Imposible depurar riesgos o verificar resultados en placa                      | Solo 8 LEDs visibles; 0 bytes de estado enviados a la PC                          |
-| 7   | No hay interfaz para interactuar con la placa                  | La defensa y la depuración dependerían de mandar bytes a mano con una terminal | 0 interfaces (CLI/TUI/GUI)                                                        |
-| 8   | El comportamiento temporal del sistema completo es desconocido | No se sabe si 100 MHz es viable con memorias, forwarding y Debug Unit          | Diseño TP2: WNS 4,899 ns a 100 MHz; pipeline: no medido                           |
+| Problema                                                       | Impacto (técnico)                                                            | Línea base actual                                                          |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| No existe un datapath segmentado RISC-V                        | No se puede ejecutar ningún programa                                         | 0 de 5 etapas implementadas; 0 de 4 latches (IF/ID, ID/EX, EX/MEM, MEM/WB) |
+| La ALU del TP1 no cubre RV32I                                  | No soporta operandos de 32 bits ni comparaciones con/sin signo               | 8 bits; 6 de 10 operaciones R-type necesarias                              |
+| No hay manejo de riesgos                                       | Cualquier dependencia de datos o salto produce resultados incorrectos        | 0 mecanismos (forwarding, stall, flush)                                    |
+| La interfaz UART solo sabe operar la ALU                       | No hay forma de mandar comandos (cargar, ejecutar, paso a paso, leer estado) | 1 protocolo fijo de 3 bytes (A → B → opcode)                               |
+| No hay forma de cargar programas sin resintetizar              | Cada programa nuevo requeriría regenerar el bitstream                        | 0 herramientas de ensamblado; 0 mecanismos de carga dinámica               |
+| El estado interno del procesador no es observable              | Imposible depurar riesgos o verificar resultados en placa                    | Solo 8 LEDs visibles; 0 bytes de estado enviados a la PC                   |
+| No hay interfaz para interactuar con la placa                  | La defensa y la depuración dependerían de mandar bytes a mano                | 0 interfaces (CLI/TUI/GUI)                                                 |
+| El comportamiento temporal del sistema completo es desconocido | No se sabe si 100 MHz es viable con memorias, forwarding y Debug Unit        | Diseño TP2: WNS 4,899 ns a 100 MHz; pipeline: no medido                    |
 
 **Síntesis:** hoy se tiene una UART verificada en placa y una ALU combinacional de 8 bits. Falta el procesador segmentado con manejo de riesgos, una Debug Unit que reemplace a `uart_interface`, un toolchain en la PC (ensamblador, carga y eventualmente un simulador de referencia), una interfaz para observar el estado, y el cierre del análisis temporal del sistema integrado.
 
@@ -56,19 +56,6 @@ Un **procesador RISC-V (subconjunto de RV32I) segmentado en 5 etapas sobre la Ba
 - **Análisis temporal:** camino crítico, skew, frecuencia óptima y aplicación de esa frecuencia con Clock Wizard si corresponde (ADR-016).
 - **Informe final** que responda todas las preguntas del enunciado.
 
-### 1.4 Métricas de éxito
-
-| Métrica                                | Definición / cómo se mide                                                                                                                      | Objetivo                                  |
-| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| Programas de prueba correctos en placa | % de prog de la suite (`asm/tests/` + `asm/demos/`) cuyo estado final leído desde la FPGA (registros + memoria usada) coincide con el esperado | **100 %**                                 |
-| Cobertura de instrucciones             | Instrucciones del enunciado con al menos un programa de prueba autoverificable                                                                 | **32/32 + HALT**                          |
-| Cobertura de riesgos                   | Casos verificados en simulación: forwarding EX/MEM→EX, MEM/WB→EX, load-use, doble dependencia, branch tomado/no tomado, `jal`, `jalr`          | **100 % de los casos listados en US-304** |
-| Reprogramación                         | Cargas consecutivas de programas distintos sin reprogramar el bitstream, todas con resultado correcto                                          | **≥ 5 seguidas**                          |
-| paso a paso vs. continuo               | Mismo programa ejecutado en ambos modos termina con el mismo estado final                                                                      | **100 % de la suite**                     |
-| Pipeline vacío al terminar             | Tras terminar por HALT, instrucción ilegal o `ABORT` y drenar, los 4 latches tienen `valid = 0`                                                | **Siempre**                               |
-| Timing                                 | WNS y WHS del reporte post-implementación a la frecuencia elegida                                                                              | **≥ 0 ns**                                |
-| Latencia de un paso                    | Tiempo desde que el usuario pide un STEP hasta que la GUI muestra el estado nuevo                                                              | **< 1 s** (ver NFR-4)                     |
-
 ---
 
 ## 2. Contexto del Dominio
@@ -101,40 +88,40 @@ Esta sección fija el vocabulario técnico del proyecto. Se incluye porque el en
 
 Fuente: especificación oficial RISC-V (volumen no privilegiado, RV32I). Esta tabla es la **fuente única de verdad** para el control del procesador, el ensamblador y el golden model — se implementa una sola vez en software (US-105) y se refleja en `control_unit.v` / `alu_control.v`.
 
-| #   | Instrucción | Formato | opcode              | funct3 | funct7    | Operación                                                                             |
-| --- | ----------- | ------- | ------------------- | ------ | --------- | ------------------------------------------------------------------------------------- |
-| 1   | `add`       | R       | `0110011`           | `000`  | `0000000` | `rd = rs1 + rs2`                                                                      |
-| 2   | `sub`       | R       | `0110011`           | `000`  | `0100000` | `rd = rs1 − rs2`                                                                      |
-| 3   | `sll`       | R       | `0110011`           | `001`  | `0000000` | `rd = rs1 << rs2[4:0]`                                                                |
-| 4   | `slt`       | R       | `0110011`           | `010`  | `0000000` | `rd = (rs1 < rs2) con signo`                                                          |
-| 5   | `sltu`      | R       | `0110011`           | `011`  | `0000000` | `rd = (rs1 < rs2) sin signo`                                                          |
-| 6   | `xor`       | R       | `0110011`           | `100`  | `0000000` | `rd = rs1 ^ rs2`                                                                      |
-| 7   | `srl`       | R       | `0110011`           | `101`  | `0000000` | `rd = rs1 >> rs2[4:0]` (lógico)                                                       |
-| 8   | `sra`       | R       | `0110011`           | `101`  | `0100000` | `rd = rs1 >>> rs2[4:0]` (aritmético)                                                  |
-| 9   | `or`        | R       | `0110011`           | `110`  | `0000000` | `rd = rs1 \| rs2`                                                                     |
-| 10  | `and`       | R       | `0110011`           | `111`  | `0000000` | `rd = rs1 & rs2`                                                                      |
-| 11  | `addi`      | I       | `0010011`           | `000`  | —         | `rd = rs1 + imm`                                                                      |
-| 12  | `slti`      | I       | `0010011`           | `010`  | —         | `rd = (rs1 < imm)` con signo                                                          |
-| 13  | `sltiu`     | I       | `0010011`           | `011`  | —         | `rd = (rs1 < imm)` sin signo (imm se extiende con signo y luego se compara sin signo) |
-| 14  | `xori`      | I       | `0010011`           | `100`  | —         | `rd = rs1 ^ imm`                                                                      |
-| 15  | `ori`       | I       | `0010011`           | `110`  | —         | `rd = rs1 \| imm`                                                                     |
-| 16  | `andi`      | I       | `0010011`           | `111`  | —         | `rd = rs1 & imm`                                                                      |
-| 17  | `slli`      | I       | `0010011`           | `001`  | `0000000` | `rd = rs1 << shamt (shamt = imm[4:0])`                                                |
-| 18  | `srli`      | I       | `0010011`           | `101`  | `0000000` | `rd = rs1 >> shamt`                                                                   |
-| 19  | `srai`      | I       | `0010011`           | `101`  | `0100000` | `rd = rs1 >>> shamt`                                                                  |
-| 20  | `lb`        | I       | `0000011`           | `000`  | —         | `rd = sext(M[rs1+imm][7:0])`                                                          |
-| 21  | `lh`        | I       | `0000011`           | `001`  | —         | `rd = sext(M[rs1+imm][15:0])`                                                         |
-| 22  | `lw`        | I       | `0000011`           | `010`  | —         | `rd = M[rs1+imm][31:0]`                                                               |
-| 23  | `lbu`       | I       | `0000011`           | `100`  | —         | `rd = zext(M[rs1+imm][7:0])`                                                          |
-| 24  | `lhu`       | I       | `0000011`           | `101`  | —         | `rd = zext(M[rs1+imm][15:0])`                                                         |
-| 25  | `jalr`      | I       | `1100111`           | `000`  | —         | `rd = PC+4; PC = (rs1+imm) & ~1`                                                      |
-| 26  | `sb`        | S       | `0100011`           | `000`  | —         | `M[rs1+imm][7:0] = rs2[7:0]`                                                          |
-| 27  | `sh`        | S       | `0100011`           | `001`  | —         | `M[rs1+imm][15:0] = rs2[15:0]`                                                        |
-| 28  | `sw`        | S       | `0100011`           | `010`  | —         | `M[rs1+imm][31:0] = rs2`                                                              |
-| 29  | `beq`       | B       | `1100011`           | `000`  | —         | `si rs1 == rs2: PC = PC + imm`                                                        |
-| 30  | `bne`       | B       | `1100011`           | `001`  | —         | `si rs1 != rs2: PC = PC + imm`                                                        |
-| 31  | `lui`       | U       | `0110111`           | —      | —         | `rd = imm[31:12] << 12`                                                               |
-| 32  | `jal`       | J       | `1101111`           | —      | —         | `rd = PC+4; PC = PC + imm`                                                            |
+| #   | Instrucción | Formato | opcode                 | funct3 | funct7    | Operación                                                                                                           |
+| --- | ----------- | ------- | ---------------------- | ------ | --------- | ------------------------------------------------------------------------------------------------------------------- |
+| 1   | `add`       | R       | `0110011`              | `000`  | `0000000` | `rd = rs1 + rs2`                                                                                                    |
+| 2   | `sub`       | R       | `0110011`              | `000`  | `0100000` | `rd = rs1 − rs2`                                                                                                    |
+| 3   | `sll`       | R       | `0110011`              | `001`  | `0000000` | `rd = rs1 << rs2[4:0]`                                                                                              |
+| 4   | `slt`       | R       | `0110011`              | `010`  | `0000000` | `rd = (rs1 < rs2) con signo`                                                                                        |
+| 5   | `sltu`      | R       | `0110011`              | `011`  | `0000000` | `rd = (rs1 < rs2) sin signo`                                                                                        |
+| 6   | `xor`       | R       | `0110011`              | `100`  | `0000000` | `rd = rs1 ^ rs2`                                                                                                    |
+| 7   | `srl`       | R       | `0110011`              | `101`  | `0000000` | `rd = rs1 >> rs2[4:0]` (lógico)                                                                                     |
+| 8   | `sra`       | R       | `0110011`              | `101`  | `0100000` | `rd = rs1 >>> rs2[4:0]` (aritmético)                                                                                |
+| 9   | `or`        | R       | `0110011`              | `110`  | `0000000` | `rd = rs1 \| rs2`                                                                                                   |
+| 10  | `and`       | R       | `0110011`              | `111`  | `0000000` | `rd = rs1 & rs2`                                                                                                    |
+| 11  | `addi`      | I       | `0010011`              | `000`  | —         | `rd = rs1 + imm`                                                                                                    |
+| 12  | `slti`      | I       | `0010011`              | `010`  | —         | `rd = (rs1 < imm)` con signo                                                                                        |
+| 13  | `sltiu`     | I       | `0010011`              | `011`  | —         | `rd = (rs1 < imm)` sin signo (imm se extiende con signo y luego se compara sin signo)                               |
+| 14  | `xori`      | I       | `0010011`              | `100`  | —         | `rd = rs1 ^ imm`                                                                                                    |
+| 15  | `ori`       | I       | `0010011`              | `110`  | —         | `rd = rs1 \| imm`                                                                                                   |
+| 16  | `andi`      | I       | `0010011`              | `111`  | —         | `rd = rs1 & imm`                                                                                                    |
+| 17  | `slli`      | I       | `0010011`              | `001`  | `0000000` | `rd = rs1 << shamt (shamt = imm[4:0])`                                                                              |
+| 18  | `srli`      | I       | `0010011`              | `101`  | `0000000` | `rd = rs1 >> shamt`                                                                                                 |
+| 19  | `srai`      | I       | `0010011`              | `101`  | `0100000` | `rd = rs1 >>> shamt`                                                                                                |
+| 20  | `lb`        | I       | `0000011`              | `000`  | —         | `rd = sext(M[rs1+imm][7:0])`                                                                                        |
+| 21  | `lh`        | I       | `0000011`              | `001`  | —         | `rd = sext(M[rs1+imm][15:0])`                                                                                       |
+| 22  | `lw`        | I       | `0000011`              | `010`  | —         | `rd = M[rs1+imm][31:0]`                                                                                             |
+| 23  | `lbu`       | I       | `0000011`              | `100`  | —         | `rd = zext(M[rs1+imm][7:0])`                                                                                        |
+| 24  | `lhu`       | I       | `0000011`              | `101`  | —         | `rd = zext(M[rs1+imm][15:0])`                                                                                       |
+| 25  | `jalr`      | I       | `1100111`              | `000`  | —         | `rd = PC+4; PC = (rs1+imm) & ~1`                                                                                    |
+| 26  | `sb`        | S       | `0100011`              | `000`  | —         | `M[rs1+imm][7:0] = rs2[7:0]`                                                                                        |
+| 27  | `sh`        | S       | `0100011`              | `001`  | —         | `M[rs1+imm][15:0] = rs2[15:0]`                                                                                      |
+| 28  | `sw`        | S       | `0100011`              | `010`  | —         | `M[rs1+imm][31:0] = rs2`                                                                                            |
+| 29  | `beq`       | B       | `1100011`              | `000`  | —         | `si rs1 == rs2: PC = PC + imm`                                                                                      |
+| 30  | `bne`       | B       | `1100011`              | `001`  | —         | `si rs1 != rs2: PC = PC + imm`                                                                                      |
+| 31  | `lui`       | U       | `0110111`              | —      | —         | `rd = imm[31:12] << 12`                                                                                             |
+| 32  | `jal`       | J       | `1101111`              | —      | —         | `rd = PC+4; PC = PC + imm`                                                                                          |
 | 33  | `halt`      | ADR-004 | `0001011` (_custom-0_) | —      | —         | Detiene la búsqueda de instrucciones y drena el pipeline. Palabra canónica `0x0000000B`; se detecta solo por opcode |
 
 **Observaciones que impactan el diseño:**
@@ -146,17 +133,17 @@ Fuente: especificación oficial RISC-V (volumen no privilegiado, RV32I). Esta ta
 
 ### 2.3 Riesgos: qué los provoca en este procesador
 
-| Tipo        | Ejemplo concreto                                                         | Solución prevista                                                          |
-| ----------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
-| Estructural | IF lee instrucciones y MEM lee/escribe datos en el mismo ciclo           | Memorias separadas (Harvard)                                               |
-| Estructural | WB escribe el banco de registros mientras ID lo lee                      | Banco con escritura y lectura en el mismo ciclo + bypass interno (ADR-007) |
-| Datos       | `add x1,x2,x3` seguido de `sub x4,x1,x5`                                 | Forwarding EX/MEM → EX                                                     |
-| Datos       | `lw x1,0(x2)` seguido de `add x3,x1,x4`                                  | 1 ciclo de stall + forwarding MEM/WB → EX                                  |
-| Datos       | Store que usa como dato un registro recién calculado                     | Forwarding también sobre el operando `rs2` que va a memoria                |
-| Control     | `beq` tomado: ya se buscaron 1 o 2 instrucciones que no deben ejecutarse | Flush (penalidad según ADR-006)                                            |
-| Control     | `jal` / `jalr`                                                           | Flush; `jal` puede resolverse antes que `jalr` (ADR-006)                   |
-| Control     | HALT detrás de un branch tomado                                          | El HALT se descarta junto con el flush (ver regla R-EJ-4, sección 6)       |
-| Control     | Palabra ilegal buscada especulativamente detrás de un salto tomado       | Se descarta con el flush; no detiene nada (ADR-018)                        |
+| Tipo        | Ejemplo concreto                                                         | Solución prevista                                                                     |
+| ----------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| Estructural | IF lee instrucciones y MEM lee/escribe datos en el mismo ciclo           | Memorias separadas (Harvard)                                                          |
+| Estructural | WB escribe el banco de registros mientras ID lo lee                      | Banco con escritura y lectura en el mismo ciclo + bypass interno (ADR-007)            |
+| Datos       | `add x1,x2,x3` seguido de `sub x4,x1,x5`                                 | Forwarding EX/MEM → EX                                                                |
+| Datos       | `lw x1,0(x2)` seguido de `add x3,x1,x4`                                  | 1 ciclo de stall + forwarding MEM/WB → EX                                             |
+| Datos       | Store que usa como dato un registro recién calculado                     | Forwarding también sobre el operando `rs2` que va a memoria                           |
+| Control     | `beq` tomado: ya se buscaron 1 o 2 instrucciones que no deben ejecutarse | Flush (penalidad según ADR-006)                                                       |
+| Control     | `jal` / `jalr`                                                           | Flush; `jal` puede resolverse antes que `jalr` (ADR-006)                              |
+| Control     | HALT detrás de un branch tomado                                          | El HALT se descarta junto con el flush (ver regla R-EJ-4, sección 6)                  |
+| Control     | Palabra ilegal buscada especulativamente detrás de un salto tomado       | Se descarta con el flush; no detiene nada (ADR-018)                                   |
 | —           | Instrucción ilegal en el camino real                                     | Se trata como HALT con causa de error: drena y termina con estado `ILLEGAL` (ADR-018) |
 
 ---
@@ -177,14 +164,14 @@ En este proyecto "datos" son las estructuras de información que viajan entre la
 - **Snapshot (volcado)**: mensaje FPGA → PC con el estado completo en un ciclo.
 - **Sesión** (solo en PC): secuencia de snapshots de una ejecución, para historial y comparación.
 
-### 3.2 Contenido de los latches _(propuesta — se congela en US-103, formato de envío en ADR-017)_
+### 3.2 Contenido de los latches
 
-| Latch      | Campos de datos                                                                            | Campos de control                                                                                                             | Metadatos de depuración                             |
-| ---------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| **IF/ID**  | `pc`, `pc_plus4`, `instr`                                                                  | —                                                                                                                             | `valid`                                             |
+| Latch      | Campos de datos                                                                            | Campos de control                                                                                                             | Metadatos de depuración                                        |
+| ---------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| **IF/ID**  | `pc`, `pc_plus4`, `instr`                                                                  | —                                                                                                                             | `valid`                                                        |
 | **ID/EX**  | `pc`, `pc_plus4`, `rs1_data`, `rs2_data`, `imm`, `rs1`, `rs2`, `rd`, `funct3`, `funct7_b5` | `reg_write`, `mem_read`, `mem_write`, `result_src[1:0]` (ALU / memoria / PC+4), `alu_src`, `alu_op`, `branch`, `jump`, `jalr` | `valid`, `halt`, `illegal`, `instr` (copia, solo para mostrar) |
-| **EX/MEM** | `alu_result`, `store_data` (rs2 ya forwardeado), `rd`, `pc_plus4`, `funct3`                | `reg_write`, `mem_read`, `mem_write`, `result_src`                                                                            | `valid`, `halt`, `illegal`, `instr`                 |
-| **MEM/WB** | `alu_result`, `mem_data` (ya extendido), `pc_plus4`, `rd`                                  | `reg_write`, `result_src`                                                                                                     | `valid`, `halt`, `illegal`, `instr`                 |
+| **EX/MEM** | `alu_result`, `store_data` (rs2 ya forwardeado), `rd`, `pc_plus4`, `funct3`                | `reg_write`, `mem_read`, `mem_write`, `result_src`                                                                            | `valid`, `halt`, `illegal`, `instr`                            |
+| **MEM/WB** | `alu_result`, `mem_data` (ya extendido), `pc_plus4`, `rd`                                  | `reg_write`, `result_src`                                                                                                     | `valid`, `halt`, `illegal`, `instr`                            |
 
 **Por qué se agrega `instr` a los latches posteriores:** no la necesita el datapath, pero sin ella la GUI no puede mostrar qué instrucción está en EX. El costo es 96 flip-flops extra; se justifica en el informe como lógica de depuración (se controla con el parámetro `DEBUG_TRACE`; con `DEBUG_TRACE = 0` el campo se envía en cero para no cambiar el layout, ADR-017).
 
@@ -202,42 +189,16 @@ En este proyecto "datos" son las estructuras de información que viajan entre la
 - La DMEM (memoria distribuida, ADR-005) tiene dos puertos de lectura (núcleo y Debug Unit) y un único puerto de escritura con un multiplexor: lo usa el núcleo (stores) o la Debug Unit (limpieza de ADR-009). La Debug Unit solo accede con el núcleo detenido (`i_enable = 0`), por lo que nunca hay conflicto real. Las escrituras de limpieza no marcan el bitmap de memoria usada (ADR-008).
 - El snapshot se toma siempre con el pipeline congelado: todos los valores enviados corresponden al **mismo ciclo**.
 
-### 3.4 Modelo de datos del lado de la PC
-
-El diagrama muestra cómo se relacionan las entidades que maneja el software de la PC (sesión, snapshots y lo que contiene cada uno).
-
-```mermaid
-erDiagram
-    PROGRAMA ||--|| IMAGEN : "se ensambla en"
-    IMAGEN ||--o{ PALABRA : contiene
-    IMAGEN ||--o{ SIMBOLO : "tabla de etiquetas"
-    SESION }o--|| IMAGEN : "ejecuta"
-    SESION ||--o{ SNAPSHOT : "registra (uno por paso)"
-    SNAPSHOT ||--|{ REGISTRO : "32 valores"
-    SNAPSHOT ||--|{ LATCH : "4 latches"
-    SNAPSHOT ||--o{ PALABRA_MEMORIA : "memoria usada"
-    SNAPSHOT {
-        int ciclo
-        int pc
-        string estado_du
-    }
-    LATCH {
-        string nombre
-        bool valid
-        int instr
-    }
-```
-
 ### 3.5 Presupuesto de volcado (dimensionamiento)
 
-| Contenido                                       | Tamaño aproximado              |
-| ----------------------------------------------- | ------------------------------ |
-| 32 registros × 4 bytes                          | 128 B                          |
-| 4 latches (campo a campo, alineados a byte)     | ~81 B                          |
-| Estado de la DU, contador de ciclos, PC         | 9 B                            |
-| Señales de riesgo del ciclo                     | 1 B                            |
-| Memoria usada (depende del programa)            | 2 B + K × 6 B (dirección + dato) |
-| **Total típico**                                | **~221 B + 6·K**               |
+| Contenido                                   | Tamaño aproximado                |
+| ------------------------------------------- | -------------------------------- |
+| 32 registros × 4 bytes                      | 128 B                            |
+| 4 latches (campo a campo, alineados a byte) | ~81 B                            |
+| Estado de la DU, contador de ciclos, PC     | 9 B                              |
+| Señales de riesgo del ciclo                 | 1 B                              |
+| Memoria usada (depende del programa)        | 2 B + K × 6 B (dirección + dato) |
+| **Total típico**                            | **~221 B + 6·K**                 |
 
 La UART queda en 19200 bps 8E1 (ADR-002): con trama de 11 bits se transmiten ~1745 B/s → **~130 ms por snapshot** sin memoria, y ~3,4 ms por cada palabra usada. El caso típico cumple NFR-4 con margen; el peor caso (toda la DMEM usada, ~1,76 KB) tarda ~1 s y queda en el límite. El layout exacto está en ADR-017.
 
@@ -246,45 +207,6 @@ La UART queda en 19200 bps 8E1 (ADR-002): con trama de 11 bits se transmiten ~17
 ## 4. Arquitectura de Software
 
 Por acuerdo del equipo, esta sección no desarrolla la arquitectura interna del Verilog ni del assembly (se resuelve en US-103 con el diagrama del datapath). Solo se incluye un **mapa de módulos de hardware** para ubicar las rutas de archivos que aparecen en las historias de usuario, y la **arquitectura completa del software de PC**.
-
-### 4.1 Mapa de módulos de hardware (referencia)
-
-El diagrama muestra qué módulo contiene a cuál y qué señales cruzan entre la Debug Unit y el núcleo.
-
-```mermaid
-flowchart LR
-    PC_HOST(["PC<br/>(USB-UART)"]) -- rx --> SYNC["Sincronizador<br/>2 FF (TP2)"]
-    SYNC --> URX["uart_rx (TP2)"]
-    UTX["uart_tx (TP2)"] -- tx --> PC_HOST
-    BAUD["baudrate_gen (TP2)"] -.-> URX
-    BAUD -.-> UTX
-
-    subgraph TOP["top"]
-        direction LR
-        subgraph DU["debug_unit"]
-            CMD["du_cmd_fsm"]
-            LOAD["du_loader"]
-            EXEC["du_exec_ctrl"]
-            DUMP["du_dumper"]
-        end
-        subgraph CORE["riscv_core"]
-            IF["IF"] --> L1["IF/ID"] --> ID["ID"] --> L2["ID/EX"] --> EX["EX"] --> L3["EX/MEM"] --> MEM["MEM"] --> L4["MEM/WB"] --> WB["WB"]
-            FWD["forwarding_unit"]
-            HAZ["hazard_unit"]
-            BCMP["branch_cmp"]
-            IMEM[("instr_mem<br/>LUTRAM")]
-            DMEM[("data_mem<br/>LUTRAM + bitmap")]
-            RF[("reg_file")]
-        end
-    end
-
-    URX --> CMD
-    DUMP --> UTX
-    LOAD -- "escritura IMEM /<br/>limpieza DMEM" --> CORE
-    EXEC -- "i_enable, i_flush_all,<br/>i_stop_fetch (ABORT)" --> CORE
-    CORE -- "o_halted, o_illegal, puertos de lectura<br/>regs / latches / DMEM / bitmap" --> DUMP
-    CLK(["clock (100 MHz o MMCM)"]) --> TOP
-```
 
 **Regla de oro del hardware:** el reloj llega a todos los flip-flops por la red global (BUFG / MMCM) **sin pasar por ninguna compuerta**. `i_enable` entra como _clock enable_ a PC, latches, banco de registros, puertos de escritura de memoria y bitmap de memoria usada (ADR-001). Las lecturas de IMEM/DMEM son combinacionales (ADR-005), así que no necesitan enable. La Debug Unit y la UART **siempre** están habilitadas.
 
@@ -327,55 +249,57 @@ flowchart TD
 
 ### 4.5 Estructura de directorios de referencia (software de PC)
 
-```text
-tools/
-├── pyproject.toml
-├── riscv_toolkit/
-│   ├── isa/
-│   │   ├── instrucciones.py     # tabla de las 33 instrucciones
-│   │   ├── formatos.py          # empaquetado de campos R/I/S/B/U/J
-│   │   └── registros.py         # nombres x0..x31 y ABI (zero, ra, sp, ...)
-│   ├── assembler/
-│   │   ├── lexer.py
-│   │   ├── parser.py
-│   │   ├── assembler.py         # dos pasadas: símbolos y codificación
-│   │   ├── imagen.py            # Imagen: palabras, símbolos, mapa_lineas
-│   │   └── errores.py
-│   ├── disasm/
-│   │   └── disassembler.py
-│   ├── iss/
-│   │   └── golden_model.py      # ISS de referencia (ADR-014)
-│   ├── protocol/
-│   │   ├── comandos.py          # constantes del protocolo (ADR-003)
-│   │   ├── codec.py             # tramas, checksum
-│   │   ├── snapshot.py          # dataclasses Snapshot, LatchIFID, ...
-│   │   ├── transport.py         # interfaz Transport
-│   │   ├── serial_transport.py
-│   │   └── fake_transport.py
-│   ├── session/
-│   │   ├── debug_session.py
-│   │   ├── history.py
-│   │   ├── diff.py
-│   │   └── export.py            # exportar / reabrir sesiones (US-506)
-│   ├── cli/
-│   │   ├── main.py              # rvdbg (US-411)
-│   │   ├── rvasm.py             # ensamblador (US-108)
-│   │   └── rvsim.py             # golden model (US-107)
-│   └── ui/                      # Flet (ADR-012)
-│       ├── app.py
-│       ├── state.py             # estado de la UI, independiente de Flet
-│       └── views/
-│           ├── connection_bar.py
-│           ├── controls_view.py
-│           ├── editor_view.py
-│           ├── pipeline_view.py
-│           ├── latch_detail_view.py
-│           ├── pipeline_chart_view.py
-│           ├── registers_view.py
-│           ├── memory_view.py
-│           ├── timeline_view.py
-│           └── verify_view.py
-└── tests/
+```mermaid
+treeView-beta
+    "TP3/"
+        "tools/"
+            "pyproject.toml"
+            "riscv_toolkit/"
+                "isa/"
+                    "instrucciones.py — tabla de las 33 instrucciones"
+                    "formatos.py — empaquetado de campos R/I/S/B/U/J"
+                    "registros.py — nombres x0..x31 y ABI (zero, ra, sp, ...)"
+                "assembler/"
+                    "lexer.py"
+                    "parser.py"
+                    "assembler.py — dos pasadas: símbolos y codificación"
+                    "imagen.py — Imagen: palabras, símbolos, mapa_lineas"
+                    "errores.py"
+                "disasm/"
+                    "disassembler.py"
+                "iss/"
+                    "golden_model.py — ISS de referencia (ADR-014)"
+                "protocol/"
+                    "comandos.py — constantes del protocolo (ADR-003)"
+                    "codec.py — tramas, checksum"
+                    "snapshot.py — dataclasses Snapshot, LatchIFID, ..."
+                    "transport.py — interfaz Transport"
+                    "serial_transport.py"
+                    "fake_transport.py"
+                "session/"
+                    "debug_session.py"
+                    "history.py"
+                    "diff.py"
+                    "export.py — exportar / reabrir sesiones (US-506)"
+                "cli/"
+                    "main.py — rvdbg (US-411)"
+                    "rvasm.py — ensamblador (US-108)"
+                    "rvsim.py — golden model (US-107)"
+                "ui/ — Flet (ADR-012)"
+                    "app.py"
+                    "state.py — estado de la UI, independiente de Flet"
+                    "views/"
+                        "connection_bar.py"
+                        "controls_view.py"
+                        "editor_view.py"
+                        "pipeline_view.py"
+                        "latch_detail_view.py"
+                        "pipeline_chart_view.py"
+                        "registers_view.py"
+                        "memory_view.py"
+                        "timeline_view.py"
+                        "verify_view.py"
+            "tests/"
 ```
 
 ### 4.6 ¿Qué va en cada capa? Guía práctica
@@ -421,15 +345,16 @@ Reglas que aplican a todo el sistema. Las específicas de una historia están de
 
 - **R-DU-1.** Comandos válidos según estado (la tabla completa está en `docs/protocolo.md`):
 
-  | Comando              | Estados válidos                     |
-  | -------------------- | ----------------------------------- |
-  | `LOAD`, `RESET`      | `IDLE`, `READY`, `STEPPING`, `HALTED` (`RESET` sin programa cargado queda en `IDLE`) |
-  | `RUN`, `STEP`        | `READY`, `STEPPING`                 |
-  | `DUMP`, `DUMP_MEM`   | Todos salvo `RUN`                   |
-  | `ABORT`              | Solo `RUN`                          |
-  | `PING`               | Todos                               |
+  | Comando            | Estados válidos                                                                      |
+  | ------------------ | ------------------------------------------------------------------------------------ |
+  | `LOAD`, `RESET`    | `IDLE`, `READY`, `STEPPING`, `HALTED` (`RESET` sin programa cargado queda en `IDLE`) |
+  | `RUN`, `STEP`      | `READY`, `STEPPING`                                                                  |
+  | `DUMP`, `DUMP_MEM` | Todos salvo `RUN`                                                                    |
+  | `ABORT`            | Solo `RUN`                                                                           |
+  | `PING`             | Todos                                                                                |
 
   Un comando inválido para el estado actual responde `NACK` con código de error y no cambia nada. `HALTED`, `ILLEGAL` y `ABORTED` son motivos de terminación que viajan en el snapshot; el estado de la Debug Unit después de cualquiera de ellos es `HALTED`.
+
 - **R-DU-2.** Todo comando recibe respuesta (`ACK`, `NACK` o datos). La PC nunca queda esperando indefinidamente sin saber si el comando llegó (timeout del lado de la PC).
 - **R-DU-3.** Todo snapshot se toma con el núcleo congelado.
 - **R-DU-4.** Toda trama de datos lleva un checksum (ADR-003); una carga con checksum inválido se rechaza completa: la IMEM queda rellena con HALT y la Debug Unit vuelve a `IDLE` (ADR-009).
@@ -450,18 +375,18 @@ Reglas que aplican a todo el sistema. Las específicas de una historia están de
 
 ## 7. Requisitos No Funcionales (NFR)
 
-| ID     | Requisito                            | Medición / Umbral                                                                                                        | Severidad  |
-| ------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ | ---------- |
-| NFR-1  | Timing                               | WNS ≥ 0 y WHS ≥ 0 post-implementación a la frecuencia elegida en ADR-016                                                 | Bloqueante |
-| NFR-2  | Reloj intacto                        | 0 instancias de lógica en la red de reloj (verificable en el esquemático post-síntesis y con `report_clock_networks`)    | Bloqueante |
-| NFR-3  | Recursos                             | Diseño completo < 50 % de LUTs del XC7A35T, incluidas las memorias en LUTRAM (ADR-005), con margen para depuración con ILA | Media      |
+| ID     | Requisito                            | Medición / Umbral                                                                                                                                                                                     | Severidad  |
+| ------ | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| NFR-1  | Timing                               | WNS ≥ 0 y WHS ≥ 0 post-implementación a la frecuencia elegida en ADR-016                                                                                                                              | Bloqueante |
+| NFR-2  | Reloj intacto                        | 0 instancias de lógica en la red de reloj (verificable en el esquemático post-síntesis y con `report_clock_networks`)                                                                                 | Bloqueante |
+| NFR-3  | Recursos                             | Diseño completo < 50 % de LUTs del XC7A35T, incluidas las memorias en LUTRAM (ADR-005), con margen para depuración con ILA                                                                            | Media      |
 | NFR-4  | Latencia de un paso                  | STEP + recepción del snapshot + actualización de la GUI < 1 s con el volcado típico (sección 3.5). Con toda la DMEM usada el volcado tarda ~1 s a 19200 bps (ADR-002): queda en el límite y se acepta | Alta       |
-| NFR-5  | Tiempo de carga                      | Ensamblar y cargar un programa de 256 instrucciones < 3 s                                                                | Alta       |
-| NFR-6  | Robustez del enlace                  | Una trama corrupta (paridad o checksum inválidos) o incompleta (timeout) nunca deja la Debug Unit colgada (R-DU-4 a R-DU-6); un loop infinito se corta con `ABORT` (ADR-010) | Bloqueante |
-| NFR-7  | Portabilidad del software de PC      | Funciona en Linux (Mint/Ubuntu) y Windows 10+, detectando el puerto serie de la Basys 3                                  | Alta       |
-| NFR-8  | Reproducibilidad del proyecto Vivado | El proyecto se regenera desde el repositorio con un solo script, sin pasos manuales en la GUI de Vivado                  | Alta       |
-| NFR-9  | Desarrollo sin placa                 | Toda la interfaz de PC es usable en modo `--fake` (sin FPGA)                                                             | Media      |
-| NFR-10 | Cobertura de tests Python            | ≥ 80 % general; ≥ 95 % en `isa/`, `assembler/` y `protocol/codec.py`                                                     | Alta       |
+| NFR-5  | Tiempo de carga                      | Ensamblar y cargar un programa de 256 instrucciones < 3 s                                                                                                                                             | Alta       |
+| NFR-6  | Robustez del enlace                  | Una trama corrupta (paridad o checksum inválidos) o incompleta (timeout) nunca deja la Debug Unit colgada (R-DU-4 a R-DU-6); un loop infinito se corta con `ABORT` (ADR-010)                          | Bloqueante |
+| NFR-7  | Portabilidad del software de PC      | Funciona en Linux (Mint/Ubuntu) y Windows 10+, detectando el puerto serie de la Basys 3                                                                                                               | Alta       |
+| NFR-8  | Reproducibilidad del proyecto Vivado | El repositorio contiene solo fuentes (`TP3/hw/rtl`, `TP3/hw/constraints`, `.xci` si hay IP): cualquiera arma su proyecto local en Vivado 2025.2 agregando esos archivos según el `TP3/README.md`, y ningún archivo generado por Vivado se versiona | Alta       |
+| NFR-9  | Desarrollo sin placa                 | Toda la interfaz de PC es usable en modo `--fake` (sin FPGA)                                                                                                                                          | Media      |
+| NFR-10 | Cobertura de tests Python            | ≥ 80 % general; ≥ 95 % en `isa/`, `assembler/` y `protocol/codec.py`                                                                                                                                  | Alta       |
 
 ---
 
@@ -469,28 +394,28 @@ Reglas que aplican a todo el sistema. Las específicas de una historia están de
 
 Cada decisión no trivial tiene su ADR en [`docs/adr/`](adr/) con la estructura Contexto → Decisión → Alternativas consideradas → Consecuencias (positivas / negativas / restricciones). Esta tabla es solo un índice: **el detalle y la justificación viven en cada ADR** y no se duplican acá, para que no diverjan. El índice también está en [`docs/adr/README.md`](adr/README.md).
 
-| ID                                                           | Título                                                    | Estado    | Decisión                                                                                         | Bloquea                |
-| ------------------------------------------------------------ | --------------------------------------------------------- | --------- | ------------------------------------------------------------------------------------------------ | ---------------------- |
-| [ADR-001](adr/ADR-001-control-ejecucion-clock-enable.md)     | Control de ejecución por clock enable                     | Aprobado  | `i_enable` como CE de todo el núcleo; sin clock gating ni BUFGCE                                 | Hito 2                 |
-| [ADR-002](adr/ADR-002-parametros-uart.md)                    | Parámetros de la UART                                     | Aprobado  | 19200 bps 8E1 como el TP2; paridad validada; `COUNT_MAX` calculado desde `CLK_FREQ_HZ` y `BAUD`  | US-401                 |
-| [ADR-003](adr/ADR-003-protocolo-debug-unit.md)               | Protocolo de comandos de la Debug Unit                    | Aprobado  | Comando ASCII de 1 byte + args binarios; respuestas en trama con XOR; `RUN` = `ACK` + snapshot   | US-104, Hito 4, US-410 |
-| [ADR-004](adr/ADR-004-codificacion-halt.md)                  | Codificación de HALT                                      | Aprobado  | Opcode _custom-0_, palabra `0x0000000B`; detección por opcode                                    | US-105, US-203         |
-| [ADR-005](adr/ADR-005-implementacion-memorias.md)            | Implementación de memorias                                | Aprobado  | Memoria distribuida (LUTRAM) inferida, lectura combinacional                                     | US-204                 |
-| [ADR-006](adr/ADR-006-resolucion-saltos.md)                  | Punto de resolución de saltos                             | Aprobado  | `jal` en ID; `beq`/`bne`/`jalr` en EX; predict not-taken                                         | US-205 a US-207, US-303 |
-| [ADR-007](adr/ADR-007-riesgos-datos-banco-registros.md)      | Estrategia de riesgos de datos y banco de registros       | Aprobado  | Forwarding completo + stall load-use; bypass interno en el banco                                 | US-202, Hito 3         |
-| [ADR-008](adr/ADR-008-tamanos-memoria-memoria-usada.md)      | Tamaños de memoria y definición de "memoria usada"        | Aprobado  | IMEM y DMEM de 256 palabras; bitmap de escritas + contador; comando `DUMP_MEM`                   | US-204, US-405, US-409 |
-| [ADR-009](adr/ADR-009-politica-reprogramacion.md)            | Política de reprogramación                                | Aprobado  | `LOAD` limpia todo y rellena la IMEM con HALT; `RESET` igual sin tocar la IMEM                   | US-403                 |
-| [ADR-010](adr/ADR-010-comportamiento-sin-halt.md)            | Comportamiento sin instrucción de parada                  | Aprobado  | Relleno con HALT + HALT automático del ensamblador + `ABORT`                                     | US-406                 |
-| [ADR-011](adr/ADR-011-lenguaje-software-pc.md)               | Lenguaje del software de PC                               | Aprobado  | Python 3.11+; identificadores mixtos (dominio en español, términos técnicos en inglés)           | Hito 1 (US-105)        |
-| [ADR-012](adr/ADR-012-tecnologia-interfaz-usuario.md)        | Tecnología de la interfaz de usuario                      | Aprobado  | Flet (GUI) + CLI                                                                                 | Hito 5                 |
-| [ADR-013](adr/ADR-013-ensamblador-propio.md)                 | Ensamblador propio vs. toolchain externo                  | Aprobado  | Propio de dos pasadas; pseudo `nop`, `mv`, `j`, `ret`; GNU solo para validar                     | US-106, US-108         |
-| [ADR-014](adr/ADR-014-golden-model.md)                       | Simulador de referencia (golden model)                    | Aprobado  | ISS propio en Python + firma en memoria                                                          | US-107, US-305, US-506 |
-| [ADR-015](adr/ADR-015-simulador-hdl-verificacion.md)         | Simulador HDL y framework de verificación                 | Aprobado  | xsim + testbenches Verilog-2001 portables; CI con Python e Icarus                                | US-102                 |
-| [ADR-016](adr/ADR-016-frecuencia-generacion-reloj.md)        | Frecuencia de operación y generación de reloj             | Propuesto | Criterio fijado (barrido, WNS ≥ 0,3 ns); se aprueba con los datos de US-601/602                  | Hito 6                 |
-| [ADR-017](adr/ADR-017-formato-volcado-latches.md)            | Formato de volcado de latches                             | Aprobado  | Campo a campo alineado a byte, flags agrupados, LE; `instr` con `DEBUG_TRACE`                    | US-103, US-405         |
-| [ADR-018](adr/ADR-018-desalineados-endianness-ilegales.md)   | Accesos desalineados, endianness e instrucciones ilegales | Aprobado  | Little-endian; desalineado = ignorar bits bajos; ilegal = detener con estado `ILLEGAL`           | US-203, US-204         |
-| [ADR-019](adr/ADR-019-reutilizacion-alu-tp1.md)              | Reutilización de la ALU del TP1                           | Aprobado  | ALU nueva de 32 bits con `alu_ctrl` de 4 bits; comparador de branches aparte                     | US-201, US-207         |
-| [ADR-020](adr/ADR-020-version-vivado.md)                     | Versión de Vivado de referencia                           | Aprobado  | Vivado 2025.2                                                                                    | US-101                 |
+| ID                                                         | Título                                                    | Estado    | Decisión                                                                                        | Bloquea                 |
+| ---------------------------------------------------------- | --------------------------------------------------------- | --------- | ----------------------------------------------------------------------------------------------- | ----------------------- |
+| [ADR-001](adr/ADR-001-control-ejecucion-clock-enable.md)   | Control de ejecución por clock enable                     | Aprobado  | `i_enable` como CE de todo el núcleo; sin clock gating ni BUFGCE                                | Hito 2                  |
+| [ADR-002](adr/ADR-002-parametros-uart.md)                  | Parámetros de la UART                                     | Aprobado  | 19200 bps 8E1 como el TP2; paridad validada; `COUNT_MAX` calculado desde `CLK_FREQ_HZ` y `BAUD` | US-401                  |
+| [ADR-003](adr/ADR-003-protocolo-debug-unit.md)             | Protocolo de comandos de la Debug Unit                    | Aprobado  | Comando ASCII de 1 byte + args binarios; respuestas en trama con XOR; `RUN` = `ACK` + snapshot  | US-104, Hito 4, US-410  |
+| [ADR-004](adr/ADR-004-codificacion-halt.md)                | Codificación de HALT                                      | Aprobado  | Opcode _custom-0_, palabra `0x0000000B`; detección por opcode                                   | US-105, US-203          |
+| [ADR-005](adr/ADR-005-implementacion-memorias.md)          | Implementación de memorias                                | Aprobado  | Memoria distribuida (LUTRAM) inferida, lectura combinacional                                    | US-204                  |
+| [ADR-006](adr/ADR-006-resolucion-saltos.md)                | Punto de resolución de saltos                             | Aprobado  | `jal` en ID; `beq`/`bne`/`jalr` en EX; predict not-taken                                        | US-205 a US-207, US-303 |
+| [ADR-007](adr/ADR-007-riesgos-datos-banco-registros.md)    | Estrategia de riesgos de datos y banco de registros       | Aprobado  | Forwarding completo + stall load-use; bypass interno en el banco                                | US-202, Hito 3          |
+| [ADR-008](adr/ADR-008-tamanos-memoria-memoria-usada.md)    | Tamaños de memoria y definición de "memoria usada"        | Aprobado  | IMEM y DMEM de 256 palabras; bitmap de escritas + contador; comando `DUMP_MEM`                  | US-204, US-405, US-409  |
+| [ADR-009](adr/ADR-009-politica-reprogramacion.md)          | Política de reprogramación                                | Aprobado  | `LOAD` limpia todo y rellena la IMEM con HALT; `RESET` igual sin tocar la IMEM                  | US-403                  |
+| [ADR-010](adr/ADR-010-comportamiento-sin-halt.md)          | Comportamiento sin instrucción de parada                  | Aprobado  | Relleno con HALT + HALT automático del ensamblador + `ABORT`                                    | US-406                  |
+| [ADR-011](adr/ADR-011-lenguaje-software-pc.md)             | Lenguaje del software de PC                               | Aprobado  | Python 3.11+; identificadores mixtos (dominio en español, términos técnicos en inglés)          | Hito 1 (US-105)         |
+| [ADR-012](adr/ADR-012-tecnologia-interfaz-usuario.md)      | Tecnología de la interfaz de usuario                      | Aprobado  | Flet (GUI) + CLI                                                                                | Hito 5                  |
+| [ADR-013](adr/ADR-013-ensamblador-propio.md)               | Ensamblador propio vs. toolchain externo                  | Aprobado  | Propio de dos pasadas; pseudo `nop`, `mv`, `j`, `ret`; GNU solo para validar                    | US-106, US-108          |
+| [ADR-014](adr/ADR-014-golden-model.md)                     | Simulador de referencia (golden model)                    | Aprobado  | ISS propio en Python + firma en memoria                                                         | US-107, US-305, US-506  |
+| [ADR-015](adr/ADR-015-simulador-hdl-verificacion.md)       | Simulador HDL y framework de verificación                 | Aprobado  | xsim + testbenches Verilog-2001 portables; CI con Python e Icarus                               | US-102                  |
+| [ADR-016](adr/ADR-016-frecuencia-generacion-reloj.md)      | Frecuencia de operación y generación de reloj             | Propuesto | Criterio fijado (barrido, WNS ≥ 0,3 ns); se aprueba con los datos de US-601/602                 | Hito 6                  |
+| [ADR-017](adr/ADR-017-formato-volcado-latches.md)          | Formato de volcado de latches                             | Aprobado  | Campo a campo alineado a byte, flags agrupados, LE; `instr` con `DEBUG_TRACE`                   | US-103, US-405          |
+| [ADR-018](adr/ADR-018-desalineados-endianness-ilegales.md) | Accesos desalineados, endianness e instrucciones ilegales | Aprobado  | Little-endian; desalineado = ignorar bits bajos; ilegal = detener con estado `ILLEGAL`          | US-203, US-204          |
+| [ADR-019](adr/ADR-019-reutilizacion-alu-tp1.md)            | Reutilización de la ALU del TP1                           | Aprobado  | ALU nueva de 32 bits con `alu_ctrl` de 4 bits; comparador de branches aparte                    | US-201, US-207          |
+| [ADR-020](adr/ADR-020-version-vivado.md)                   | Versión de Vivado de referencia                           | Aprobado  | Vivado 2025.2                                                                                   | US-101                  |
 
 ---
 
@@ -515,49 +440,6 @@ Cada decisión no trivial tiene su ADR en [`docs/adr/`](adr/) con la estructura 
 - **Pista A — Hardware del núcleo:** Hitos 2 y 3.
 - **Pista B — Debug Unit y software de PC:** Hito 4 (contra un núcleo _stub_ hasta que el real esté listo, y con el software de control contra `FakeTransport`) y Hito 5.
 
-El contrato que permite trabajar en paralelo son **US-103** (interfaz del núcleo y contenido de latches) y **US-104** (protocolo). Por eso son Urgentes.
-
-Dependencias principales entre historias (las no obvias):
-
-```mermaid
-flowchart LR
-    US103["US-103<br/>Diseño datapath"] --> US201["US-201..204, US-210<br/>Bloques"]
-    US104["US-104<br/>Protocolo"] --> US402["US-402<br/>Intérprete de comandos"]
-    US408["US-408<br/>core_stub + host UART"] --> US402
-    US104 --> US410["US-410<br/>Codec + transporte"]
-    US105["US-105<br/>Tabla ISA"] --> US106["US-106<br/>Ensamblador"]
-    US106 --> US108["US-108<br/>Desensamblador + salidas"]
-    US105 --> US107["US-107<br/>Golden model"]
-    US201 --> US209["US-209<br/>Integración núcleo"]
-    US209 --> US301["US-301..303<br/>Riesgos"]
-    US301 --> US305["US-305<br/>Verificación cruzada"]
-    US107 --> US305
-    US107 --> US410
-    US410 --> US411["US-411<br/>Sesión + CLI"]
-    US402 --> US404["US-404<br/>Continuo / paso"]
-    US402 --> US409["US-409<br/>DUMP_MEM"]
-    US209 --> US404
-    US404 --> US407["US-407<br/>E2E en placa"]
-    US405["US-405<br/>Volcado"] --> US407
-    US411 --> US407
-    US411 --> US503["US-503..507<br/>GUI"]
-    US407 --> US601["US-601<br/>Timing"]
-    US503 --> US605["US-605<br/>Demo"]
-    US601 --> US604["US-604<br/>Informe"]
-```
-
-**Cronograma de referencia** (semanas relativas al inicio; se ajusta cuando se fije la fecha de entrega):
-
-| Semana | Pista A (núcleo)                                              | Pista B (Debug Unit / PC)                                                                                   |
-| ------ | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| 1–2    | Hito 1 completo (ambos): repo, CI, diseño, protocolo, tabla ISA | Hito 1: ensamblador, desensamblador y golden model                                                        |
-| 3–5    | Hito 2: bloques, etapas y flush básico                         | US-408, US-401, US-402 (UART y comandos) contra núcleo _stub_; US-410/411 (codec, CLI) con `FakeTransport` |
-| 6–7    | Hito 3: riesgos + suite de pruebas                            | US-403/404/405/406/409 (carga, ejecución, volcado, `DUMP_MEM`)                                              |
-| 8      | Integración núcleo real + Debug Unit (ambos): US-407 en placa | ←                                                                                                           |
-| 9–10   | Hito 6: US-601/602/603 (timing)                               | Hito 5: GUI (US-503 a US-507)                                                                               |
-| 11     | US-604 informe (ambos)                                        | US-604 informe (ambos)                                                                                      |
-| 12     | Buffer, correcciones, US-605 ensayo de defensa                | ←                                                                                                           |
-
 ---
 
 ### Hito 1 — Fundaciones, Diseño y Toolchain de Ensamblado (v0.1)
@@ -570,49 +452,53 @@ flowchart LR
 
 ### Épica H1-E1: Repositorio y Entorno de Verificación
 
-#### US-101 — Estructura del Repositorio y Proyecto Vivado Reproducible
+#### US-101 — Estructura de `TP3/` y Migración del TP2
 
 - **Esfuerzo:** S (1–2 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** ADR-020
-- **Objetivo Funcional:** que cualquiera de los dos integrantes pueda clonar el repositorio y regenerar el proyecto de Vivado idéntico con un solo comando, sin subir archivos generados.
-- **Narrativa:** Como integrante del equipo, quiero regenerar el proyecto de Vivado desde un script, para no pelear con conflictos de archivos `.xpr` ni con carpetas generadas en Git.
+- **Objetivo Funcional:** dejar la carpeta `TP3/` con la estructura del proyecto y los módulos reutilizados del TP2, de forma que cualquiera de los dos integrantes pueda clonar el repositorio, crear su proyecto local en Vivado agregando los fuentes, y sintetizar sin subir archivos generados.
+- **Narrativa:** Como integrante del equipo, quiero una estructura de carpetas clara y un repositorio que solo tenga fuentes, para agregar los archivos a Vivado sin pelear con conflictos de `.xpr` ni con carpetas generadas en Git.
 - **Detalle técnico:**
-  - **Estructura de carpetas** según sección 12 (`hw/`, `asm/`, `tools/`, `docs/`).
-  - **Migración del TP2:** copiar `baudrate_gen.v`, `uart_rx*.v`, `uart_tx*.v` a `hw/rtl/uart/` sin modificaciones (los cambios de ADR-002 van en US-401). `uart_interface.v` y la `alu.v` del TP1 se guardan en `hw/rtl/legacy/` solo como referencia, fuera del proyecto de síntesis.
-  - **`Makefile`** en la raíz con objetivos `project`, `sim`, `build`, `program`, `test-py`.
-  - **`hw/scripts/create_project.tcl`:** crea el proyecto desde cero; verifica al arrancar que la versión de Vivado sea **2025.2** (`version -short`) y aborta con un mensaje claro si no coincide (ADR-020).
-  - **`CHANGELOG.md`** con la sección `[Unreleased]` (sección 15) y **`docs/catalogo-criticidad.md`** inicializado desde la sección 11.
-  - **`.gitignore`** para Vivado (`*.runs/`, `*.cache/`, `*.sim/`, `*.hw/`, `*.ip_user_files/`, `.Xil/`, `*.jou`, `*.log`, `*.str`) y Python (`__pycache__/`, `.venv/`).
+  - **Estructura de carpetas** dentro de `TP3/` según sección 12 (`hw/`, `asm/`, `tools/`). La documentación sigue en `docs/` y la configuración de GitHub en `.github/`, ambas en la raíz del repositorio.
+  - **Proyecto de Vivado local, no versionado:** cada integrante crea su proyecto en Vivado 2025.2 (ADR-020) y agrega a mano los fuentes de `TP3/hw/rtl/` (salvo `legacy/`) y `TP3/hw/constraints/basys3.xdc`. El `TP3/README.md` indica qué carpetas agregar, cuál es el `top` y la versión de Vivado.
+  - **Migración del TP2:** copiar `baudrate_gen.v`, `uart_rx*.v`, `uart_tx*.v` a `TP3/hw/rtl/uart/` sin modificaciones (los cambios de ADR-002 van en US-401). `uart_interface.v` y la `alu.v` del TP1 se guardan en `TP3/hw/rtl/legacy/` solo como referencia, fuera del proyecto de síntesis.
+  - **`TP3/Makefile`** con objetivos `sim`, `sim-all` y `test-py` (se completan en US-102). La síntesis, implementación y programación de la placa se hacen desde la GUI de Vivado.
+  - **`TP3/CHANGELOG.md`** con la sección `[Unreleased]` (sección 15) y **`docs/catalogo-criticidad.md`** inicializado desde la sección 11.
+  - **`.gitignore`** (el de la raíz) con las reglas de Vivado (`*.xpr`, `*.runs/`, `*.cache/`, `*.sim/`, `*.hw/`, `*.ip_user_files/`, `*.gen/`, `.Xil/`, `*.jou`, `*.log`, `*.str`) y de Python (`__pycache__/`, `.venv/`).
 - **Criterios de Aceptación:**
-  - **AC1.** `make project` en una copia limpia genera el proyecto sin errores con Vivado 2025.2, y aborta con un mensaje claro con cualquier otra versión (ADR-020).
+  - **AC1.** Siguiendo el `TP3/README.md`, un proyecto nuevo en Vivado 2025.2 con los fuentes de `TP3/hw/` sintetiza sin errores.
   - **AC2.** Ningún archivo generado por Vivado aparece en `git status` después de sintetizar.
-  - **AC3.** El `top` del TP2 (UART + ALU) sintetiza con el nuevo proyecto y sigue funcionando en placa (prueba de humo de la migración).
-  - **AC4.** El `README.md` indica versión de Vivado, versión de Python y los comandos del `Makefile`.
+  - **AC3.** El `top` del TP2 (UART + ALU) sintetiza con los fuentes migrados y sigue funcionando en placa (prueba de humo de la migración).
+  - **AC4.** El `TP3/README.md` indica versión de Vivado, versión de Python, qué fuentes agregar al proyecto y los comandos del `Makefile`.
   - **AC5.** ~~Plantilla y ADR-001 a ADR-020 en `docs/adr/`~~ — ya cumplido antes de iniciar el desarrollo.
-- **Testing Mínimo:** _manual:_ clonar en la otra máquina del equipo y ejecutar `make project && make build`.
+- **Testing Mínimo:** _manual:_ clonar en la otra máquina del equipo, crear el proyecto siguiendo el README y sintetizar.
 - **Archivos a crear:**
 
-```text
-Makefile
-README.md
-.gitignore
-hw/
-├── rtl/
-│   ├── uart/
-│   │   ├── baudrate_gen.v       ✅ (TP2)
-│   │   ├── uart_rx.v            ✅ (TP2)
-│   │   ├── uart_rx_fsm.v        ✅ (TP2)
-│   │   ├── uart_rx_datapath.v   ✅ (TP2)
-│   │   ├── uart_tx.v            ✅ (TP2)
-│   │   ├── uart_tx_fsm.v        ✅ (TP2)
-│   │   └── uart_tx_datapath.v   ✅ (TP2)
-│   └── legacy/
-│       ├── alu_tp1.v            ✅ (solo referencia)
-│       └── uart_interface.v     ✅ (solo referencia, se reemplaza)
-├── constraints/basys3.xdc
-└── scripts/create_project.tcl
-CHANGELOG.md
-docs/catalogo-criticidad.md
-docs/adr/                    ✅ (ya creado: template + ADR-001..020)
+```mermaid
+treeView-beta
+    "tps-arqui/"
+        "TP3/"
+            "Makefile"
+            "README.md"
+            "CHANGELOG.md"
+            "hw/"
+                "rtl/"
+                    "uart/"
+                        "baudrate_gen.v — ✅ (TP2)"
+                        "uart_rx.v — ✅ (TP2)"
+                        "uart_rx_fsm.v — ✅ (TP2)"
+                        "uart_rx_datapath.v — ✅ (TP2)"
+                        "uart_tx.v — ✅ (TP2)"
+                        "uart_tx_fsm.v — ✅ (TP2)"
+                        "uart_tx_datapath.v — ✅ (TP2)"
+                    "legacy/"
+                        "alu_tp1.v — ✅ (solo referencia)"
+                        "uart_interface.v — ✅ (solo referencia, se reemplaza)"
+                "constraints/"
+                    "basys3.xdc"
+        ".gitignore — (actualizado)"
+        "docs/"
+            "catalogo-criticidad.md"
+            "adr/ — ✅ (ya creado: template + ADR-001..020)"
 ```
 
 #### US-102 — Infraestructura de Simulación y Testbenches Autoverificables
@@ -638,11 +524,21 @@ docs/adr/                    ✅ (ya creado: template + ADR-001..020)
 - **Testing Mínimo:** la propia prueba de loopback.
 - **Archivos a crear:**
 
-```text
-hw/tb/common/tb_utils.vh
-hw/tb/uart/tb_uart_loopback.v
-hw/scripts/sim.tcl
-.github/workflows/ci.yml
+```mermaid
+treeView-beta
+    "tps-arqui/"
+        "TP3/"
+            "hw/"
+                "tb/"
+                    "common/"
+                        "tb_utils.vh"
+                    "uart/"
+                        "tb_uart_loopback.v"
+                "scripts/"
+                    "sim.tcl"
+        ".github/"
+            "workflows/"
+                "ci.yml"
 ```
 
 ### Épica H1-E2: Diseño y Contratos
@@ -669,14 +565,17 @@ hw/scripts/sim.tcl
 - **Testing Mínimo:** revisión cruzada (cada integrante revisa lo que diseñó el otro).
 - **Archivos a crear:**
 
-```text
-docs/diagramas/
-├── datapath_pipeline.drawio
-├── datapath_pipeline.svg
-└── debug_unit_fsm.svg
-docs/interfaces/
-├── riscv_core.md
-└── tabla_control.md
+```mermaid
+treeView-beta
+    "tps-arqui/"
+        "docs/"
+            "diagramas/"
+                "datapath_pipeline.drawio"
+                "datapath_pipeline.svg"
+                "debug_unit_fsm.svg"
+            "interfaces/"
+                "riscv_core.md"
+                "tabla_control.md"
 ```
 
 #### US-104 — Especificación del Protocolo de la Debug Unit
@@ -698,13 +597,27 @@ docs/interfaces/
 - **Testing Mínimo:** los ejemplos de bytes del documento se convierten en casos de prueba de US-410 y del testbench de US-402; `test_du_defs_sync.py`.
 - **Archivos a crear:**
 
-```text
-docs/protocolo.md
-docs/diagramas/secuencia_protocolo.md   (Mermaid)
-tools/riscv_toolkit/protocol/comandos.py
-tools/scripts/gen_du_defs.py
-hw/rtl/debug/du_defs.vh                 (generado y versionado)
-tools/tests/protocol/test_du_defs_sync.py
+```mermaid
+treeView-beta
+    "tps-arqui/"
+        "docs/"
+            "protocolo.md"
+            "diagramas/"
+                "secuencia_protocolo.md — (Mermaid)"
+        "TP3/"
+            "tools/"
+                "riscv_toolkit/"
+                    "protocol/"
+                        "comandos.py"
+                "scripts/"
+                    "gen_du_defs.py"
+                "tests/"
+                    "protocol/"
+                        "test_du_defs_sync.py"
+            "hw/"
+                "rtl/"
+                    "debug/"
+                        "du_defs.vh — (generado y versionado)"
 ```
 
 ### Épica H1-E3: Toolchain de Ensamblado y Referencia
@@ -726,13 +639,19 @@ tools/tests/protocol/test_du_defs_sync.py
 - **Testing Mínimo:** _unitarias_ (`tests/isa/test_formatos.py`): ida y vuelta por formato; casos borde de inmediatos; `test_tabla_completa` verifica que existen exactamente 33 mnemónicos.
 - **Archivos a crear:**
 
-```text
-tools/riscv_toolkit/isa/
-├── __init__.py
-├── instrucciones.py
-├── formatos.py
-└── registros.py
-tools/tests/isa/test_formatos.py
+```mermaid
+treeView-beta
+    "TP3/"
+        "tools/"
+            "riscv_toolkit/"
+                "isa/"
+                    "__init__.py"
+                    "instrucciones.py"
+                    "formatos.py"
+                    "registros.py"
+            "tests/"
+                "isa/"
+                    "test_formatos.py"
 ```
 
 #### US-106 — Ensamblador de Dos Pasadas
@@ -765,20 +684,26 @@ tools/tests/isa/test_formatos.py
   - _Contraste:_ `test_vs_gnu.py` compara contra un archivo de referencia `.hex` generado una vez con el toolchain GNU y versionado en `tools/tests/fixtures/` (así los tests no requieren tener GNU instalado).
 - **Archivos a crear:**
 
-```text
-tools/riscv_toolkit/assembler/
-├── __init__.py
-├── lexer.py
-├── parser.py
-├── assembler.py
-├── imagen.py
-└── errores.py
-tools/tests/assembler/
-├── test_lexer.py
-├── test_parser.py
-├── test_assembler.py
-├── test_vs_gnu.py
-└── fixtures/todas_las_instrucciones.{asm,hex}
+```mermaid
+treeView-beta
+    "TP3/"
+        "tools/"
+            "riscv_toolkit/"
+                "assembler/"
+                    "__init__.py"
+                    "lexer.py"
+                    "parser.py"
+                    "assembler.py"
+                    "imagen.py"
+                    "errores.py"
+            "tests/"
+                "assembler/"
+                    "test_lexer.py"
+                    "test_parser.py"
+                    "test_assembler.py"
+                    "test_vs_gnu.py"
+                    "fixtures/"
+                        "todas_las_instrucciones.{asm,hex}"
 ```
 
 #### US-108 — Desensamblador, Formatos de Salida y CLI `rvasm`
@@ -799,14 +724,23 @@ tools/tests/assembler/
 - **Testing Mínimo:** `test_disassembler.py` (ida y vuelta de las 33 + ilegales), `test_salidas.py`.
 - **Archivos a crear:**
 
-```text
-tools/riscv_toolkit/assembler/salidas.py
-tools/riscv_toolkit/disasm/
-├── __init__.py
-└── disassembler.py
-tools/riscv_toolkit/cli/rvasm.py
-tools/tests/assembler/test_salidas.py
-tools/tests/disasm/test_disassembler.py
+```mermaid
+treeView-beta
+    "TP3/"
+        "tools/"
+            "riscv_toolkit/"
+                "assembler/"
+                    "salidas.py"
+                "disasm/"
+                    "__init__.py"
+                    "disassembler.py"
+                "cli/"
+                    "rvasm.py"
+            "tests/"
+                "assembler/"
+                    "test_salidas.py"
+                "disasm/"
+                    "test_disassembler.py"
 ```
 
 #### US-107 — Simulador de Referencia (Golden Model)
@@ -831,12 +765,19 @@ tools/tests/disasm/test_disassembler.py
 - **Testing Mínimo:** _unitarias_ (`tests/iss/test_golden_model.py`) por instrucción; _integración:_ ensamblar y correr los programas de `asm/tests/` verificando la firma de éxito.
 - **Archivos a crear:**
 
-```text
-tools/riscv_toolkit/iss/
-├── __init__.py
-└── golden_model.py
-tools/riscv_toolkit/cli/rvsim.py
-tools/tests/iss/test_golden_model.py
+```mermaid
+treeView-beta
+    "TP3/"
+        "tools/"
+            "riscv_toolkit/"
+                "iss/"
+                    "__init__.py"
+                    "golden_model.py"
+                "cli/"
+                    "rvsim.py"
+            "tests/"
+                "iss/"
+                    "test_golden_model.py"
 ```
 
 ---
@@ -876,12 +817,19 @@ tools/tests/iss/test_golden_model.py
 - **Testing Mínimo:** `tb_alu.v` (tabla de vectores con los casos de AC1, ≥ 40 vectores), `tb_alu_control.v` (todas las combinaciones válidas de `alu_op`/`funct3`/`funct7_b5`).
 - **Archivos a crear:**
 
-```text
-hw/rtl/core/alu.v
-hw/rtl/core/alu_control.v
-hw/rtl/core/alu_defs.vh
-hw/tb/core/tb_alu.v
-hw/tb/core/tb_alu_control.v
+```mermaid
+treeView-beta
+    "TP3/"
+        "hw/"
+            "rtl/"
+                "core/"
+                    "alu.v"
+                    "alu_control.v"
+                    "alu_defs.vh"
+            "tb/"
+                "core/"
+                    "tb_alu.v"
+                    "tb_alu_control.v"
 ```
 
 #### US-202 — Banco de Registros con Bypass y Puerto de Depuración
@@ -904,9 +852,16 @@ hw/tb/core/tb_alu_control.v
 - **Testing Mínimo:** `tb_reg_file.v` con los 5 casos de AC.
 - **Archivos a crear:**
 
-```text
-hw/rtl/core/reg_file.v
-hw/tb/core/tb_reg_file.v
+```mermaid
+treeView-beta
+    "TP3/"
+        "hw/"
+            "rtl/"
+                "core/"
+                    "reg_file.v"
+            "tb/"
+                "core/"
+                    "tb_reg_file.v"
 ```
 
 #### US-203 — Unidad de Control Principal y Generador de Inmediatos
@@ -933,12 +888,21 @@ hw/tb/core/tb_reg_file.v
 - **Testing Mínimo:** `tb_control_unit.v` (una verificación por instrucción + casos ilegales), `tb_imm_gen.v` (vectores cruzados con Python).
 - **Archivos a crear:**
 
-```text
-hw/rtl/core/control_unit.v
-hw/rtl/core/imm_gen.v
-hw/tb/core/tb_control_unit.v
-hw/tb/core/tb_imm_gen.v
-tools/scripts/gen_imm_vectors.py
+```mermaid
+treeView-beta
+    "TP3/"
+        "hw/"
+            "rtl/"
+                "core/"
+                    "control_unit.v"
+                    "imm_gen.v"
+            "tb/"
+                "core/"
+                    "tb_control_unit.v"
+                    "tb_imm_gen.v"
+        "tools/"
+            "scripts/"
+                "gen_imm_vectors.py"
 ```
 
 #### US-204 — Memorias de Instrucciones y Datos (LUTRAM) con Bitmap de Memoria Usada
@@ -963,11 +927,18 @@ tools/scripts/gen_imm_vectors.py
 - **Testing Mínimo:** `tb_instr_mem.v` (escritura por la Debug Unit, lectura combinacional), `tb_data_mem.v` (AC2–AC5).
 - **Archivos a crear:**
 
-```text
-hw/rtl/core/instr_mem.v
-hw/rtl/core/data_mem.v
-hw/tb/core/tb_instr_mem.v
-hw/tb/core/tb_data_mem.v
+```mermaid
+treeView-beta
+    "TP3/"
+        "hw/"
+            "rtl/"
+                "core/"
+                    "instr_mem.v"
+                    "data_mem.v"
+            "tb/"
+                "core/"
+                    "tb_instr_mem.v"
+                    "tb_data_mem.v"
 ```
 
 #### US-210 — Alineación de Stores y Extensión de Loads (Byte y Media Palabra)
@@ -988,10 +959,17 @@ hw/tb/core/tb_data_mem.v
 - **Testing Mínimo:** `tb_load_store_align.v` conectado a `data_mem` (AC1–AC5).
 - **Archivos a crear:**
 
-```text
-hw/rtl/core/store_align.v
-hw/rtl/core/load_extend.v
-hw/tb/core/tb_load_store_align.v
+```mermaid
+treeView-beta
+    "TP3/"
+        "hw/"
+            "rtl/"
+                "core/"
+                    "store_align.v"
+                    "load_extend.v"
+            "tb/"
+                "core/"
+                    "tb_load_store_align.v"
 ```
 
 ### Épica H2-E2: Etapas, Latches e Integración del Núcleo
@@ -1015,10 +993,17 @@ hw/tb/core/tb_load_store_align.v
 - **Testing Mínimo:** `tb_if_stage.v` con la IMEM precargada.
 - **Archivos a crear:**
 
-```text
-hw/rtl/core/if_stage.v
-hw/rtl/core/if_id_reg.v
-hw/tb/core/tb_if_stage.v
+```mermaid
+treeView-beta
+    "TP3/"
+        "hw/"
+            "rtl/"
+                "core/"
+                    "if_stage.v"
+                    "if_id_reg.v"
+            "tb/"
+                "core/"
+                    "tb_if_stage.v"
 ```
 
 #### US-206 — Etapa ID y Latch ID/EX
@@ -1037,10 +1022,17 @@ hw/tb/core/tb_if_stage.v
 - **Testing Mínimo:** `tb_id_stage.v`.
 - **Archivos a crear:**
 
-```text
-hw/rtl/core/id_stage.v
-hw/rtl/core/id_ex_reg.v
-hw/tb/core/tb_id_stage.v
+```mermaid
+treeView-beta
+    "TP3/"
+        "hw/"
+            "rtl/"
+                "core/"
+                    "id_stage.v"
+                    "id_ex_reg.v"
+            "tb/"
+                "core/"
+                    "tb_id_stage.v"
 ```
 
 #### US-207 — Etapa EX y Latch EX/MEM
@@ -1066,12 +1058,19 @@ hw/tb/core/tb_id_stage.v
 - **Testing Mínimo:** `tb_ex_stage.v`, `tb_branch_cmp.v`.
 - **Archivos a crear:**
 
-```text
-hw/rtl/core/ex_stage.v
-hw/rtl/core/branch_cmp.v
-hw/rtl/core/ex_mem_reg.v
-hw/tb/core/tb_ex_stage.v
-hw/tb/core/tb_branch_cmp.v
+```mermaid
+treeView-beta
+    "TP3/"
+        "hw/"
+            "rtl/"
+                "core/"
+                    "ex_stage.v"
+                    "branch_cmp.v"
+                    "ex_mem_reg.v"
+            "tb/"
+                "core/"
+                    "tb_ex_stage.v"
+                    "tb_branch_cmp.v"
 ```
 
 #### US-208 — Etapas MEM y WB, y Latch MEM/WB
@@ -1091,11 +1090,18 @@ hw/tb/core/tb_branch_cmp.v
 - **Testing Mínimo:** `tb_mem_wb.v`.
 - **Archivos a crear:**
 
-```text
-hw/rtl/core/mem_stage.v
-hw/rtl/core/mem_wb_reg.v
-hw/rtl/core/wb_stage.v
-hw/tb/core/tb_mem_wb.v
+```mermaid
+treeView-beta
+    "TP3/"
+        "hw/"
+            "rtl/"
+                "core/"
+                    "mem_stage.v"
+                    "mem_wb_reg.v"
+                    "wb_stage.v"
+            "tb/"
+                "core/"
+                    "tb_mem_wb.v"
 ```
 
 #### US-209 — Integración del Núcleo, HALT y Drenado del Pipeline
@@ -1121,18 +1127,27 @@ hw/tb/core/tb_mem_wb.v
 - **Testing Mínimo:** `tb_core_programs.v` parametrizado por programa; `make sim-programs` corre toda la carpeta.
 - **Archivos a crear:**
 
-```text
-hw/rtl/core/riscv_core.v
-hw/tb/core/tb_core_programs.v
-asm/tests/h2/
-├── r_type.asm
-├── i_arith.asm
-├── shifts.asm
-├── loads_stores.asm
-├── lui.asm
-├── branches.asm
-├── jumps.asm
-└── illegal.asm
+```mermaid
+treeView-beta
+    "TP3/"
+        "hw/"
+            "rtl/"
+                "core/"
+                    "riscv_core.v"
+            "tb/"
+                "core/"
+                    "tb_core_programs.v"
+        "asm/"
+            "tests/"
+                "h2/"
+                    "r_type.asm"
+                    "i_arith.asm"
+                    "shifts.asm"
+                    "loads_stores.asm"
+                    "lui.asm"
+                    "branches.asm"
+                    "jumps.asm"
+                    "illegal.asm"
 ```
 
 ---
@@ -1170,9 +1185,16 @@ asm/tests/h2/
 - **Testing Mínimo:** `tb_forwarding_unit.v` (vectores de AC1–AC4) + programas de US-304.
 - **Archivos a crear:**
 
-```text
-hw/rtl/core/forwarding_unit.v
-hw/tb/core/tb_forwarding_unit.v
+```mermaid
+treeView-beta
+    "TP3/"
+        "hw/"
+            "rtl/"
+                "core/"
+                    "forwarding_unit.v"
+            "tb/"
+                "core/"
+                    "tb_forwarding_unit.v"
 ```
 
 #### US-302 — Detección de Load-Use y Stall
@@ -1193,9 +1215,16 @@ hw/tb/core/tb_forwarding_unit.v
 - **Testing Mínimo:** `tb_hazard_unit.v` + programas de US-304.
 - **Archivos a crear:**
 
-```text
-hw/rtl/core/hazard_unit.v
-hw/tb/core/tb_hazard_unit.v
+```mermaid
+treeView-beta
+    "TP3/"
+        "hw/"
+            "rtl/"
+                "core/"
+                    "hazard_unit.v"
+            "tb/"
+                "core/"
+                    "tb_hazard_unit.v"
 ```
 
 #### US-303 — Riesgos de Control: Flush en Branches y Saltos
@@ -1221,9 +1250,14 @@ hw/tb/core/tb_hazard_unit.v
 - **Testing Mínimo:** programas de US-304 (grupo control).
 - **Archivos a crear:**
 
-```text
-hw/rtl/core/hazard_unit.v   (extensión)
-hw/rtl/core/riscv_core.v    (conexión de flush/stall)
+```mermaid
+treeView-beta
+    "TP3/"
+        "hw/"
+            "rtl/"
+                "core/"
+                    "hazard_unit.v — (extensión)"
+                    "riscv_core.v — (conexión de flush/stall)"
 ```
 
 ### Épica H3-E2: Suite de Programas y Verificación Cruzada
@@ -1249,13 +1283,20 @@ hw/rtl/core/riscv_core.v    (conexión de flush/stall)
 - **Testing Mínimo:** `tools/tests/test_asm_suite.py` ensambla y corre toda la carpeta en el golden model.
 - **Archivos a crear:**
 
-```text
-asm/
-├── README.md             (convención de firma y dirección de resultado)
-├── tests/instr/*.asm
-├── tests/hazards/*.asm
-├── demos/*.asm
-└── special/*.asm
+```mermaid
+treeView-beta
+    "TP3/"
+        "asm/"
+            "README.md — (convención de firma y dirección de resultado)"
+            "tests/"
+                "instr/"
+                    "*.asm"
+                "hazards/"
+                    "*.asm"
+            "demos/"
+                "*.asm"
+            "special/"
+                "*.asm"
 ```
 
 #### US-305 — Verificación Cruzada Automática Núcleo vs. Golden Model
@@ -1275,9 +1316,17 @@ asm/
 - **Testing Mínimo:** el propio script sobre la suite; una prueba negativa (romper a propósito el forwarding) debe hacer fallar programas de `hazards/`.
 - **Archivos a crear:**
 
-```text
-tools/scripts/verify_rtl.py
-docs/informe/datos/cpi.csv
+```mermaid
+treeView-beta
+    "tps-arqui/"
+        "TP3/"
+            "tools/"
+                "scripts/"
+                    "verify_rtl.py"
+        "docs/"
+            "informe/"
+                "datos/"
+                    "cpi.csv"
 ```
 
 ---
@@ -1312,12 +1361,20 @@ docs/informe/datos/cpi.csv
 - **Testing Mínimo:** `tb_uart_loopback.v` con `COUNT_MAX` calculado y un caso de paridad errónea; prueba en placa con `tools/scripts/uart_echo_test.py`.
 - **Archivos a crear:**
 
-```text
-hw/rtl/top.v                       (nuevo)
-hw/rtl/uart/baudrate_gen.v         ⚠️ (TP2, se parametriza)
-hw/rtl/uart/uart_rx.v              ⚠️ (TP2, se agrega o_parity_err)
-hw/constraints/basys3.xdc          (false path + LEDs)
-tools/scripts/uart_echo_test.py
+```mermaid
+treeView-beta
+    "TP3/"
+        "hw/"
+            "rtl/"
+                "top.v — (nuevo)"
+                "uart/"
+                    "baudrate_gen.v — ⚠️ (TP2, se parametriza)"
+                    "uart_rx.v — ⚠️ (TP2, se agrega o_parity_err)"
+            "constraints/"
+                "basys3.xdc — (false path + LEDs)"
+        "tools/"
+            "scripts/"
+                "uart_echo_test.py"
 ```
 
 #### US-408 — Infraestructura de Pruebas de la Pista B: Núcleo Stub y Modelo de UART de PC
@@ -1335,10 +1392,16 @@ tools/scripts/uart_echo_test.py
 - **Testing Mínimo:** `tb_uart_host_model.v`.
 - **Archivos a crear:**
 
-```text
-hw/tb/debug/core_stub.v
-hw/tb/common/uart_host_model.vh
-hw/tb/debug/tb_uart_host_model.v
+```mermaid
+treeView-beta
+    "TP3/"
+        "hw/"
+            "tb/"
+                "debug/"
+                    "core_stub.v"
+                    "tb_uart_host_model.v"
+                "common/"
+                    "uart_host_model.vh"
 ```
 
 #### US-402 — Intérprete de Comandos de la Debug Unit
@@ -1366,12 +1429,18 @@ hw/tb/debug/tb_uart_host_model.v
 - **Testing Mínimo:** `tb_du_cmd_fsm.v` con `uart_host_model.vh` y `core_stub` (US-408).
 - **Archivos a crear:**
 
-```text
-hw/rtl/debug/
-├── debug_unit.v
-├── du_cmd_fsm.v
-└── du_tx_mux.v
-hw/tb/debug/tb_du_cmd_fsm.v
+```mermaid
+treeView-beta
+    "TP3/"
+        "hw/"
+            "rtl/"
+                "debug/"
+                    "debug_unit.v"
+                    "du_cmd_fsm.v"
+                    "du_tx_mux.v"
+            "tb/"
+                "debug/"
+                    "tb_du_cmd_fsm.v"
 ```
 
 ### Épica H4-E2: Carga y Ejecución
@@ -1400,9 +1469,16 @@ hw/tb/debug/tb_du_cmd_fsm.v
 - **Testing Mínimo:** `tb_du_loader.v` (AC1–AC4 en simulación con el núcleo real cuando esté disponible).
 - **Archivos a crear:**
 
-```text
-hw/rtl/debug/du_loader.v
-hw/tb/debug/tb_du_loader.v
+```mermaid
+treeView-beta
+    "TP3/"
+        "hw/"
+            "rtl/"
+                "debug/"
+                    "du_loader.v"
+            "tb/"
+                "debug/"
+                    "tb_du_loader.v"
 ```
 
 #### US-404 — Modos de Ejecución Continuo y Paso a Paso
@@ -1426,9 +1502,16 @@ hw/tb/debug/tb_du_loader.v
 - **Testing Mínimo:** `tb_du_exec_ctrl.v` con el núcleo real y un programa de la suite, comparando `RUN` vs. `STEP`.
 - **Archivos a crear:**
 
-```text
-hw/rtl/debug/du_exec_ctrl.v
-hw/tb/debug/tb_du_exec_ctrl.v
+```mermaid
+treeView-beta
+    "TP3/"
+        "hw/"
+            "rtl/"
+                "debug/"
+                    "du_exec_ctrl.v"
+            "tb/"
+                "debug/"
+                    "tb_du_exec_ctrl.v"
 ```
 
 #### US-406 — Programas sin Instrucción de Parada y Comando ABORT
@@ -1449,10 +1532,18 @@ hw/tb/debug/tb_du_exec_ctrl.v
 - **Testing Mínimo:** `tb_du_abort.v`; prueba manual en placa.
 - **Archivos a crear:**
 
-```text
-hw/rtl/debug/du_exec_ctrl.v   (extensión)
-hw/rtl/core/riscv_core.v      (i_stop_fetch)
-hw/tb/debug/tb_du_abort.v
+```mermaid
+treeView-beta
+    "TP3/"
+        "hw/"
+            "rtl/"
+                "debug/"
+                    "du_exec_ctrl.v — (extensión)"
+                "core/"
+                    "riscv_core.v — (i_stop_fetch)"
+            "tb/"
+                "debug/"
+                    "tb_du_abort.v"
 ```
 
 ### Épica H4-E3: Volcado de Estado y Validación en Placa
@@ -1481,10 +1572,20 @@ hw/tb/debug/tb_du_abort.v
 - **Testing Mínimo:** `tb_du_dumper.v` con decodificador del snapshot en el testbench; en Python, `test_snapshot.py` (US-410) decodifica una captura real de la simulación.
 - **Archivos a crear:**
 
-```text
-hw/rtl/debug/du_dumper.v
-hw/tb/debug/tb_du_dumper.v
-tools/tests/fixtures/snapshot_sim.bin
+```mermaid
+treeView-beta
+    "TP3/"
+        "hw/"
+            "rtl/"
+                "debug/"
+                    "du_dumper.v"
+            "tb/"
+                "debug/"
+                    "tb_du_dumper.v"
+        "tools/"
+            "tests/"
+                "fixtures/"
+                    "snapshot_sim.bin"
 ```
 
 #### US-409 — Comando `DUMP_MEM` (Lectura de un Rango de la DMEM)
@@ -1504,10 +1605,17 @@ tools/tests/fixtures/snapshot_sim.bin
 - **Testing Mínimo:** `tb_du_dump_mem.v` con `core_stub` y `uart_host_model`.
 - **Archivos a crear:**
 
-```text
-hw/rtl/debug/du_dumper.v      (extensión)
-hw/rtl/debug/du_cmd_fsm.v     (extensión)
-hw/tb/debug/tb_du_dump_mem.v
+```mermaid
+treeView-beta
+    "TP3/"
+        "hw/"
+            "rtl/"
+                "debug/"
+                    "du_dumper.v — (extensión)"
+                    "du_cmd_fsm.v — (extensión)"
+            "tb/"
+                "debug/"
+                    "tb_du_dump_mem.v"
 ```
 
 #### US-407 — Validación de Extremo a Extremo en Placa
@@ -1528,9 +1636,17 @@ hw/tb/debug/tb_du_dump_mem.v
 - **Testing Mínimo:** el propio script.
 - **Archivos a crear:**
 
-```text
-tools/scripts/verify_board.py
-docs/informe/datos/resultados_placa.md
+```mermaid
+treeView-beta
+    "tps-arqui/"
+        "TP3/"
+            "tools/"
+                "scripts/"
+                    "verify_board.py"
+        "docs/"
+            "informe/"
+                "datos/"
+                    "resultados_placa.md"
 ```
 
 ### Épica H4-E4: Software de Control en la PC
@@ -1557,17 +1673,22 @@ docs/informe/datos/resultados_placa.md
 - **Testing Mínimo:** `test_codec.py`, `test_snapshot.py`, `test_fake_transport.py`.
 - **Archivos a crear:**
 
-```text
-tools/riscv_toolkit/protocol/
-├── codec.py
-├── snapshot.py
-├── transport.py
-├── serial_transport.py
-└── fake_transport.py
-tools/tests/protocol/
-├── test_codec.py
-├── test_snapshot.py
-└── test_fake_transport.py
+```mermaid
+treeView-beta
+    "TP3/"
+        "tools/"
+            "riscv_toolkit/"
+                "protocol/"
+                    "codec.py"
+                    "snapshot.py"
+                    "transport.py"
+                    "serial_transport.py"
+                    "fake_transport.py"
+            "tests/"
+                "protocol/"
+                    "test_codec.py"
+                    "test_snapshot.py"
+                    "test_fake_transport.py"
 ```
 
 #### US-411 — Sesión de Depuración y CLI
@@ -1589,16 +1710,22 @@ tools/tests/protocol/
 - **Testing Mínimo:** `test_debug_session.py` con `FakeTransport` y con un transporte que inyecta errores; `test_history.py` y `test_diff.py`.
 - **Archivos a crear:**
 
-```text
-tools/riscv_toolkit/session/
-├── debug_session.py
-├── history.py
-└── diff.py
-tools/riscv_toolkit/cli/main.py
-tools/tests/session/
-├── test_debug_session.py
-├── test_history.py
-└── test_diff.py
+```mermaid
+treeView-beta
+    "TP3/"
+        "tools/"
+            "riscv_toolkit/"
+                "session/"
+                    "debug_session.py"
+                    "history.py"
+                    "diff.py"
+                "cli/"
+                    "main.py"
+            "tests/"
+                "session/"
+                    "test_debug_session.py"
+                    "test_history.py"
+                    "test_diff.py"
 ```
 
 ---
@@ -1637,15 +1764,22 @@ tools/tests/session/
 - **Testing Mínimo:** manual guiado con checklist en `docs/manual/checklist_ui.md`; pruebas automáticas de la lógica de habilitación de botones si el framework lo permite.
 - **Archivos a crear:**
 
-```text
-tools/riscv_toolkit/ui/
-├── app.py
-├── state.py              (estado de la UI, independiente del framework)
-└── views/
-    ├── connection_bar.py
-    ├── editor_view.py
-    └── controls_view.py
-docs/manual/checklist_ui.md
+```mermaid
+treeView-beta
+    "tps-arqui/"
+        "TP3/"
+            "tools/"
+                "riscv_toolkit/"
+                    "ui/"
+                        "app.py"
+                        "state.py — (estado de la UI, independiente del framework)"
+                        "views/"
+                            "connection_bar.py"
+                            "editor_view.py"
+                            "controls_view.py"
+        "docs/"
+            "manual/"
+                "checklist_ui.md"
 ```
 
 #### US-504 — Vista del Pipeline y Detalle de Latches
@@ -1656,18 +1790,20 @@ docs/manual/checklist_ui.md
 - **Detalle técnico (`ui/views/pipeline_view.py`, `latch_detail_view.py`):**
   - **De dónde sale cada columna.** El snapshot no tiene un latch "antes" de IF, así que el mapeo es:
 
-    | Columna | Fuente de la instrucción mostrada                                                        |
-    | ------- | ---------------------------------------------------------------------------------------- |
-    | IF      | `Snapshot.pc` buscado en la `Imagen` cargada (la IMEM no cambia durante la ejecución)     |
-    | ID      | `instr` de IF/ID                                                                         |
-    | EX      | `instr` de ID/EX                                                                         |
-    | MEM     | `instr` de EX/MEM                                                                        |
-    | WB      | `instr` de MEM/WB                                                                        |
+    | Columna | Fuente de la instrucción mostrada                                                     |
+    | ------- | ------------------------------------------------------------------------------------- |
+    | IF      | `Snapshot.pc` buscado en la `Imagen` cargada (la IMEM no cambia durante la ejecución) |
+    | ID      | `instr` de IF/ID                                                                      |
+    | EX      | `instr` de ID/EX                                                                      |
+    | MEM     | `instr` de EX/MEM                                                                     |
+    | WB      | `instr` de MEM/WB                                                                     |
 
     Este mapeo se documenta en el código y en el manual, porque es fácil confundirlo.
+
   - **5 columnas** IF / ID / EX / MEM / WB con: instrucción desensamblada (US-108), PC, y marca visual de **burbuja** si `valid = 0`; las instrucciones con `halt` o `illegal` se marcan distinto.
   - **Indicadores del ciclo** (de `RiesgosCiclo`): stall (IF e ID congelados, burbuja en EX), flush (instrucciones anuladas tachadas, según `flush_if_id`/`flush_id_ex`), forwarding (flecha o etiqueta "A ← EX/MEM", "B ← MEM/WB" sobre EX).
   - **Detalle de latch:** al seleccionar un latch se muestran todos sus campos con nombre (tabla campo / valor hex / valor decimal).
+
 - **Criterios de Aceptación:**
   - **AC1.** En `load_use.asm`, en el ciclo del stall la vista muestra la burbuja en EX y la misma instrucción en ID durante dos ciclos.
   - **AC2.** En `branch_taken.asm`, las instrucciones anuladas se ven marcadas como flush.
@@ -1677,10 +1813,15 @@ docs/manual/checklist_ui.md
 - **Testing Mínimo:** manual con los programas de `asm/tests/hazards/`; captura de pantalla de cada caso para el informe; test unitario del mapeo columna → instrucción.
 - **Archivos a crear:**
 
-```text
-tools/riscv_toolkit/ui/views/
-├── pipeline_view.py
-└── latch_detail_view.py
+```mermaid
+treeView-beta
+    "TP3/"
+        "tools/"
+            "riscv_toolkit/"
+                "ui/"
+                    "views/"
+                        "pipeline_view.py"
+                        "latch_detail_view.py"
 ```
 
 #### US-507 — Carta de Pipeline (Instrucciones × Ciclos)
@@ -1699,9 +1840,17 @@ tools/riscv_toolkit/ui/views/
 - **Testing Mínimo:** test unitario que arma la carta desde un historial sintético; captura para el informe.
 - **Archivos a crear:**
 
-```text
-tools/riscv_toolkit/ui/views/pipeline_chart_view.py
-tools/tests/ui/test_pipeline_chart.py
+```mermaid
+treeView-beta
+    "TP3/"
+        "tools/"
+            "riscv_toolkit/"
+                "ui/"
+                    "views/"
+                        "pipeline_chart_view.py"
+            "tests/"
+                "ui/"
+                    "test_pipeline_chart.py"
 ```
 
 ### Épica H5-E2: Estado Arquitectónico e Historial
@@ -1721,9 +1870,15 @@ tools/tests/ui/test_pipeline_chart.py
 - **Testing Mínimo:** manual (el test de `diff.py` ya existe desde US-411).
 - **Archivos a crear:**
 
-```text
-tools/riscv_toolkit/ui/views/registers_view.py
-tools/riscv_toolkit/ui/views/memory_view.py
+```mermaid
+treeView-beta
+    "TP3/"
+        "tools/"
+            "riscv_toolkit/"
+                "ui/"
+                    "views/"
+                        "registers_view.py"
+                        "memory_view.py"
 ```
 
 #### US-506 — Historial de Pasos, Exportación y Verificación contra Golden Model
@@ -1742,11 +1897,20 @@ tools/riscv_toolkit/ui/views/memory_view.py
 - **Testing Mínimo:** `test_export_import.py` (la navegación del historial ya se prueba en `test_history.py`, US-411); manual para la vista.
 - **Archivos a crear:**
 
-```text
-tools/riscv_toolkit/ui/views/timeline_view.py
-tools/riscv_toolkit/ui/views/verify_view.py
-tools/riscv_toolkit/session/export.py
-tools/tests/session/test_export_import.py
+```mermaid
+treeView-beta
+    "TP3/"
+        "tools/"
+            "riscv_toolkit/"
+                "ui/"
+                    "views/"
+                        "timeline_view.py"
+                        "verify_view.py"
+                "session/"
+                    "export.py"
+            "tests/"
+                "session/"
+                    "test_export_import.py"
 ```
 
 ---
@@ -1777,9 +1941,16 @@ tools/tests/session/test_export_import.py
 - **Testing Mínimo:** no aplica (análisis).
 - **Archivos a crear:**
 
-```text
-docs/informe/timing.md
-hw/reports/timing_*.rpt
+```mermaid
+treeView-beta
+    "tps-arqui/"
+        "docs/"
+            "informe/"
+                "timing.md"
+        "TP3/"
+            "hw/"
+                "reports/"
+                    "timing_*.rpt"
 ```
 
 #### US-602 — Frecuencia Óptima y Clock Wizard
@@ -1804,11 +1975,21 @@ hw/reports/timing_*.rpt
 - **Testing Mínimo:** `verify_board.py` completo.
 - **Archivos a crear:**
 
-```text
-hw/scripts/freq_sweep.tcl
-hw/ip/clk_wiz_0/clk_wiz_0.xci   (solo si se usa MMCM)
-hw/rtl/top.v                    (instancia del MMCM, solo si se usa)
-docs/adr/ADR-016-frecuencia-generacion-reloj.md   (aprobado)
+```mermaid
+treeView-beta
+    "tps-arqui/"
+        "TP3/"
+            "hw/"
+                "scripts/"
+                    "freq_sweep.tcl"
+                "ip/"
+                    "clk_wiz_0/"
+                        "clk_wiz_0.xci — (solo si se usa MMCM)"
+                "rtl/"
+                    "top.v — (instancia del MMCM, solo si se usa)"
+        "docs/"
+            "adr/"
+                "ADR-016-frecuencia-generacion-reloj.md — (aprobado)"
 ```
 
 ### Épica H6-E2: Métricas del Sistema
@@ -1828,10 +2009,17 @@ docs/adr/ADR-016-frecuencia-generacion-reloj.md   (aprobado)
   - **AC2.** Cada tabla tiene al menos un párrafo de interpretación (qué ocupa más y por qué).
 - **Archivos a crear:**
 
-```text
-docs/informe/metricas.md
-hw/reports/utilization_hier.rpt
-hw/reports/power.rpt
+```mermaid
+treeView-beta
+    "tps-arqui/"
+        "docs/"
+            "informe/"
+                "metricas.md"
+        "TP3/"
+            "hw/"
+                "reports/"
+                    "utilization_hier.rpt"
+                    "power.rpt"
 ```
 
 ### Épica H6-E3: Documentación y Defensa
@@ -1859,14 +2047,18 @@ hw/reports/power.rpt
   - **AC4.** El manual permite a alguien ajeno al equipo instalar y usar la GUI.
 - **Archivos a crear:**
 
-```text
-docs/informe/
-├── informe.md
-├── timing.md
-├── metricas.md
-├── datos/
-└── img/
-docs/manual/usuario.md
+```mermaid
+treeView-beta
+    "tps-arqui/"
+        "docs/"
+            "informe/"
+                "informe.md"
+                "timing.md"
+                "metricas.md"
+                "datos/"
+                "img/"
+            "manual/"
+                "usuario.md"
 ```
 
 #### US-605 — Preparación de la Demostración y la Defensa
@@ -1883,9 +2075,14 @@ docs/manual/usuario.md
   - **AC2.** Las sesiones de plan B están en el repositorio.
 - **Archivos a crear:**
 
-```text
-docs/defensa/guion.md
-docs/defensa/sesiones/*.json
+```mermaid
+treeView-beta
+    "tps-arqui/"
+        "docs/"
+            "defensa/"
+                "guion.md"
+                "sesiones/"
+                    "*.json"
 ```
 
 ---
@@ -1924,19 +2121,19 @@ Una historia de usuario se considera **Hecha** cuando cumple **todos** los punto
 
 Un módulo es **crítico** si cumple al menos uno: decide qué instrucción se ejecuta o se anula; decide qué dato se escribe en estado arquitectónico; o es parte del contrato PC ↔ FPGA.
 
-| Módulo                                   | Criticidad | Justificación                                           | Cobertura objetivo                   |
-| ---------------------------------------- | ---------- | ------------------------------------------------------- | ------------------------------------ |
-| `forwarding_unit.v`, `hazard_unit.v`     | Crítico    | Un error produce resultados silenciosamente incorrectos | 100 % de los casos de US-301/302/303 |
+| Módulo                                                   | Criticidad | Justificación                                           | Cobertura objetivo                   |
+| -------------------------------------------------------- | ---------- | ------------------------------------------------------- | ------------------------------------ |
+| `forwarding_unit.v`, `hazard_unit.v`                     | Crítico    | Un error produce resultados silenciosamente incorrectos | 100 % de los casos de US-301/302/303 |
 | `if_stage.v`, `ex_stage.v`, `branch_cmp.v` (redirección) | Crítico    | Controlan el flujo del programa                         | Todos los programas de `hazards/`    |
-| `control_unit.v`                         | Crítico    | Decide qué es HALT y qué es ilegal (ADR-004, ADR-018)   | 33 instrucciones + casos ilegales    |
-| `data_mem.v` (bitmap y contador)         | Crítico    | Define la "memoria usada" que se vuelca (ADR-008)       | AC de US-204                         |
-| `store_align.v`, `load_extend.v`         | Crítico    | 16 combinaciones tamaño × offset × signo                | 100 % de combinaciones               |
-| `du_exec_ctrl.v`                         | Crítico    | Garantiza R-EJ-2 (un paso = un ciclo)                   | AC de US-404                         |
-| `du_loader.v`                            | Crítico    | Reprogramación y política de limpieza                   | AC de US-403                         |
-| `du_cmd_fsm.v`                           | Crítico    | Nunca debe quedar colgada (NFR-6)                        | AC de US-402 (timeout y paridad)     |
-| `isa/`, `assembler/`                     | Crítico    | Un error de codificación invalida todas las pruebas     | ≥ 95 % + contraste con GNU           |
-| `protocol/codec.py`, `du_dumper.v`       | Crítico    | Contrato de observabilidad                              | ≥ 95 % + captura real                |
-| `ui/`                                    | No crítico | Solo presentación                                       | Checklist manual                     |
+| `control_unit.v`                                         | Crítico    | Decide qué es HALT y qué es ilegal (ADR-004, ADR-018)   | 33 instrucciones + casos ilegales    |
+| `data_mem.v` (bitmap y contador)                         | Crítico    | Define la "memoria usada" que se vuelca (ADR-008)       | AC de US-204                         |
+| `store_align.v`, `load_extend.v`                         | Crítico    | 16 combinaciones tamaño × offset × signo                | 100 % de combinaciones               |
+| `du_exec_ctrl.v`                                         | Crítico    | Garantiza R-EJ-2 (un paso = un ciclo)                   | AC de US-404                         |
+| `du_loader.v`                                            | Crítico    | Reprogramación y política de limpieza                   | AC de US-403                         |
+| `du_cmd_fsm.v`                                           | Crítico    | Nunca debe quedar colgada (NFR-6)                       | AC de US-402 (timeout y paridad)     |
+| `isa/`, `assembler/`                                     | Crítico    | Un error de codificación invalida todas las pruebas     | ≥ 95 % + contraste con GNU           |
+| `protocol/codec.py`, `du_dumper.v`                       | Crítico    | Contrato de observabilidad                              | ≥ 95 % + captura real                |
+| `ui/`                                                    | No crítico | Solo presentación                                       | Checklist manual                     |
 
 **Ubicación del catálogo vivo:** `docs/catalogo-criticidad.md` (se inicializa en US-101 y se revisa al cierre de cada hito).
 
@@ -1944,48 +2141,55 @@ Un módulo es **crítico** si cumple al menos uno: decide qué instrucción se e
 
 ## 12. Estructura de Repositorio Final
 
-```text
-tps-arqui/
-├── .github/workflows/ci.yml    # ruff + pytest + Icarus (ADR-015)
-├── Makefile                    # project, sim, sim-all, verify, build, program, test-py
-├── README.md                   # versiones de herramientas y cómo empezar
-├── CHANGELOG.md
-├── hw/
-│   ├── rtl/
-│   │   ├── top.v               # UART + Debug Unit + núcleo + MMCM
-│   │   ├── uart/               # reutilizado del TP2 (baudrate_gen, uart_rx*, uart_tx*)
-│   │   ├── core/               # riscv_core y todas sus etapas, latches y unidades
-│   │   ├── debug/              # debug_unit y submódulos du_*
-│   │   └── legacy/             # alu del TP1 y uart_interface (solo referencia, fuera de síntesis)
-│   ├── tb/
-│   │   ├── common/             # tb_utils.vh, uart_host_model.vh
-│   │   ├── uart/
-│   │   ├── core/
-│   │   └── debug/              # incluye core_stub.v
-│   ├── constraints/basys3.xdc
-│   ├── ip/                     # .xci del Clock Wizard, solo si ADR-016 lo requiere
-│   ├── scripts/                # create_project.tcl, build.tcl, sim.tcl (xsim/icarus), freq_sweep.tcl
-│   └── reports/                # reportes generados por build.tcl (versionados en releases)
-├── asm/
-│   ├── README.md               # convención de firma de resultado
-│   ├── tests/                  # h2/, instr/, hazards/ (firma en 0x3FC)
-│   ├── demos/                  # programas para la defensa
-│   └── special/                # no_halt, infinite_loop, illegal
-├── tools/                      # software de PC (Python)
-│   ├── pyproject.toml
-│   ├── riscv_toolkit/          # isa, assembler, disasm, iss, protocol, session, cli, ui
-│   ├── scripts/                # verify_rtl.py, verify_board.py, uart_echo_test.py, gen_du_defs.py, gen_*.py
-│   └── tests/
-└── docs/
-    ├── PRD-pipeline-riscv.md   # este documento
-    ├── adr/                    # ADR-001 … ADR-020 + README (índice) + template
-    ├── interfaces/             # riscv_core.md, tabla_control.md
-    ├── protocolo.md
-    ├── diagramas/
-    ├── catalogo-criticidad.md
-    ├── informe/
-    ├── manual/
-    └── defensa/
+Todo el código del TP3 vive en la carpeta **`TP3/`** del repositorio `tps-arqui` (al lado de `TP1/` y `TP2/`). La documentación (`docs/`) y la configuración de GitHub (`.github/`, incluido el CI) quedan en la raíz. **Las rutas que aparecen en las historias de usuario (`hw/…`, `asm/…`, `tools/…`) son relativas a `TP3/`**; las que empiezan con `docs/` o `.github/` son relativas a la raíz.
+
+```mermaid
+treeView-beta
+    "tps-arqui/"
+        ".github/"
+            "workflows/"
+                "ci.yml — ruff + pytest + Icarus (ADR-015)"
+        "TP3/"
+            "Makefile — sim, sim-all, verify, test-py"
+            "README.md — versiones de herramientas y cómo empezar"
+            "CHANGELOG.md"
+            "hw/"
+                "rtl/"
+                    "top.v — UART + Debug Unit + núcleo + MMCM"
+                    "uart/ — reutilizado del TP2 (baudrate_gen, uart_rx*, uart_tx*)"
+                    "core/ — riscv_core y todas sus etapas, latches y unidades"
+                    "debug/ — debug_unit y submódulos du_*"
+                    "legacy/ — alu del TP1 y uart_interface (solo referencia, fuera de síntesis)"
+                "tb/"
+                    "common/ — tb_utils.vh, uart_host_model.vh"
+                    "uart/"
+                    "core/"
+                    "debug/ — incluye core_stub.v"
+                "constraints/"
+                    "basys3.xdc"
+                "ip/ — .xci del Clock Wizard, solo si ADR-016 lo requiere"
+                "scripts/ — sim.tcl (xsim/icarus), freq_sweep.tcl"
+                "reports/ — reportes exportados desde Vivado (timing, utilización, potencia)"
+            "asm/"
+                "README.md — convención de firma de resultado"
+                "tests/ — h2/, instr/, hazards/ (firma en 0x3FC)"
+                "demos/ — programas para la defensa"
+                "special/ — no_halt, infinite_loop, illegal"
+            "tools/ — software de PC (Python)"
+                "pyproject.toml"
+                "riscv_toolkit/ — isa, assembler, disasm, iss, protocol, session, cli, ui"
+                "scripts/ — verify_rtl.py, verify_board.py, uart_echo_test.py, gen_du_defs.py, gen_*.py"
+                "tests/"
+        "docs/"
+            "PRD-pipeline-riscv.md — este documento"
+            "adr/ — ADR-001 … ADR-020 + README (índice) + template"
+            "interfaces/ — riscv_core.md, tabla_control.md"
+            "protocolo.md"
+            "diagramas/"
+            "catalogo-criticidad.md"
+            "informe/"
+            "manual/"
+            "defensa/"
 ```
 
 ---
@@ -2060,14 +2264,14 @@ Revisión de la presentación `TRABAJO_FINAL_2026.pdf` contra la especificación
 
 ### 15.2 Versiones y releases
 
-| Versión | Se etiqueta cuando…                          | Contenido del release                                                                                     |
-| ------- | -------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| v0.1    | Cierra el Hito 1                             | Toolchain de PC (ensamblador, desensamblador, golden model), protocolo y diseño congelados                 |
-| v0.2    | Cierra el Hito 2                             | Núcleo en simulación con flush básico                                                                     |
-| v0.3    | Cierra el Hito 3                             | Núcleo con riesgos, suite completa en simulación, `cpi.csv`                                               |
-| v0.4    | Cierra el Hito 4                             | **Primer bitstream** + CLI; resultados en placa                                                           |
-| v0.5    | Cierra el Hito 5                             | GUI                                                                                                       |
-| v1.0    | Cierra el Hito 6                             | Bitstream final a la frecuencia elegida, informe, manual, sesiones de plan B                              |
+| Versión | Se etiqueta cuando… | Contenido del release                                                                      |
+| ------- | ------------------- | ------------------------------------------------------------------------------------------ |
+| v0.1    | Cierra el Hito 1    | Toolchain de PC (ensamblador, desensamblador, golden model), protocolo y diseño congelados |
+| v0.2    | Cierra el Hito 2    | Núcleo en simulación con flush básico                                                      |
+| v0.3    | Cierra el Hito 3    | Núcleo con riesgos, suite completa en simulación, `cpi.csv`                                |
+| v0.4    | Cierra el Hito 4    | **Primer bitstream** + CLI; resultados en placa                                            |
+| v0.5    | Cierra el Hito 5    | GUI                                                                                        |
+| v1.0    | Cierra el Hito 6    | Bitstream final a la frecuencia elegida, informe, manual, sesiones de plan B               |
 
 - A partir de v0.4, cada release de GitHub adjunta el **bitstream** (`.bit`) generado desde ese commit, los reportes de `hw/reports/` y el hash del commit (US-407 AC4).
 - `CHANGELOG.md` sigue el formato _Keep a Changelog_: cada historia agrega su entrada en `[Unreleased]`, y al etiquetar se mueve a la versión.
@@ -2077,12 +2281,12 @@ Revisión de la presentación `TRABAJO_FINAL_2026.pdf` contra la especificación
 
 Mejoras identificadas durante el diseño y descartadas para v1.0 por costo o plazo. Si sobra tiempo, se toman en este orden:
 
-| #   | Mejora                                                        | Origen   | Qué cambiaría                                                                                     |
-| --- | ------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------- |
-| 1   | UART a 115200 bps                                             | ADR-002  | Snapshots ~6 veces más rápidos; solo cambia el parámetro `BAUD` y se repite la prueba de eco        |
-| 2   | Watchdog de ciclos con estado `TIMEOUT`                       | ADR-010  | Un loop infinito en `RUN` termina solo, sin `ABORT`                                                |
-| 3   | Resolución de branches en ID                                  | ADR-006  | Penalidad de 1 ciclo en todos los saltos; requiere forwarding hacia ID y stalls nuevos            |
-| 4   | Pseudoinstrucción `li` y sección `.data` en el ensamblador    | ADR-013  | Constantes grandes y datos iniciales sin escribirlos con stores; `LOAD` tendría que cargar la DMEM |
-| 5   | Memorias en BRAM                                              | ADR-005  | Libera LUTs y escala a memorias grandes; obliga a realinear IF y MEM con la lectura sincrónica     |
-| 6   | Testbenches con cocotb reutilizando el golden model           | ADR-015  | Verificación más expresiva en Python                                                              |
-| 7   | Detección de accesos desalineados en hardware                 | ADR-018  | Estado `MISALIGNED` en lugar de ignorar los bits bajos                                            |
+| #   | Mejora                                                     | Origen  | Qué cambiaría                                                                                      |
+| --- | ---------------------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------- |
+| 1   | UART a 115200 bps                                          | ADR-002 | Snapshots ~6 veces más rápidos; solo cambia el parámetro `BAUD` y se repite la prueba de eco       |
+| 2   | Watchdog de ciclos con estado `TIMEOUT`                    | ADR-010 | Un loop infinito en `RUN` termina solo, sin `ABORT`                                                |
+| 3   | Resolución de branches en ID                               | ADR-006 | Penalidad de 1 ciclo en todos los saltos; requiere forwarding hacia ID y stalls nuevos             |
+| 4   | Pseudoinstrucción `li` y sección `.data` en el ensamblador | ADR-013 | Constantes grandes y datos iniciales sin escribirlos con stores; `LOAD` tendría que cargar la DMEM |
+| 5   | Memorias en BRAM                                           | ADR-005 | Libera LUTs y escala a memorias grandes; obliga a realinear IF y MEM con la lectura sincrónica     |
+| 6   | Testbenches con cocotb reutilizando el golden model        | ADR-015 | Verificación más expresiva en Python                                                               |
+| 7   | Detección de accesos desalineados en hardware              | ADR-018 | Estado `MISALIGNED` en lugar de ignorar los bits bajos                                             |

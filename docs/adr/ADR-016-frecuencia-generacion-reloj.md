@@ -38,7 +38,7 @@ Referencia previa: el diseño del TP2 cerraba a 100 MHz con WNS = 4,899 ns, pero
    - salida por BUFG (lo hace el Clock Wizard);
    - la señal `locked` mantiene el reset del sistema activo hasta que el reloj esté estable;
    - se recalcula `COUNT_MAX` con la nueva `CLK_FREQ_HZ` (ADR-002) y se verifica que el error de baud sea < 2 %;
-   - se versiona el `.xci` en `hw/ip/` y se regenera desde el script (ADR-020).
+   - se versiona solo el `.xci` en `TP3/hw/ip/` (ADR-020).
 6. **En todos los casos** se documentan WNS, WHS y skew antes y después en `docs/informe/timing.md`, y se repite la suite completa en placa a la frecuencia final.
 
 ## Alternativas consideradas
