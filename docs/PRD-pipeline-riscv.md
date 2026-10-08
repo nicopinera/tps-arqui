@@ -462,13 +462,11 @@ Cada decisión no trivial tiene su ADR en [`docs/adr/`](adr/) con la estructura 
   - **Proyecto de Vivado local, no versionado:** cada integrante crea su proyecto en Vivado 2025.2 (ADR-020) y agrega a mano los fuentes de `TP3/hw/rtl/` (salvo `legacy/`) y `TP3/hw/constraints/basys3.xdc`. El `TP3/README.md` indica qué carpetas agregar, cuál es el `top` y la versión de Vivado.
   - **Migración del TP2:** copiar `baudrate_gen.v`, `uart_rx*.v`, `uart_tx*.v` a `TP3/hw/rtl/uart/` sin modificaciones (los cambios de ADR-002 van en US-401). `uart_interface.v` y la `alu.v` del TP1 se guardan en `TP3/hw/rtl/legacy/` solo como referencia, fuera del proyecto de síntesis.
   - **`TP3/Makefile`** con objetivos `sim`, `sim-all` y `test-py` (se completan en US-102). La síntesis, implementación y programación de la placa se hacen desde la GUI de Vivado.
-  - **`TP3/CHANGELOG.md`** con la sección `[Unreleased]` (sección 15) y **`docs/catalogo-criticidad.md`** inicializado desde la sección 11.
+  - **`TP3/CHANGELOG.md`** con la sección `[Unreleased]` (sección 15).
   - **`.gitignore`** (el de la raíz) con las reglas de Vivado (`*.xpr`, `*.runs/`, `*.cache/`, `*.sim/`, `*.hw/`, `*.ip_user_files/`, `*.gen/`, `.Xil/`, `*.jou`, `*.log`, `*.str`) y de Python (`__pycache__/`, `.venv/`).
 - **Criterios de Aceptación:**
-  - **AC1.** Siguiendo el `TP3/README.md`, un proyecto nuevo en Vivado 2025.2 con los fuentes de `TP3/hw/` sintetiza sin errores.
   - **AC2.** Ningún archivo generado por Vivado aparece en `git status` después de sintetizar.
   - **AC3.** El `top` del TP2 (UART + ALU) sintetiza con los fuentes migrados y sigue funcionando en placa (prueba de humo de la migración).
-  - **AC4.** El `TP3/README.md` indica versión de Vivado, versión de Python, qué fuentes agregar al proyecto y los comandos del `Makefile`.
   - **AC5.** ~~Plantilla y ADR-001 a ADR-020 en `docs/adr/`~~ — ya cumplido antes de iniciar el desarrollo.
 - **Testing Mínimo:** _manual:_ clonar en la otra máquina del equipo, crear el proyecto siguiendo el README y sintetizar.
 - **Archivos a crear:**
