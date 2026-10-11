@@ -40,7 +40,12 @@ xsim.dir/
 # Python
 __pycache__/
 .venv/
+.venv-wsl/
+.mypy_cache/
 *.pyc
 .pytest_cache/
 .ruff_cache/
 .coverage
+
+# Simulacion (Icarus): salida de make sim / sim-all
+TP3/build/
