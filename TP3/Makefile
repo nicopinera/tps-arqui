@@ -44,16 +44,16 @@ setup:
 # --- Hardware ----------------------------------------------------------------------------
 
 lint:
-	@hw/scripts/lint.sh
+	@bash hw/scripts/lint.sh
 
 sim:
-	@WAVES=$(WAVES) HEX=$(HEX) hw/scripts/sim.sh $(TB)
+	@WAVES=$(WAVES) HEX=$(HEX) bash hw/scripts/sim.sh $(TB)
 
 sim-all:
 	@total=0; failed=0; \
 	for tb in $(TB_NAMES); do \
 		total=$$((total + 1)); \
-		if QUIET=1 hw/scripts/sim.sh $$tb > /dev/null 2>&1; then \
+		if QUIET=1 bash hw/scripts/sim.sh $$tb > /dev/null 2>&1; then \
 			printf '  PASS  %s\n' $$tb; \
 		else \
 			failed=$$((failed + 1)); \
