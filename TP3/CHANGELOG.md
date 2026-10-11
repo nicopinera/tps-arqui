@@ -11,4 +11,4 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - Módulos UART del TP2 migrados sin cambios a `hw/rtl/uart/` (US-101).
 - `hw/rtl/legacy/` con `alu_tp1.v`, `uart_interface.v` y `top_tp2.v` como referencia y prueba de humo de la migración (US-101).
 - `hw/constraints/basys3.xdc` basado en las constraints del TP2 (US-101).
-- `docs/catalogo-criticidad.md` inicializado desde la sección 11 del PRD (US-101).
+- `docs/guia-herramientas.md`: uso de Icarus Verilog, Verilator y GTKWave, y armado del proyecto de Vivado (US-101).
