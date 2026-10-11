@@ -212,7 +212,7 @@ Por acuerdo del equipo, esta sección no desarrolla la arquitectura interna del 
 
 ### 4.2 Software de PC — capas y responsabilidades
 
-Python 3.11+ (ADR-011), GUI en Flet (ADR-012). La organización es en capas, pero adaptada a una herramienta y no a un sistema con base de datos:
+Python 3.13+ (ADR-011), GUI en Flet (ADR-012). La organización es en capas, pero adaptada a una herramienta y no a un sistema con base de datos:
 
 | Capa                                               | Responsabilidad                                                                                  |
 | -------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
@@ -406,7 +406,7 @@ Cada decisión no trivial tiene su ADR en [`docs/adr/`](adr/) con la estructura 
 | [ADR-008](adr/ADR-008-tamanos-memoria-memoria-usada.md)    | Tamaños de memoria y definición de "memoria usada"        | Aprobado  | IMEM y DMEM de 256 palabras; bitmap de escritas + contador; comando `DUMP_MEM`                                                    | US-204, US-405, US-409  |
 | [ADR-009](adr/ADR-009-politica-reprogramacion.md)          | Política de reprogramación                                | Aprobado  | `LOAD` limpia todo y rellena la IMEM con HALT; `RESET` igual sin tocar la IMEM                                                    | US-403                  |
 | [ADR-010](adr/ADR-010-comportamiento-sin-halt.md)          | Comportamiento sin instrucción de parada                  | Aprobado  | Relleno con HALT + HALT automático del ensamblador + `ABORT`                                                                      | US-406                  |
-| [ADR-011](adr/ADR-011-lenguaje-software-pc.md)             | Lenguaje del software de PC                               | Aprobado  | Python 3.11+; identificadores mixtos (dominio en español, términos técnicos en inglés)                                            | Hito 1 (US-105)         |
+| [ADR-011](adr/ADR-011-lenguaje-software-pc.md)             | Lenguaje del software de PC                               | Aprobado  | Python 3.13+; identificadores mixtos (dominio en español, términos técnicos en inglés)                                            | Hito 1 (US-105)         |
 | [ADR-012](adr/ADR-012-tecnologia-interfaz-usuario.md)      | Tecnología de la interfaz de usuario                      | Aprobado  | Flet (GUI) + CLI                                                                                                                  | Hito 5                  |
 | [ADR-013](adr/ADR-013-ensamblador-propio.md)               | Ensamblador propio vs. toolchain externo                  | Aprobado  | Propio de dos pasadas; pseudo `nop`, `mv`, `j`, `ret`; GNU solo para validar                                                      | US-106, US-108          |
 | [ADR-014](adr/ADR-014-golden-model.md)                     | Simulador de referencia (golden model)                    | Aprobado  | ISS propio en Python + firma en memoria                                                                                           | US-107, US-305, US-506  |
@@ -506,6 +506,7 @@ treeView-beta
 - **Narrativa:** Como desarrollador, quiero correr `make lint` y `make sim TB=tb_alu` y obtener un `PASS`/`FAIL` claro, para detectar errores y regresiones en segundos.
 - **Detalle técnico:**
   - **Herramientas (ADR-015):** **Verilator** para el lint e **Icarus Verilog** para la simulación. No se automatiza xsim: el simulador de Vivado solo se usa a mano, desde su GUI, para lo que dependa de IP de Xilinx.
+  - **`make setup`:** instala Icarus, Verilator y uv, y crea el entorno de Python (`uv sync`).
   - **`make lint`:** corre `verilator --lint-only -Wall` sobre todo `hw/rtl/` salvo `legacy/`, y falla si hay alguna advertencia. Las excepciones justificadas se anotan en el código con `// verilator lint_off …` y un comentario que diga por qué.
   - **Include `hw/tb/common/tb_utils.vh`:** tareas `check_eq(nombre, obtenido, esperado)` que incrementa un contador de errores e imprime el detalle; `tb_finish()` que imprime `TEST PASSED` o `TEST FAILED (N errores)` y termina.
   - **`make sim TB=<nombre>`:** busca `hw/tb/**/<nombre>.v`, lo compila con `iverilog -g2001` junto con todo `hw/rtl/` (salvo `legacy/`) y lo corre con `vvp`. Sale con código ≠ 0 si el log contiene `TEST FAILED` o no contiene `TEST PASSED`. La salida va a `build/`, que no se versiona.
@@ -513,7 +514,8 @@ treeView-beta
   - **Ondas bajo demanda:** `make sim TB=… WAVES=1` genera `build/<nombre>.vcd`.
   - **Soporte `$readmemh`:** el testbench recibe la ruta del programa con `+HEX=<ruta>` (`make sim TB=… HEX=…`), sin recompilar. Formato del `.hex`: una palabra de 32 bits por línea (usado en US-209 en adelante).
   - **Testbench de ejemplo:** `tb_uart_loopback.v` (TX conectado a RX del TP2) como prueba de la infraestructura.
-  - **CI (`.github/workflows/ci.yml`):** en cada push y PR corre dos trabajos. **HDL:** `make lint` y `make sim-all`. **Python:** `uv sync` y luego `ruff check`, `ruff format --check`, `mypy`, `pytest --cov` y `pip-audit` sobre `tools/` (todos con `uv run`).
+  - **CI (`.github/workflows/ci.yml`):** en cada push y PR corre dos trabajos. **HDL:** `make lint` y `make sim-all`. **Python:** `uv sync` y luego `ruff check`, `ruff format --check`, `mypy`, `pytest --cov` y `pip-audit` sobre `tools/` (todos con `uv run`). En local, `make check-py` corre lo mismo y `make check` corre todo.
+  - **Esqueleto de `tools/`:** proyecto uv con el paquete `riscv_toolkit` (los subpaquetes de la sección 4.5 se crean en la historia que los necesita, sin `__init__.py`), `mypy` en modo estricto y un test mínimo, para que las verificaciones de Python corran desde el primer día.
 - **Criterios de Aceptación:**
   - **AC1.** `make sim TB=tb_uart_loopback` imprime `TEST PASSED` y sale con código 0.
   - **AC2.** Si se modifica el dato esperado del testbench, imprime `TEST FAILED (1 errores)` y sale con código ≠ 0.
@@ -529,13 +531,26 @@ treeView-beta
 treeView-beta
     "tps-arqui/"
         "TP3/"
-            "Makefile — lint, sim, sim-all, test-py"
+            "Makefile — setup, lint, sim, sim-all, test-py, check-py, check, clean"
             "hw/"
+                "scripts/"
+                    "sim.sh — compila y corre un testbench con Icarus"
+                    "lint.sh — lint del RTL con Verilator"
                 "tb/"
                     "common/"
                         "tb_utils.vh"
+                        "tb_readmemh.v — prueba de la convención +HEX"
+                        "ejemplo.hex"
                     "uart/"
                         "tb_uart_loopback.v"
+            "tools/"
+                "pyproject.toml — proyecto uv + configuración de ruff, mypy y pytest"
+                "uv.lock"
+                "riscv_toolkit/ — paquete (los subpaquetes se crean en cada historia)"
+                    "__main__.py"
+                "tests/"
+                    "test_smoke.py"
+        ".gitattributes — fines de línea LF para scripts y Makefile"
         ".github/"
             "workflows/"
                 "ci.yml"
@@ -2150,7 +2165,7 @@ treeView-beta
             "workflows/"
                 "ci.yml — lint y simulación HDL + verificaciones de Python (ADR-015)"
         "TP3/"
-            "Makefile — lint, sim, sim-all, verify, test-py"
+            "Makefile — setup, lint, sim, sim-all, verify, test-py, check-py, check"
             "README.md — informe del TP3"
             "CHANGELOG.md"
             "hw/"
@@ -2168,7 +2183,7 @@ treeView-beta
                 "constraints/"
                     "basys3.xdc"
                 "ip/ — .xci del Clock Wizard, solo si ADR-016 lo requiere"
-                "scripts/ — freq_sweep.tcl"
+                "scripts/ — sim.sh, lint.sh, freq_sweep.tcl"
                 "reports/ — reportes exportados desde Vivado (timing, utilización, potencia)"
             "asm/"
                 "README.md — convención de firma de resultado"

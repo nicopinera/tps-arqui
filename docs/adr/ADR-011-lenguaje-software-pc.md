@@ -24,13 +24,13 @@ Requisitos que condicionan la elección:
 
 ## Decisión
 
-- **Python 3.11 o superior.**
-- Proyecto en `tools/` gestionado con **uv** (`pyproject.toml` + `uv.lock` versionado): `uv sync` crea el entorno e instala el proyecto y sus dependencias. No se usa `pip` directamente.
+- **Python 3.13 o superior** (uv instala la versión indicada en `tools/.python-version`).
+- Proyecto en `tools/` (paquete `riscv_toolkit`, no se publica) gestionado con **uv** (`pyproject.toml` + `uv.lock` versionado): `uv sync` crea el entorno e instala el proyecto y sus dependencias. No se usa `pip` directamente.
 - Herramientas:
   - `pyserial` para el puerto serie (solo se importa en `protocol/serial_transport.py`, PRD §4.3);
   - `pytest` + `pytest-cov` para tests y cobertura;
   - `ruff` para lint y formato;
-  - `mypy` para chequeo de tipos;
+  - `mypy` en modo estricto para chequeo de tipos;
   - `pip-audit` para detectar dependencias con vulnerabilidades conocidas.
 - La tabla ISA (`isa/`) usa solo la biblioteca estándar (US-105, AC4).
 - **Idioma de los identificadores:** se respeta la convención que ya usa el PRD. Los nombres de dominio van en español (`instrucciones.py`, `ensamblar()`, `Imagen`, `LineaAsm`, `mnemonico`), y los términos técnicos sin traducción natural o que vienen de patrones conocidos van en inglés (`Transport`, `Snapshot`, `FakeTransport`, `encode_r`, `decode_*`). Comentarios y docstrings, en español.
@@ -39,7 +39,7 @@ Requisitos que condicionan la elección:
 
 | Opción                         | Ventajas                                                                                                                                   | Desventajas                                                                          |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| **(a) Python 3.11+** (elegida) | Más experiencia del equipo; `pyserial` maduro y multiplataforma; muchas opciones de TUI/GUI; `dataclasses` y `match` para el decodificador | Más lento (irrelevante acá); distribuir un ejecutable requiere PyInstaller o similar |
+| **(a) Python 3.13+** (elegida) | Más experiencia del equipo; `pyserial` maduro y multiplataforma; muchas opciones de TUI/GUI; `dataclasses` y `match` para el decodificador | Más lento (irrelevante acá); distribuir un ejecutable requiere PyInstaller o similar |
 | (b) C/C++                      | Rápido; binario nativo                                                                                                                     | Mucho más código para lo mismo; GUI costosa; manejo de puerto serie distinto por SO  |
 | (c) Go                         | Buen soporte serie; binarios portables sin dependencias                                                                                    | Menos opciones de GUI; el equipo tiene menos experiencia                             |
 
@@ -61,12 +61,12 @@ Requisitos que condicionan la elección:
 
 **Negativas**
 
-- Cada integrante tiene que tener un entorno Python 3.11+ con las dependencias (se crea con `uv sync`, que genera el `.venv`; se documenta en `docs/guia-herramientas.md`).
+- Cada integrante tiene que tener un entorno Python 3.13+ con las dependencias (se crea con `uv sync`, que genera el `.venv`; se documenta en `docs/guia-herramientas.md`).
 - La convención mixta de idioma requiere atención en las revisiones de código para que no se mezclen criterios dentro de un mismo módulo.
 
 **Restricciones que impone**
 
-- La versión mínima de Python se declara en `pyproject.toml` (`requires-python = ">=3.11"`) y en `docs/guia-herramientas.md`.
+- La versión mínima de Python se declara en `pyproject.toml` (`requires-python = ">=3.13"`) y en `docs/guia-herramientas.md`.
 - `make test-py` corre `uv run pytest` con cobertura; `ruff`, `mypy` y `pip-audit` forman parte del DoD y del CI (ADR-015).
 - Ningún módulo fuera de `ui/` importa el framework de interfaz, y ninguno fuera de `serial_transport.py` importa `pyserial`.
 

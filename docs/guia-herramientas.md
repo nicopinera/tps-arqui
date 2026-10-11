@@ -16,6 +16,14 @@ Cómo revisar y simular el RTL del TP3 desde la terminal, sin abrir Vivado. Viva
 En Ubuntu, Linux Mint o WSL (Ubuntu 24.04):
 
 ```bash
+sudo apt install -y make     # solo la primera vez
+cd TP3
+make setup                   # instala Icarus, Verilator y uv, y crea el entorno de Python
+```
+
+O a mano:
+
+```bash
 sudo apt update
 sudo apt install -y make iverilog verilator
 ```
@@ -37,7 +45,28 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ---
 
-## 2. Icarus Verilog: simular
+## 2. Comandos del día a día
+
+El `Makefile` de `TP3/` envuelve todo lo que sigue en esta guía:
+
+| Comando                               | Qué hace                                                                    |
+| ------------------------------------- | --------------------------------------------------------------------------- |
+| `make lint`                           | Lint de todo `hw/rtl/` (salvo `legacy/`); falla con cualquier advertencia   |
+| `make sim TB=tb_uart_loopback`        | Compila y corre ese testbench; termina en `TEST PASSED` o `TEST FAILED`     |
+| `make sim TB=… WAVES=1`               | Además genera `build/<tb>.vcd`                                              |
+| `make sim TB=… HEX=ruta.hex`          | Le pasa al testbench el programa a cargar (`+HEX`)                          |
+| `make sim-all`                        | Corre todos los `hw/tb/**/tb_*.v` y muestra un resumen                      |
+| `make check-py`                       | `ruff`, `mypy`, `pytest` y `pip-audit` sobre `tools/`                       |
+| `make check`                          | Todo lo anterior: es lo mismo que corre el CI                               |
+| `make clean`                          | Borra `build/` y las cachés                                                 |
+
+**Agregar un testbench:** crear `hw/tb/<grupo>/tb_<nombre>.v` con `` `include "tb_utils.vh" `` dentro del módulo, usar `check_eq(nombre, obtenido, esperado)` para cada verificación y terminar con `tb_finish`. `make sim-all` lo encuentra solo. El modelo a copiar es `hw/tb/uart/tb_uart_loopback.v`.
+
+Las secciones siguientes explican qué hacen las herramientas por debajo, por si hace falta usarlas a mano.
+
+---
+
+## 3. Icarus Verilog: simular
 
 Simular son dos pasos: `iverilog` compila los fuentes a un archivo `.vvp`, y `vvp` lo ejecuta.
 
@@ -92,7 +121,7 @@ La ruta es relativa a la carpeta desde donde se corre `vvp`.
 
 ---
 
-## 3. Un testbench de ejemplo
+## 4. Un testbench de ejemplo
 
 El siguiente testbench comprueba que `baudrate_gen` emite un tick cada `COUNT_MAX` ciclos. Sirve como plantilla: genera el reloj, aplica el reset, verifica el resultado y lo informa con `TEST PASSED` o `TEST FAILED`.
 
@@ -156,19 +185,19 @@ TEST PASSED
 
 ---
 
-## 4. Ondas, cuando un test falla
+## 5. Ondas, cuando un test falla
 
 Los testbenches dicen si pasaron o no, así que las ondas no forman parte del flujo normal. Si hace falta mirar señales para entender una falla, se genera el archivo `.vcd` bajo demanda:
 
 ```bash
-vvp build/tb_baudrate_gen.vvp +WAVES     # genera build/tb_baudrate_gen.vcd
+make sim TB=tb_uart_loopback WAVES=1     # genera build/tb_uart_loopback.vcd
 ```
 
 El `.vcd` es un formato estándar: se abre con cualquier visor de ondas (por ejemplo la extensión WaveTrace o Surfer de VS Code, o GTKWave). Si resulta muy grande, se limita lo que se vuelca: `$dumpvars(1, tb)` guarda solo las señales del testbench, sin los módulos internos.
 
 ---
 
-## 5. Verilator: lint
+## 6. Verilator: lint
 
 Verilator revisa el código sin simularlo y encuentra errores que Icarus acepta en silencio: anchos que no coinciden, señales sin usar, latches inferidos, mezcla de asignaciones bloqueantes y no bloqueantes.
 
@@ -209,42 +238,7 @@ wire [31:0] w_debug;
 
 ---
 
-## 6. Flujo de trabajo y dónde entra Vivado
-
-```mermaid
-flowchart LR
-    A[Editar .v] --> B[Verilator<br/>lint]
-    B --> C[Icarus<br/>simulación RTL]
-    C -->|TEST FAILED| A
-    C -->|TEST PASSED| E[Vivado<br/>síntesis, timing, bitstream]
-```
-
-| Tarea                                          | Terminal | Vivado |
-| ---------------------------------------------- | :------: | :----: |
-| Lint                                           |    ✅    |   ✅   |
-| Simulación RTL                                 |    ✅    |   ✅   |
-| Simulación con IP de Xilinx (Clock Wizard)     |    ❌    |   ✅   |
-| Simulación post-síntesis / post-implementación |    ❌    |   ✅   |
-| Síntesis, implementación y timing              |    ❌    |   ✅   |
-| Bitstream y programación de la placa           |    ❌    |   ✅   |
-
-### Proyecto de Vivado
-
-El proyecto de Vivado no se versiona (NFR-8, ADR-020): cada integrante lo crea localmente.
-
-1. Verificar que la versión sea **2025.2** (`Help → About`).
-2. Crear un proyecto RTL para la parte `xc7a35tcpg236-1`, fuera del repositorio.
-3. **Add Sources:** las carpetas de `TP3/hw/rtl/` que correspondan, con **"Copy sources into project" desmarcado** para que el proyecto use los archivos del repositorio.
-4. **Add Constraints:** `TP3/hw/constraints/basys3.xdc`, también sin copiar.
-
-| Etapa                           | Fuentes                             | `top`                         |
-| ------------------------------- | ----------------------------------- | ----------------------------- |
-| Prueba de humo de la migración  | `hw/rtl/uart/` + `hw/rtl/legacy/`   | `top` (en `legacy/top_tp2.v`) |
-| Desde que exista `hw/rtl/top.v` | `hw/rtl/` completo, salvo `legacy/` | `top`                         |
-
----
-
-## 7. Uso en el CI
+## 8. Uso en el CI
 
 Icarus y Verilator se instalan en segundos en un runner de GitHub Actions, así que las mismas verificaciones corren en cada PR (ADR-015):
 
@@ -261,11 +255,11 @@ Icarus y Verilator se instalan en segundos en un runner de GitHub Actions, así 
   working-directory: TP3
 ```
 
-El workflow definitivo (`.github/workflows/ci.yml`) y los objetivos del `Makefile` se definen en la US-102.
+El workflow completo está en `.github/workflows/ci.yml`: un trabajo para el hardware (lo de arriba) y otro para Python (`ruff`, `mypy`, `pytest`, `pip-audit`).
 
 ---
 
-## 8. Referencia rápida
+## 9. Referencia rápida (sin `make`)
 
 ```bash
 # Lint de un módulo
