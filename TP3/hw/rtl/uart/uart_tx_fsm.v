@@ -31,6 +31,13 @@ module uart_tx_fsm #(
              STOP   = 3'b100;
 
   reg [2:0] state_reg, state_next;
+
+  // Constantes de comparacion con el ancho de los contadores del datapath
+  localparam integer S_LAST_I = N_TICK - 1;
+  localparam integer N_LAST_I = NBIT - 1;
+  localparam [3:0] S_LAST = S_LAST_I[3:0]; // ultimo tick de un bit
+  localparam [2:0] N_LAST = N_LAST_I[2:0]; // ultimo bit de datos
+
   always @(posedge clock)
     if (i_reset)
       state_reg <= IDLE;
@@ -61,7 +68,7 @@ module uart_tx_fsm #(
       START:
       begin
         o_tx = 1'b0;
-        if (i_s_tick && i_s_reg == (N_TICK-1))
+        if (i_s_tick && i_s_reg == S_LAST)
         begin
           state_next = DATA;
           o_s_clr    = 1'b1;
@@ -71,11 +78,11 @@ module uart_tx_fsm #(
       DATA:
       begin
         o_tx = i_b0;
-        if (i_s_tick && i_s_reg == (N_TICK-1))
+        if (i_s_tick && i_s_reg == S_LAST)
         begin
           o_s_clr   = 1'b1;
           o_b_shift = 1'b1;
-          if (i_n_reg == (NBIT-1))
+          if (i_n_reg == N_LAST)
             state_next = PARITY;
           else
             o_n_incr = 1'b1;
@@ -84,7 +91,7 @@ module uart_tx_fsm #(
         PARITY:
         begin
           o_tx = i_p_reg;
-          if (i_s_tick && i_s_reg == (N_TICK-1))
+          if (i_s_tick && i_s_reg == S_LAST)
           begin
             o_s_clr    = 1'b1;
             state_next = STOP;
@@ -93,12 +100,14 @@ module uart_tx_fsm #(
         STOP:
         begin
           o_tx = 1'b1;
-          if (i_s_tick && i_s_reg == (N_TICK-1))
+          if (i_s_tick && i_s_reg == S_LAST)
           begin
             state_next = IDLE;
             o_tx_done  = 1'b1;
           end
         end
+        default:
+          state_next = IDLE; // estados no usados: volver a reposo
     endcase
   end
 endmodule

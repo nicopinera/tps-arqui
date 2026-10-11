@@ -14,7 +14,10 @@ module uart_tx #(
   wire w_s_clr, w_n_clr, w_n_incr, w_b_load, w_b_shift, w_p_load;
   wire [3:0] w_s_reg;
   wire [2:0] w_n_reg;
+  // El transmisor solo usa el bit 0 del shift register (el que sale por la linea)
+  // verilator lint_off UNUSEDSIGNAL
   wire [NBIT-1:0] w_b_reg;
+  // verilator lint_on UNUSEDSIGNAL
   wire w_p_reg;
 
   uart_tx_fsm #(

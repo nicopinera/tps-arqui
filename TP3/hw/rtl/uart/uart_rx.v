@@ -48,7 +48,10 @@ module uart_rx #(
                      .o_s_reg(w_s_reg),
                      .o_n_reg(w_n_reg),
                      .o_b_reg(w_b_reg),
+                     // La paridad recibida todavia no se valida (se conecta en US-401, ADR-002)
+                     // verilator lint_off PINCONNECTEMPTY
                      .o_p_reg()
+                     // verilator lint_on PINCONNECTEMPTY
                    );
 
   assign o_dout = w_b_reg;

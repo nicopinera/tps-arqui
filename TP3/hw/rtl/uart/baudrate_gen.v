@@ -9,7 +9,6 @@ module baudrate_gen #(
 
   // Como el clock es de 100 MHz, 100MHz/(19200x16) = 325.52, redondeado a 326
   reg [BITS-1:0] counter; // 9 bit -> 2**9 = 512, sobra para llegar a
-  wire [BITS-1:0] next_counter;
 
   always@(posedge clock)
   begin
