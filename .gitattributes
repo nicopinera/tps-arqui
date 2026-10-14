@@ -1,0 +1,4 @@
+# Fines de linea: los scripts y el Makefile se usan desde Linux/WSL y tienen que quedar en LF
+*.sh      text eol=lf
+Makefile  text eol=lf
+*.hex     text eol=lf

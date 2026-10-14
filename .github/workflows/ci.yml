@@ -1,0 +1,77 @@
+# CI del TP3 (US-102, ADR-015): lint y simulacion del RTL + verificaciones de Python.
+name: CI TP3
+
+on:
+  push:
+    branches: [main, develop]
+    paths: ["TP3/**", ".github/workflows/ci.yml"]
+  pull_request:
+    paths: ["TP3/**", ".github/workflows/ci.yml"]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: TP3
+
+jobs:
+  hdl:
+    name: HDL (lint + simulacion)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar Icarus Verilog y Verilator
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y iverilog verilator
+          iverilog -V | head -n 1
+          verilator --version
+
+      - name: Lint (Verilator)
+        run: make lint
+
+      - name: Testbenches (Icarus)
+        run: make sim-all
+
+      - name: Guardar logs de simulacion
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-simulacion
+          path: TP3/build/*.log
+
+  python:
+    name: Python (ruff + mypy + pytest + pip-audit)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: TP3/tools/uv.lock
+
+      - name: Instalar dependencias
+        run: cd tools && uv sync --locked
+
+      - name: Lint (ruff)
+        run: cd tools && uv run ruff check .
+
+      - name: Formato (ruff)
+        run: cd tools && uv run ruff format --check .
+
+      - name: Tipos (mypy)
+        run: cd tools && uv run mypy
+
+      - name: Tests y cobertura (pytest)
+        run: cd tools && uv run pytest
+
+      - name: Vulnerabilidades (pip-audit)
+        run: cd tools && uv run pip-audit --skip-editable

@@ -212,7 +212,7 @@ Por acuerdo del equipo, esta sección no desarrolla la arquitectura interna del 
 
 ### 4.2 Software de PC — capas y responsabilidades
 
-Python 3.11+ (ADR-011), GUI en Flet (ADR-012). La organización es en capas, pero adaptada a una herramienta y no a un sistema con base de datos:
+Python 3.13+ (ADR-011), GUI en Flet (ADR-012). La organización es en capas, pero adaptada a una herramienta y no a un sistema con base de datos:
 
 | Capa                                               | Responsabilidad                                                                                  |
 | -------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
@@ -375,18 +375,18 @@ Reglas que aplican a todo el sistema. Las específicas de una historia están de
 
 ## 7. Requisitos No Funcionales (NFR)
 
-| ID     | Requisito                            | Medición / Umbral                                                                                                                                                                                     | Severidad  |
-| ------ | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| NFR-1  | Timing                               | WNS ≥ 0 y WHS ≥ 0 post-implementación a la frecuencia elegida en ADR-016                                                                                                                              | Bloqueante |
-| NFR-2  | Reloj intacto                        | 0 instancias de lógica en la red de reloj (verificable en el esquemático post-síntesis y con `report_clock_networks`)                                                                                 | Bloqueante |
-| NFR-3  | Recursos                             | Diseño completo < 50 % de LUTs del XC7A35T, incluidas las memorias en LUTRAM (ADR-005), con margen para depuración con ILA                                                                            | Media      |
-| NFR-4  | Latencia de un paso                  | STEP + recepción del snapshot + actualización de la GUI < 1 s con el volcado típico (sección 3.5). Con toda la DMEM usada el volcado tarda ~1 s a 19200 bps (ADR-002): queda en el límite y se acepta | Alta       |
-| NFR-5  | Tiempo de carga                      | Ensamblar y cargar un programa de 256 instrucciones < 3 s                                                                                                                                             | Alta       |
-| NFR-6  | Robustez del enlace                  | Una trama corrupta (paridad o checksum inválidos) o incompleta (timeout) nunca deja la Debug Unit colgada (R-DU-4 a R-DU-6); un loop infinito se corta con `ABORT` (ADR-010)                          | Bloqueante |
-| NFR-7  | Portabilidad del software de PC      | Funciona en Linux (Mint/Ubuntu) y Windows 10+, detectando el puerto serie de la Basys 3                                                                                                               | Alta       |
-| NFR-8  | Reproducibilidad del proyecto Vivado | El repositorio contiene solo fuentes (`TP3/hw/rtl`, `TP3/hw/constraints`, `.xci` si hay IP): cualquiera arma su proyecto local en Vivado 2025.2 agregando esos archivos según el `TP3/README.md`, y ningún archivo generado por Vivado se versiona | Alta       |
-| NFR-9  | Desarrollo sin placa                 | Toda la interfaz de PC es usable en modo `--fake` (sin FPGA)                                                                                                                                          | Media      |
-| NFR-10 | Cobertura de tests Python            | ≥ 80 % general; ≥ 95 % en `isa/`, `assembler/` y `protocol/codec.py`                                                                                                                                  | Alta       |
+| ID     | Requisito                            | Medición / Umbral                                                                                                                                                                                                                                           | Severidad  |
+| ------ | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| NFR-1  | Timing                               | WNS ≥ 0 y WHS ≥ 0 post-implementación a la frecuencia elegida en ADR-016                                                                                                                                                                                    | Bloqueante |
+| NFR-2  | Reloj intacto                        | 0 instancias de lógica en la red de reloj (verificable en el esquemático post-síntesis y con `report_clock_networks`)                                                                                                                                       | Bloqueante |
+| NFR-3  | Recursos                             | Diseño completo < 50 % de LUTs del XC7A35T, incluidas las memorias en LUTRAM (ADR-005), con margen para depuración con ILA                                                                                                                                  | Media      |
+| NFR-4  | Latencia de un paso                  | STEP + recepción del snapshot + actualización de la GUI < 1 s con el volcado típico (sección 3.5). Con toda la DMEM usada el volcado tarda ~1 s a 19200 bps (ADR-002): queda en el límite y se acepta                                                       | Alta       |
+| NFR-5  | Tiempo de carga                      | Ensamblar y cargar un programa de 256 instrucciones < 3 s                                                                                                                                                                                                   | Alta       |
+| NFR-6  | Robustez del enlace                  | Una trama corrupta (paridad o checksum inválidos) o incompleta (timeout) nunca deja la Debug Unit colgada (R-DU-4 a R-DU-6); un loop infinito se corta con `ABORT` (ADR-010)                                                                                | Bloqueante |
+| NFR-7  | Portabilidad del software de PC      | Funciona en Linux (Mint/Ubuntu) y Windows 10+, detectando el puerto serie de la Basys 3                                                                                                                                                                     | Alta       |
+| NFR-8  | Reproducibilidad del proyecto Vivado | El repositorio contiene solo fuentes (`TP3/hw/rtl`, `TP3/hw/constraints`, `.xci` si hay IP): cualquiera arma su proyecto local en Vivado 2025.2 agregando esos archivos según `docs/guia-herramientas.md`, y ningún archivo generado por Vivado se versiona | Alta       |
+| NFR-9  | Desarrollo sin placa                 | Toda la interfaz de PC es usable en modo `--fake` (sin FPGA)                                                                                                                                                                                                | Media      |
+| NFR-10 | Cobertura de tests Python            | ≥ 80 % general; ≥ 95 % en `isa/`, `assembler/` y `protocol/codec.py`                                                                                                                                                                                        | Alta       |
 
 ---
 
@@ -394,28 +394,28 @@ Reglas que aplican a todo el sistema. Las específicas de una historia están de
 
 Cada decisión no trivial tiene su ADR en [`docs/adr/`](adr/) con la estructura Contexto → Decisión → Alternativas consideradas → Consecuencias (positivas / negativas / restricciones). Esta tabla es solo un índice: **el detalle y la justificación viven en cada ADR** y no se duplican acá, para que no diverjan. El índice también está en [`docs/adr/README.md`](adr/README.md).
 
-| ID                                                         | Título                                                    | Estado    | Decisión                                                                                        | Bloquea                 |
-| ---------------------------------------------------------- | --------------------------------------------------------- | --------- | ----------------------------------------------------------------------------------------------- | ----------------------- |
-| [ADR-001](adr/ADR-001-control-ejecucion-clock-enable.md)   | Control de ejecución por clock enable                     | Aprobado  | `i_enable` como CE de todo el núcleo; sin clock gating ni BUFGCE                                | Hito 2                  |
-| [ADR-002](adr/ADR-002-parametros-uart.md)                  | Parámetros de la UART                                     | Aprobado  | 19200 bps 8E1 como el TP2; paridad validada; `COUNT_MAX` calculado desde `CLK_FREQ_HZ` y `BAUD` | US-401                  |
-| [ADR-003](adr/ADR-003-protocolo-debug-unit.md)             | Protocolo de comandos de la Debug Unit                    | Aprobado  | Comando ASCII de 1 byte + args binarios; respuestas en trama con XOR; `RUN` = `ACK` + snapshot  | US-104, Hito 4, US-410  |
-| [ADR-004](adr/ADR-004-codificacion-halt.md)                | Codificación de HALT                                      | Aprobado  | Opcode _custom-0_, palabra `0x0000000B`; detección por opcode                                   | US-105, US-203          |
-| [ADR-005](adr/ADR-005-implementacion-memorias.md)          | Implementación de memorias                                | Aprobado  | Memoria distribuida (LUTRAM) inferida, lectura combinacional                                    | US-204                  |
-| [ADR-006](adr/ADR-006-resolucion-saltos.md)                | Punto de resolución de saltos                             | Aprobado  | `jal` en ID; `beq`/`bne`/`jalr` en EX; predict not-taken                                        | US-205 a US-207, US-303 |
-| [ADR-007](adr/ADR-007-riesgos-datos-banco-registros.md)    | Estrategia de riesgos de datos y banco de registros       | Aprobado  | Forwarding completo + stall load-use; bypass interno en el banco                                | US-202, Hito 3          |
-| [ADR-008](adr/ADR-008-tamanos-memoria-memoria-usada.md)    | Tamaños de memoria y definición de "memoria usada"        | Aprobado  | IMEM y DMEM de 256 palabras; bitmap de escritas + contador; comando `DUMP_MEM`                  | US-204, US-405, US-409  |
-| [ADR-009](adr/ADR-009-politica-reprogramacion.md)          | Política de reprogramación                                | Aprobado  | `LOAD` limpia todo y rellena la IMEM con HALT; `RESET` igual sin tocar la IMEM                  | US-403                  |
-| [ADR-010](adr/ADR-010-comportamiento-sin-halt.md)          | Comportamiento sin instrucción de parada                  | Aprobado  | Relleno con HALT + HALT automático del ensamblador + `ABORT`                                    | US-406                  |
-| [ADR-011](adr/ADR-011-lenguaje-software-pc.md)             | Lenguaje del software de PC                               | Aprobado  | Python 3.11+; identificadores mixtos (dominio en español, términos técnicos en inglés)          | Hito 1 (US-105)         |
-| [ADR-012](adr/ADR-012-tecnologia-interfaz-usuario.md)      | Tecnología de la interfaz de usuario                      | Aprobado  | Flet (GUI) + CLI                                                                                | Hito 5                  |
-| [ADR-013](adr/ADR-013-ensamblador-propio.md)               | Ensamblador propio vs. toolchain externo                  | Aprobado  | Propio de dos pasadas; pseudo `nop`, `mv`, `j`, `ret`; GNU solo para validar                    | US-106, US-108          |
-| [ADR-014](adr/ADR-014-golden-model.md)                     | Simulador de referencia (golden model)                    | Aprobado  | ISS propio en Python + firma en memoria                                                         | US-107, US-305, US-506  |
-| [ADR-015](adr/ADR-015-simulador-hdl-verificacion.md)       | Simulador HDL y framework de verificación                 | Aprobado  | xsim + testbenches Verilog-2001 portables; CI con Python e Icarus                               | US-102                  |
-| [ADR-016](adr/ADR-016-frecuencia-generacion-reloj.md)      | Frecuencia de operación y generación de reloj             | Propuesto | Criterio fijado (barrido, WNS ≥ 0,3 ns); se aprueba con los datos de US-601/602                 | Hito 6                  |
-| [ADR-017](adr/ADR-017-formato-volcado-latches.md)          | Formato de volcado de latches                             | Aprobado  | Campo a campo alineado a byte, flags agrupados, LE; `instr` con `DEBUG_TRACE`                   | US-103, US-405          |
-| [ADR-018](adr/ADR-018-desalineados-endianness-ilegales.md) | Accesos desalineados, endianness e instrucciones ilegales | Aprobado  | Little-endian; desalineado = ignorar bits bajos; ilegal = detener con estado `ILLEGAL`          | US-203, US-204          |
-| [ADR-019](adr/ADR-019-reutilizacion-alu-tp1.md)            | Reutilización de la ALU del TP1                           | Aprobado  | ALU nueva de 32 bits con `alu_ctrl` de 4 bits; comparador de branches aparte                    | US-201, US-207          |
-| [ADR-020](adr/ADR-020-version-vivado.md)                   | Versión de Vivado de referencia                           | Aprobado  | Vivado 2025.2                                                                                   | US-101                  |
+| ID                                                         | Título                                                    | Estado    | Decisión                                                                                                                          | Bloquea                 |
+| ---------------------------------------------------------- | --------------------------------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| [ADR-001](adr/ADR-001-control-ejecucion-clock-enable.md)   | Control de ejecución por clock enable                     | Aprobado  | `i_enable` como CE de todo el núcleo; sin clock gating ni BUFGCE                                                                  | Hito 2                  |
+| [ADR-002](adr/ADR-002-parametros-uart.md)                  | Parámetros de la UART                                     | Aprobado  | 19200 bps 8E1 como el TP2; paridad validada; `COUNT_MAX` calculado desde `CLK_FREQ_HZ` y `BAUD`                                   | US-401                  |
+| [ADR-003](adr/ADR-003-protocolo-debug-unit.md)             | Protocolo de comandos de la Debug Unit                    | Aprobado  | Comando ASCII de 1 byte + args binarios; respuestas en trama con XOR; `RUN` = `ACK` + snapshot                                    | US-104, Hito 4, US-410  |
+| [ADR-004](adr/ADR-004-codificacion-halt.md)                | Codificación de HALT                                      | Aprobado  | Opcode _custom-0_, palabra `0x0000000B`; detección por opcode                                                                     | US-105, US-203          |
+| [ADR-005](adr/ADR-005-implementacion-memorias.md)          | Implementación de memorias                                | Aprobado  | Memoria distribuida (LUTRAM) inferida, lectura combinacional                                                                      | US-204                  |
+| [ADR-006](adr/ADR-006-resolucion-saltos.md)                | Punto de resolución de saltos                             | Aprobado  | `jal` en ID; `beq`/`bne`/`jalr` en EX; predict not-taken                                                                          | US-205 a US-207, US-303 |
+| [ADR-007](adr/ADR-007-riesgos-datos-banco-registros.md)    | Estrategia de riesgos de datos y banco de registros       | Aprobado  | Forwarding completo + stall load-use; bypass interno en el banco                                                                  | US-202, Hito 3          |
+| [ADR-008](adr/ADR-008-tamanos-memoria-memoria-usada.md)    | Tamaños de memoria y definición de "memoria usada"        | Aprobado  | IMEM y DMEM de 256 palabras; bitmap de escritas + contador; comando `DUMP_MEM`                                                    | US-204, US-405, US-409  |
+| [ADR-009](adr/ADR-009-politica-reprogramacion.md)          | Política de reprogramación                                | Aprobado  | `LOAD` limpia todo y rellena la IMEM con HALT; `RESET` igual sin tocar la IMEM                                                    | US-403                  |
+| [ADR-010](adr/ADR-010-comportamiento-sin-halt.md)          | Comportamiento sin instrucción de parada                  | Aprobado  | Relleno con HALT + HALT automático del ensamblador + `ABORT`                                                                      | US-406                  |
+| [ADR-011](adr/ADR-011-lenguaje-software-pc.md)             | Lenguaje del software de PC                               | Aprobado  | Python 3.13+; identificadores mixtos (dominio en español, términos técnicos en inglés)                                            | Hito 1 (US-105)         |
+| [ADR-012](adr/ADR-012-tecnologia-interfaz-usuario.md)      | Tecnología de la interfaz de usuario                      | Aprobado  | Flet (GUI) + CLI                                                                                                                  | Hito 5                  |
+| [ADR-013](adr/ADR-013-ensamblador-propio.md)               | Ensamblador propio vs. toolchain externo                  | Aprobado  | Propio de dos pasadas; pseudo `nop`, `mv`, `j`, `ret`; GNU solo para validar                                                      | US-106, US-108          |
+| [ADR-014](adr/ADR-014-golden-model.md)                     | Simulador de referencia (golden model)                    | Aprobado  | ISS propio en Python + firma en memoria                                                                                           | US-107, US-305, US-506  |
+| [ADR-015](adr/ADR-015-simulador-hdl-verificacion.md)       | Simulador HDL y framework de verificación                 | Aprobado  | Icarus Verilog para simular y Verilator para lint, en local y en CI; testbenches Verilog-2001; xsim solo manual para IP de Xilinx | US-102                  |
+| [ADR-016](adr/ADR-016-frecuencia-generacion-reloj.md)      | Frecuencia de operación y generación de reloj             | Propuesto | Criterio fijado (barrido, WNS ≥ 0,3 ns); se aprueba con los datos de US-601/602                                                   | Hito 6                  |
+| [ADR-017](adr/ADR-017-formato-volcado-latches.md)          | Formato de volcado de latches                             | Aprobado  | Campo a campo alineado a byte, flags agrupados, LE; `instr` con `DEBUG_TRACE`                                                     | US-103, US-405          |
+| [ADR-018](adr/ADR-018-desalineados-endianness-ilegales.md) | Accesos desalineados, endianness e instrucciones ilegales | Aprobado  | Little-endian; desalineado = ignorar bits bajos; ilegal = detener con estado `ILLEGAL`                                            | US-203, US-204          |
+| [ADR-019](adr/ADR-019-reutilizacion-alu-tp1.md)            | Reutilización de la ALU del TP1                           | Aprobado  | ALU nueva de 32 bits con `alu_ctrl` de 4 bits; comparador de branches aparte                                                      | US-201, US-207          |
+| [ADR-020](adr/ADR-020-version-vivado.md)                   | Versión de Vivado de referencia                           | Aprobado  | Vivado 2025.2                                                                                                                     | US-101                  |
 
 ---
 
@@ -459,7 +459,7 @@ Cada decisión no trivial tiene su ADR en [`docs/adr/`](adr/) con la estructura 
 - **Narrativa:** Como integrante del equipo, quiero una estructura de carpetas clara y un repositorio que solo tenga fuentes, para agregar los archivos a Vivado sin pelear con conflictos de `.xpr` ni con carpetas generadas en Git.
 - **Detalle técnico:**
   - **Estructura de carpetas** dentro de `TP3/` según sección 12 (`hw/`, `asm/`, `tools/`). La documentación sigue en `docs/` y la configuración de GitHub en `.github/`, ambas en la raíz del repositorio.
-  - **Proyecto de Vivado local, no versionado:** cada integrante crea su proyecto en Vivado 2025.2 (ADR-020) y agrega a mano los fuentes de `TP3/hw/rtl/` (salvo `legacy/`) y `TP3/hw/constraints/basys3.xdc`. El `TP3/README.md` indica qué carpetas agregar, cuál es el `top` y la versión de Vivado.
+  - **Proyecto de Vivado local, no versionado:** cada integrante crea su proyecto en Vivado 2025.2 y agrega a mano los fuentes de `TP3/hw/rtl/` (salvo `legacy/`) y `TP3/hw/constraints/basys3.xdc`. La guía `docs/guia-herramientas.md` indica qué carpetas agregar, cuál es el `top` y la versión de Vivado. El `TP3/README.md` es el informe del trabajo (como en el TP1 y el TP2), no un instructivo.
   - **Migración del TP2:** copiar `baudrate_gen.v`, `uart_rx*.v`, `uart_tx*.v` a `TP3/hw/rtl/uart/` sin modificaciones (los cambios de ADR-002 van en US-401). `uart_interface.v` y la `alu.v` del TP1 se guardan en `TP3/hw/rtl/legacy/` solo como referencia, fuera del proyecto de síntesis.
   - **`TP3/Makefile`** con objetivos `sim`, `sim-all` y `test-py` (se completan en US-102). La síntesis, implementación y programación de la placa se hacen desde la GUI de Vivado.
   - **`TP3/CHANGELOG.md`** con la sección `[Unreleased]` (sección 15).
@@ -468,7 +468,7 @@ Cada decisión no trivial tiene su ADR en [`docs/adr/`](adr/) con la estructura 
   - **AC2.** Ningún archivo generado por Vivado aparece en `git status` después de sintetizar.
   - **AC3.** El `top` del TP2 (UART + ALU) sintetiza con los fuentes migrados y sigue funcionando en placa (prueba de humo de la migración).
   - **AC5.** ~~Plantilla y ADR-001 a ADR-020 en `docs/adr/`~~ — ya cumplido antes de iniciar el desarrollo.
-- **Testing Mínimo:** _manual:_ clonar en la otra máquina del equipo, crear el proyecto siguiendo el README y sintetizar.
+- **Testing Mínimo:** _manual:_ clonar en la otra máquina del equipo, crear el proyecto siguiendo `docs/guia-herramientas.md` y sintetizar.
 - **Archivos a crear:**
 
 ```mermaid
@@ -495,45 +495,62 @@ treeView-beta
                     "basys3.xdc"
         ".gitignore — (actualizado)"
         "docs/"
-            "catalogo-criticidad.md"
+            "guia-herramientas.md"
             "adr/ — ✅ (ya creado: template + ADR-001..020)"
 ```
 
-#### US-102 — Infraestructura de Simulación y Testbenches Autoverificables
+#### US-102 — Infraestructura de Lint, Simulación y Testbenches Autoverificables
 
 - **Esfuerzo:** M (3 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-101, ADR-015
-- **Objetivo Funcional:** tener una forma estándar y rápida de simular cualquier módulo y saber si pasó o falló sin mirar formas de onda, en xsim y en Icarus, y correrlo automáticamente en cada PR (ADR-015).
-- **Narrativa:** Como desarrollador, quiero correr `make sim TB=tb_alu` y obtener un `PASS`/`FAIL` claro, para detectar regresiones en segundos.
+- **Objetivo Funcional:** tener una forma estándar y rápida de revisar el RTL y de simular cualquier módulo desde la terminal, saber si pasó o falló sin mirar formas de onda ni abrir Vivado, y correrlo automáticamente en cada PR (ADR-015).
+- **Narrativa:** Como desarrollador, quiero correr `make lint` y `make sim TB=tb_alu` y obtener un `PASS`/`FAIL` claro, para detectar errores y regresiones en segundos.
 - **Detalle técnico:**
+  - **Herramientas (ADR-015):** **Verilator** para el lint e **Icarus Verilog** para la simulación. No se automatiza xsim: el simulador de Vivado solo se usa a mano, desde su GUI, para lo que dependa de IP de Xilinx.
+  - **`make setup`:** instala Icarus, Verilator y uv, y crea el entorno de Python (`uv sync`).
+  - **`make lint`:** corre `verilator --lint-only -Wall` sobre todo `hw/rtl/` salvo `legacy/`, y falla si hay alguna advertencia. Las excepciones justificadas se anotan en el código con `// verilator lint_off …` y un comentario que diga por qué.
   - **Include `hw/tb/common/tb_utils.vh`:** tareas `check_eq(nombre, obtenido, esperado)` que incrementa un contador de errores e imprime el detalle; `tb_finish()` que imprime `TEST PASSED` o `TEST FAILED (N errores)` y termina.
-  - **Script `hw/scripts/sim.tcl`** (xsim en modo batch) que compila, elabora y corre un testbench por nombre, y devuelve código de salida ≠ 0 si el log contiene `TEST FAILED`.
-  - **Soporte Icarus:** `make sim TB=… SIM=icarus` compila con `iverilog -g2001` y corre con `vvp`, con el mismo criterio de PASS/FAIL. Los testbenches que dependen de IP de Xilinx se marcan como solo-xsim (por ejemplo, con una lista en el Makefile).
-  - **CI (`.github/workflows/ci.yml`):** en cada push y PR corre `ruff check`, `pytest --cov` sobre `tools/` y `make sim-all SIM=icarus`.
-  - **Soporte `$readmemh`:** convención para cargar programas `.hex` en la IMEM desde el testbench (usada en US-209 en adelante).
+  - **`make sim TB=<nombre>`:** busca `hw/tb/**/<nombre>.v`, lo compila con `iverilog -g2001` junto con todo `hw/rtl/` (salvo `legacy/`) y lo corre con `vvp`. Sale con código ≠ 0 si el log contiene `TEST FAILED` o no contiene `TEST PASSED`. La salida va a `build/`, que no se versiona.
+  - **`make sim-all`:** descubre y corre todos los `hw/tb/**/tb_*.v` (no hay que registrarlos en ningún lado: alcanza con crear el archivo) y resume cuántos pasaron.
+  - **Ondas bajo demanda:** `make sim TB=… WAVES=1` genera `build/<nombre>.vcd`.
+  - **Soporte `$readmemh`:** el testbench recibe la ruta del programa con `+HEX=<ruta>` (`make sim TB=… HEX=…`), sin recompilar. Formato del `.hex`: una palabra de 32 bits por línea (usado en US-209 en adelante).
   - **Testbench de ejemplo:** `tb_uart_loopback.v` (TX conectado a RX del TP2) como prueba de la infraestructura.
-  - **Objetivo `make sim-all`:** corre todos los `tb_*.v` y resume cuántos pasaron.
+  - **CI (`.github/workflows/ci.yml`):** en cada push y PR corre dos trabajos. **HDL:** `make lint` y `make sim-all`. **Python:** `uv sync` y luego `ruff check`, `ruff format --check`, `mypy`, `pytest --cov` y `pip-audit` sobre `tools/` (todos con `uv run`). En local, `make check-py` corre lo mismo y `make check` corre todo.
+  - **Esqueleto de `tools/`:** proyecto uv con el paquete `riscv_toolkit` (los subpaquetes de la sección 4.5 se crean en la historia que los necesita, sin `__init__.py`), `mypy` en modo estricto y un test mínimo, para que las verificaciones de Python corran desde el primer día.
 - **Criterios de Aceptación:**
   - **AC1.** `make sim TB=tb_uart_loopback` imprime `TEST PASSED` y sale con código 0.
   - **AC2.** Si se modifica el dato esperado del testbench, imprime `TEST FAILED (1 errores)` y sale con código ≠ 0.
-  - **AC3.** `make sim-all` lista cada testbench con su resultado y un total.
-  - **AC4.** Los testbenches usan solo Verilog-2001 (sin SystemVerilog) y `make sim TB=tb_uart_loopback SIM=icarus` también imprime `TEST PASSED`.
-  - **AC5.** Se puede generar el archivo de ondas (`.wdb`/`.vcd`) con `WAVES=1` para depurar.
-  - **AC6.** El workflow de CI corre en un PR de prueba y queda en rojo si un testbench o un test de Python falla.
-- **Testing Mínimo:** la propia prueba de loopback.
+  - **AC3.** `make sim-all` lista cada testbench con su resultado y un total; un testbench nuevo en `hw/tb/` se ejecuta sin tocar el `Makefile`.
+  - **AC4.** Los testbenches usan solo Verilog-2001 (sin SystemVerilog).
+  - **AC5.** Se puede generar el archivo de ondas (`.vcd`) con `WAVES=1` para depurar.
+  - **AC6.** El workflow de CI corre en un PR de prueba y queda en rojo si falla el lint, un testbench o una verificación de Python.
+  - **AC7.** `make lint` pasa sin advertencias sobre los módulos migrados del TP2, y falla si se introduce una (por ejemplo, una señal sin usar).
+- **Testing Mínimo:** la propia prueba de loopback y un error de lint introducido a propósito.
 - **Archivos a crear:**
 
 ```mermaid
 treeView-beta
     "tps-arqui/"
         "TP3/"
+            "Makefile — setup, lint, sim, sim-all, test-py, check-py, check, clean"
             "hw/"
+                "scripts/"
+                    "sim.sh — compila y corre un testbench con Icarus"
+                    "lint.sh — lint del RTL con Verilator"
                 "tb/"
                     "common/"
                         "tb_utils.vh"
+                        "tb_readmemh.v — prueba de la convención +HEX"
+                        "ejemplo.hex"
                     "uart/"
                         "tb_uart_loopback.v"
-                "scripts/"
-                    "sim.tcl"
+            "tools/"
+                "pyproject.toml — proyecto uv + configuración de ruff, mypy y pytest"
+                "uv.lock"
+                "riscv_toolkit/ — paquete (los subpaquetes se crean en cada historia)"
+                    "__main__.py"
+                "tests/"
+                    "test_smoke.py"
+        ".gitattributes — fines de línea LF para scripts y Makefile"
         ".github/"
             "workflows/"
                 "ci.yml"
@@ -1111,7 +1128,7 @@ treeView-beta
   - **`hw/rtl/core/riscv_core.v`:** instancia etapas, latches, `reg_file`, memorias; expone la interfaz de `docs/interfaces/riscv_core.md` (enable, flush global, puertos de depuración, latches como buses planos, `o_halted`).
   - **Lógica de HALT** (R-EJ-3 a R-EJ-5, R-EJ-4bis): al detectar HALT o ilegal en ID se activa `halt_fetch` (PC congelado, burbujas en IF/ID); cuando `o_halt_retired`, se levantan `o_halted` (y `o_illegal` si correspondía) y el núcleo ignora `i_enable` hasta un reset o `i_flush_all`.
   - **`i_flush_all`:** pone los 4 latches en `valid = 0`, el PC en 0 y el banco de registros en 0 (usado por la Debug Unit en ADR-009).
-  - **Testbench de sistema `tb_core_programs.v`:** carga un `.hex` con `$readmemh`, corre hasta `o_halted` o un límite de ciclos, y compara los registros, la memoria usada y el motivo de terminación contra un archivo `.expected` generado por `rvsim --expect` (US-107). Corre en xsim y en Icarus (ADR-015).
+  - **Testbench de sistema `tb_core_programs.v`:** carga un `.hex` con `$readmemh`, corre hasta `o_halted` o un límite de ciclos, y compara los registros, la memoria usada y el motivo de terminación contra un archivo `.expected` generado por `rvsim --expect` (US-107). Corre en Icarus (ADR-015).
   - **Programas de este hito** (`asm/tests/h2/`): uno por grupo de instrucciones (R, I aritméticas, shifts, loads/stores, `lui`, branches, `jal`/`jalr`), **con 3 NOPs entre instrucciones con dependencia de datos** (porque todavía no hay forwarding). Los saltos no necesitan NOPs: el flush básico descarta las instrucciones buscadas de más.
 - **Criterios de Aceptación:**
   - **AC1.** Todos los programas de `asm/tests/h2/` terminan con registros y memoria idénticos al golden model.
@@ -1303,9 +1320,9 @@ treeView-beta
 - **Objetivo Funcional:** correr toda la suite en simulación del RTL y comparar automáticamente con el golden model, reportando además la cantidad de ciclos (para calcular CPI en el informe).
 - **Narrativa:** Como equipo, queremos un único comando que nos diga si el procesador pasa todos los programas, para detectar regresiones cada vez que tocamos el hardware.
 - **Detalle técnico:**
-  - **`tools/scripts/verify_rtl.py`:** para cada `.asm` → ensambla, genera `.expected` con el golden model, corre `tb_core_programs` en el simulador elegido (`--sim xsim|icarus`, ADR-015), parsea el volcado final del testbench y compara registros, memoria usada, firma y motivo de terminación; reporta tabla `programa | resultado | ciclos | instrucciones | CPI | stalls | flushes`.
+  - **`tools/scripts/verify_rtl.py`:** para cada `.asm` → ensambla, genera `.expected` con el golden model, corre `tb_core_programs` con Icarus (ADR-015), parsea el volcado final del testbench y compara registros, memoria usada, firma y motivo de terminación; reporta tabla `programa | resultado | ciclos | instrucciones | CPI | stalls | flushes`.
   - El testbench cuenta stalls y flushes observando las señales expuestas.
-  - Objetivo `make verify` (`SIM=xsim` por defecto); el CI corre `make verify SIM=icarus`.
+  - Objetivo `make verify`; el CI también lo corre.
 - **Criterios de Aceptación:**
   - **AC1.** `make verify` corre toda la suite y termina con código ≠ 0 si algún programa falla.
   - **AC2.** Ante una diferencia, muestra qué registro/dirección difiere, con valor esperado y obtenido.
@@ -2090,11 +2107,11 @@ treeView-beta
 Una historia de usuario se considera **Hecha** cuando cumple **todos** los puntos que le apliquen:
 
 1. **Código integrado:** merge a `develop` por Pull Request revisado por el otro integrante, con el **CI en verde** (ADR-015); commits con formato `tipo(alcance): descripción` (sección 15).
-2. **Hardware — testbench:** cada módulo nuevo o modificado tiene su testbench autoverificable y `make sim-all` pasa completo en xsim y en Icarus (salvo los marcados como solo-xsim).
+2. **Hardware — testbench:** cada módulo nuevo o modificado tiene su testbench autoverificable y `make lint` no da advertencias y `make sim-all` pasa completo.
 3. **Hardware — regresión:** si la historia toca el núcleo o la Debug Unit, `make verify` (US-305) pasa al 100 %.
 4. **Hardware — síntesis limpia:** sintetiza sin _critical warnings_, sin latches inferidos y sin nuevas advertencias de _multi-driven nets_; implementa cumpliendo timing a la frecuencia vigente (a partir del Hito 2).
 5. **Reloj intacto:** ninguna expresión usa `clock` fuera de `@(posedge clock)` (revisión en el PR).
-6. **Software:** `pytest` pasa, `ruff` sin errores, cobertura según NFR-10.
+6. **Software:** `pytest` pasa, `ruff` y `mypy` sin errores, `pip-audit` sin vulnerabilidades, cobertura según NFR-10.
 7. **Contratos actualizados:** si cambió la interfaz del núcleo, el protocolo o el contenido de un latch, están actualizados `docs/interfaces/`, `docs/protocolo.md`, `du_dumper.v` y `protocol/snapshot.py` **en el mismo PR**.
 8. **ADR:** si la historia requirió una decisión, el ADR está aprobado y en `docs/adr/`; si contradice un ADR existente, se escribe uno nuevo que lo reemplace (no se edita la decisión en silencio).
 9. **Estilo:** respeta la sección 5.1 (Verilog) y la sección 13 (convenciones).
@@ -2133,7 +2150,7 @@ Un módulo es **crítico** si cumple al menos uno: decide qué instrucción se e
 | `protocol/codec.py`, `du_dumper.v`                       | Crítico    | Contrato de observabilidad                              | ≥ 95 % + captura real                |
 | `ui/`                                                    | No crítico | Solo presentación                                       | Checklist manual                     |
 
-**Ubicación del catálogo vivo:** `docs/catalogo-criticidad.md` (se inicializa en US-101 y se revisa al cierre de cada hito).
+El catálogo se mantiene en esta sección y se revisa al cierre de cada hito.
 
 ---
 
@@ -2146,10 +2163,10 @@ treeView-beta
     "tps-arqui/"
         ".github/"
             "workflows/"
-                "ci.yml — ruff + pytest + Icarus (ADR-015)"
+                "ci.yml — lint y simulación HDL + verificaciones de Python (ADR-015)"
         "TP3/"
-            "Makefile — sim, sim-all, verify, test-py"
-            "README.md — versiones de herramientas y cómo empezar"
+            "Makefile — setup, lint, sim, sim-all, verify, test-py, check-py, check"
+            "README.md — informe del TP3"
             "CHANGELOG.md"
             "hw/"
                 "rtl/"
@@ -2166,7 +2183,7 @@ treeView-beta
                 "constraints/"
                     "basys3.xdc"
                 "ip/ — .xci del Clock Wizard, solo si ADR-016 lo requiere"
-                "scripts/ — sim.tcl (xsim/icarus), freq_sweep.tcl"
+                "scripts/ — sim.sh, lint.sh, freq_sweep.tcl"
                 "reports/ — reportes exportados desde Vivado (timing, utilización, potencia)"
             "asm/"
                 "README.md — convención de firma de resultado"
@@ -2184,7 +2201,7 @@ treeView-beta
             "interfaces/ — riscv_core.md, tabla_control.md"
             "protocolo.md"
             "diagramas/"
-            "catalogo-criticidad.md"
+            "guia-herramientas.md — lint, simulación y proyecto de Vivado"
             "informe/"
             "manual/"
             "defensa/"
@@ -2212,33 +2229,33 @@ Revisión de la presentación `TRABAJO_FINAL_2026.pdf` contra la especificación
 
 ### 14.1 Errores técnicos
 
-| #   | Diapositiva    | Qué dice                                                                            | Qué es correcto (especificación RV32I)                                                                                                                                                                                                                                                                                                                                                                      | Impacto en el proyecto                                                                                           |
-| --- | -------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| E1  | Tipo J (`jal`) | "La dirección a la que se salta es la almacenada en el registro rd"                 | `rd` **recibe** la dirección de retorno (`PC + 4`). El destino del salto es `PC + imm`, con el inmediato de 21 bits codificado en la instrucción. El salto a una dirección contenida en un registro es `jalr` (tipo I, destino `(rs1 + imm) & ~1`).                                                                                                                                                         | Se implementa según la especificación (US-207, US-303).                                                          |
-| E2  | B-Type (`beq`) | La figura de codificación rotula como `rs1` tanto los bits [24:20] como los [19:15] | Los bits [24:20] son **`rs2`** y los [19:15] son `rs1`. `beq` compara dos registros distintos.                                                                                                                                                                                                                                                                                                              | Se usa la tabla de la sección 2.2.                                                                               |
-| E3  | Tipo I         | La tabla de ejemplo incluye `ld` (_load doubleword_, funct3 `011`)                  | `ld` pertenece a **RV64I** (registros de 64 bits), no a RV32I. Tampoco figura en la lista de instrucciones a implementar, que pide `lb/lh/lw/lbu/lhu`.                                                                                                                                                                                                                                                      | No se implementa `ld`. Se toma RV32I como base (ver A1).                                                         |
-| E4  | Clock          | "¿Este camino crítico genera skew en mi sistema?"                                   | Conceptualmente, el camino crítico (retardo de **datos** entre registros) no genera skew. El skew es la diferencia de llegada del **reloj** a distintos flip-flops y lo causan la red de distribución del reloj y cualquier lógica que se le intercale (por eso se prohíbe intervenir el clock). Lo que sí ocurre es que el skew **afecta** al margen del camino crítico (puede sumarle o restarle tiempo). | En el informe (US-601) se responde la pregunta aclarando la distinción, con el valor de skew que reporta Vivado. |
-| E5  | Clock          | "De encontrarse skew: encontrar la frecuencia óptima…"                              | En un diseño real **siempre** hay algo de skew; la condición relevante es si el diseño cumple timing (WNS/WHS ≥ 0) a la frecuencia deseada.                                                                                                                                                                                                                                                                 | Se interpreta como "si el análisis muestra problemas de timing o margen insuficiente" (ADR-016).                 |
+| Diapositiva    | Qué dice                                                                            | Qué es correcto (especificación RV32I)                                                                                                                                                                                                                                                                                                                                                                      | Impacto en el proyecto                                                                                           |
+| -------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Tipo J (`jal`) | "La dirección a la que se salta es la almacenada en el registro rd"                 | `rd` **recibe** la dirección de retorno (`PC + 4`). El destino del salto es `PC + imm`, con el inmediato de 21 bits codificado en la instrucción. El salto a una dirección contenida en un registro es `jalr` (tipo I, destino `(rs1 + imm) & ~1`).                                                                                                                                                         | Se implementa según la especificación (US-207, US-303).                                                          |
+| B-Type (`beq`) | La figura de codificación rotula como `rs1` tanto los bits [24:20] como los [19:15] | Los bits [24:20] son **`rs2`** y los [19:15] son `rs1`. `beq` compara dos registros distintos.                                                                                                                                                                                                                                                                                                              | Se usa la tabla de la sección 2.2.                                                                               |
+| Tipo I         | La tabla de ejemplo incluye `ld` (_load doubleword_, funct3 `011`)                  | `ld` pertenece a **RV64I** (registros de 64 bits), no a RV32I. Tampoco figura en la lista de instrucciones a implementar, que pide `lb/lh/lw/lbu/lhu`.                                                                                                                                                                                                                                                      | No se implementa `ld`. Se toma RV32I como base (ver A1).                                                         |
+| Clock          | "¿Este camino crítico genera skew en mi sistema?"                                   | Conceptualmente, el camino crítico (retardo de **datos** entre registros) no genera skew. El skew es la diferencia de llegada del **reloj** a distintos flip-flops y lo causan la red de distribución del reloj y cualquier lógica que se le intercale (por eso se prohíbe intervenir el clock). Lo que sí ocurre es que el skew **afecta** al margen del camino crítico (puede sumarle o restarle tiempo). | En el informe (US-601) se responde la pregunta aclarando la distinción, con el valor de skew que reporta Vivado. |
+| Clock          | "De encontrarse skew: encontrar la frecuencia óptima…"                              | En un diseño real **siempre** hay algo de skew; la condición relevante es si el diseño cumple timing (WNS/WHS ≥ 0) a la frecuencia deseada.                                                                                                                                                                                                                                                                 | Se interpreta como "si el análisis muestra problemas de timing o margen insuficiente" (ADR-016).                 |
 
 ### 14.2 Cosas que el enunciado no define
 
-| #   | Tema                                           | Qué falta definir                                                                                                                                                                                                         | Interpretación / decisión del equipo                                                                    |
-| --- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| A1  | Variante de la ISA                             | Dice "RISC-V" sin aclarar RV32 o RV64. El ejemplo de `ld` y el libro de referencia (edición RISC-V de Patterson & Hennessy usa RV64) sugieren 64 bits; la lista de instrucciones sugiere 32 (hay `lw`, no hay `ld`/`sd`). | **RV32I** (registros de 32 bits).                                                                       |
-| A2  | Instrucción HALT                               | Se exige "contar con una instrucción HALT o de stop", pero no existe en RV32I y no se da una codificación.                                                                                                                | ADR-004: opcode _custom-0_, palabra `0x0000000B`.                                                       |
-| A3  | "Memoria de datos usada"                       | No se define "usada": ¿escrita?, ¿leída?, ¿un rango?, ¿toda?                                                                                                                                                              | ADR-008: palabras escritas por el programa desde la última carga, más el comando `DUMP_MEM`.            |
-| A4  | Contenido de los latches                       | "El contenido de los latches intermedios" no especifica qué campos deben enviarse (¿solo datos o también señales de control?).                                                                                            | Sección 4.2 y ADR-017: datos + control + `valid` + instrucción.                                         |
-| A5  | Protocolo de comunicación                      | No se define formato de comandos, respuestas, ni detección de errores.                                                                                                                                                    | ADR-003: comando ASCII de 1 byte + tramas con XOR.                                                      |
-| A6  | Baud rate y trama                              | No se indica si se mantienen los parámetros del TP2 (19200 bps).                                                                                                                                                          | ADR-002: se mantienen 19200 bps 8E1, con paridad validada.                                              |
-| A7  | Tamaños de memoria                             | No se indica tamaño de memoria de programa ni de datos.                                                                                                                                                                   | ADR-008: 256 + 256 palabras (1 KiB + 1 KiB), parametrizable.                                            |
-| A8  | Manejo de riesgos                              | Se enumeran los tipos de riesgo pero no se exige una solución concreta (forwarding, stalls, NOPs por software).                                                                                                           | ADR-007 (forwarding + stall load-use) y ADR-006 (predict not-taken + flush; `jal` en ID).               |
-| A9  | Accesos desalineados e instrucciones inválidas | No se menciona qué debe pasar.                                                                                                                                                                                            | ADR-018: desalineado = se ignoran los bits bajos; ilegal = se detiene con estado `ILLEGAL`.             |
-| A10 | Endianness                                     | No se menciona. RISC-V es little-endian por especificación.                                                                                                                                                               | Little-endian.                                                                                          |
-| A11 | Qué significa "terminar" en modo paso a paso   | Se exige pipeline vacío "al momento de terminar la ejecución" en ambos modos, pero en paso a paso el usuario podría dejar de avanzar en cualquier momento.                                                                | "Terminar" = el HALT llegó a WB (R-EJ-5), en cualquier modo. Además, `ABORT` también drena el pipeline. |
-| A12 | Datos iniciales en memoria                     | No se indica si el programa puede traer datos precargados en la memoria de datos.                                                                                                                                         | No: los datos iniciales se escriben con stores (ADR-013); `.data` queda en el roadmap.                  |
-| A13 | Pseudoinstrucciones                            | No se indica si el ensamblador debe soportar `li`, `mv`, `j`, `ret`, `nop`.                                                                                                                                               | ADR-013: `nop`, `mv`, `j`, `ret`; `li` no.                                                              |
-| A14 | Formato del informe y de la defensa            | No se especifica formato de entrega, extensión, ni duración de la defensa.                                                                                                                                                | A confirmar con la cátedra; se asume Markdown como en el TP2.                                           |
-| A15 | Bibliografía                                   | "Pipeline: Libro" no identifica el libro ni la edición.                                                                                                                                                                   | A confirmar (probablemente Patterson & Hennessy, _Computer Organization and Design — RISC-V Edition_).  |
+| Tema                                           | Qué falta definir                                                                                                                                                                                                         | Interpretación / decisión del equipo                                                                    |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Variante de la ISA                             | Dice "RISC-V" sin aclarar RV32 o RV64. El ejemplo de `ld` y el libro de referencia (edición RISC-V de Patterson & Hennessy usa RV64) sugieren 64 bits; la lista de instrucciones sugiere 32 (hay `lw`, no hay `ld`/`sd`). | **RV32I** (registros de 32 bits).                                                                       |
+| Instrucción HALT                               | Se exige "contar con una instrucción HALT o de stop", pero no existe en RV32I y no se da una codificación.                                                                                                                | ADR-004: opcode _custom-0_, palabra `0x0000000B`.                                                       |
+| "Memoria de datos usada"                       | No se define "usada": ¿escrita?, ¿leída?, ¿un rango?, ¿toda?                                                                                                                                                              | ADR-008: palabras escritas por el programa desde la última carga, más el comando `DUMP_MEM`.            |
+| Contenido de los latches                       | "El contenido de los latches intermedios" no especifica qué campos deben enviarse (¿solo datos o también señales de control?).                                                                                            | Sección 4.2 y ADR-017: datos + control + `valid` + instrucción.                                         |
+| Protocolo de comunicación                      | No se define formato de comandos, respuestas, ni detección de errores.                                                                                                                                                    | ADR-003: comando ASCII de 1 byte + tramas con XOR.                                                      |
+| Baud rate y trama                              | No se indica si se mantienen los parámetros del TP2 (19200 bps).                                                                                                                                                          | ADR-002: se mantienen 19200 bps 8E1, con paridad validada.                                              |
+| Tamaños de memoria                             | No se indica tamaño de memoria de programa ni de datos.                                                                                                                                                                   | ADR-008: 256 + 256 palabras (1 KiB + 1 KiB), parametrizable.                                            |
+| Manejo de riesgos                              | Se enumeran los tipos de riesgo pero no se exige una solución concreta (forwarding, stalls, NOPs por software).                                                                                                           | ADR-007 (forwarding + stall load-use) y ADR-006 (predict not-taken + flush; `jal` en ID).               |
+| Accesos desalineados e instrucciones inválidas | No se menciona qué debe pasar.                                                                                                                                                                                            | ADR-018: desalineado = se ignoran los bits bajos; ilegal = se detiene con estado `ILLEGAL`.             |
+| Endianness                                     | No se menciona. RISC-V es little-endian por especificación.                                                                                                                                                               | Little-endian.                                                                                          |
+| Qué significa "terminar" en modo paso a paso   | Se exige pipeline vacío "al momento de terminar la ejecución" en ambos modos, pero en paso a paso el usuario podría dejar de avanzar en cualquier momento.                                                                | "Terminar" = el HALT llegó a WB (R-EJ-5), en cualquier modo. Además, `ABORT` también drena el pipeline. |
+| Datos iniciales en memoria                     | No se indica si el programa puede traer datos precargados en la memoria de datos.                                                                                                                                         | No: los datos iniciales se escriben con stores (ADR-013); `.data` queda en el roadmap.                  |
+| Pseudoinstrucciones                            | No se indica si el ensamblador debe soportar `li`, `mv`, `j`, `ret`, `nop`.                                                                                                                                               | ADR-013: `nop`, `mv`, `j`, `ret`; `li` no.                                                              |
+| Formato del informe y de la defensa            | No se especifica formato de entrega, extensión, ni duración de la defensa.                                                                                                                                                | A confirmar con la cátedra; se asume Markdown como en el TP2.                                           |
+| Bibliografía                                   | "Pipeline: Libro" no identifica el libro ni la edición.                                                                                                                                                                   | A confirmar (probablemente Patterson & Hennessy, _Computer Organization and Design — RISC-V Edition_).  |
 
 ### 14.3 Aparentes contradicciones
 

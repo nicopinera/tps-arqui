@@ -20,7 +20,7 @@ NFR-8 exige que el repositorio contenga solo fuentes y que cualquiera pueda arma
 
 - **La versión de referencia es Vivado 2025.2**, la misma del TP2.
 - Se declara en:
-  - el `TP3/README.md` (sección de requisitos), junto con la lista de fuentes que hay que agregar al proyecto.
+  - la guía `docs/guia-herramientas.md`, junto con la lista de fuentes que hay que agregar al proyecto.
 - **No se versiona el proyecto de Vivado** (`.xpr` ni carpetas generadas): cada integrante crea su proyecto local en 2025.2 y agrega los fuentes de `TP3/hw/` a mano (US-101).
 - **Si se usa IP** (Clock Wizard en ADR-016): se versiona solo el `.xci` en `TP3/hw/ip/`; al agregarlo al proyecto, Vivado regenera sus productos, que no se versionan.
 - Todos los números del informe (recursos, timing, potencia) se obtienen con 2025.2.
@@ -48,7 +48,7 @@ NFR-8 exige que el repositorio contenga solo fuentes y que cualquiera pueda arma
 
 **Restricciones que impone:**
 
-- Antes de sintetizar, cada integrante verifica en Vivado que la versión sea 2025.2 (la indica el `TP3/README.md`); un proyecto abierto con otra versión no se usa para los números del informe.
+- Antes de sintetizar, cada integrante verifica en Vivado que la versión sea 2025.2 (la indica `docs/guia-herramientas.md`); un proyecto abierto con otra versión no se usa para los números del informe.
 - Un cambio de versión durante el proyecto requiere un nuevo ADR que reemplace a este, y repetir las mediciones de timing antes de usarlas en el informe.
 - El CI (ADR-015) no usa Vivado: corre Python e Icarus, así que no depende de esta versión.
 
