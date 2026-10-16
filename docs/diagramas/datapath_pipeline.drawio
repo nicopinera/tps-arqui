@@ -1,6 +1,6 @@
 <mxfile host="65bd71144e">
     <diagram id="bHBvgmjyJi8hCCfD4lFA" name="Fig 7.61 (referencia)">
-        <mxGraphModel dx="2051" dy="1435" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1150" math="0" shadow="0">
+        <mxGraphModel dx="1516" dy="1061" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1150" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -1057,7 +1057,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="tp3-datapath" name="Datapath TP3">
-        <mxGraphModel dx="6065" dy="1905" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2250" pageHeight="1800" math="0" shadow="0">
+        <mxGraphModel dx="2390" dy="98" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2250" pageHeight="1800" math="0" shadow="0">
             <root>
                 <mxCell id="tp3-0"/>
                 <mxCell id="tp3-root" parent="tp3-0"/>
@@ -2257,7 +2257,7 @@
                     <mxGeometry height="14" width="120" x="1180" y="1176" as="geometry"/>
                 </mxCell>
                 <mxCell id="tp3-264" parent="tp3-root" style="text;html=1;align=left;verticalAlign=middle;fontSize=7;fontColor=#888888;spacing=0;whiteSpace=nowrap;" value="(solo snapshot)" vertex="1">
-                    <mxGeometry height="14" width="120" x="990" y="232" as="geometry"/>
+                    <mxGeometry height="14" width="120" x="950" y="234" as="geometry"/>
                 </mxCell>
                 <mxCell id="tp3-265" edge="1" parent="tp3-root" style="endArrow=none;html=1;rounded=0;strokeColor=#000000;strokeWidth=1.5;">
                     <mxGeometry relative="1" as="geometry">
@@ -2743,15 +2743,15 @@
                 <mxCell id="tp3-360" parent="tp3-root" style="text;html=1;align=left;verticalAlign=middle;fontSize=9;fontColor=#000000;spacing=0;whiteSpace=nowrap;" value="instrW (solo snapshot)" vertex="1">
                     <mxGeometry height="14" width="120" x="1944" y="1065" as="geometry"/>
                 </mxCell>
-                <mxCell id="tp3-361" edge="1" parent="tp3-root" style="endArrow=none;html=1;rounded=0;strokeColor=#1F6FB5;strokeWidth=1;">
+                <mxCell id="tp3-361" edge="1" parent="tp3-root" source="tp3-13" style="endArrow=none;html=1;rounded=0;strokeColor=#1F6FB5;strokeWidth=1;exitX=1.075;exitY=0.02;exitDx=0;exitDy=0;exitPerimeter=0;">
                     <mxGeometry relative="1" as="geometry">
                         <Array as="points">
-                            <mxPoint x="2080" y="120"/>
-                            <mxPoint x="2080" y="40"/>
-                            <mxPoint x="620" y="40"/>
+                            <mxPoint x="2090" y="120"/>
+                            <mxPoint x="2090" y="40"/>
+                            <mxPoint x="630" y="40"/>
                         </Array>
-                        <mxPoint x="1940" y="120" as="sourcePoint"/>
-                        <mxPoint x="620" y="520" as="targetPoint"/>
+                        <mxPoint x="1950" y="120" as="sourcePoint"/>
+                        <mxPoint x="630" y="520" as="targetPoint"/>
                     </mxGeometry>
                 </mxCell>
                 <mxCell id="tp3-362" parent="tp3-root" style="text;html=1;align=left;verticalAlign=middle;fontSize=8;fontColor=#1F6FB5;spacing=0;whiteSpace=nowrap;" value="reg_writeW·validW → WE3" vertex="1">
@@ -3025,7 +3025,7 @@
                     <mxGeometry height="120" width="820" x="30" y="1650" as="geometry"/>
                 </mxCell>
                 <mxCell id="tp3-311" parent="tp3-root" style="text;html=1;align=left;verticalAlign=middle;fontSize=7;fontColor=#888888;spacing=0;whiteSpace=nowrap;" value="(solo snapshot)" vertex="1">
-                    <mxGeometry height="14" width="120" x="1540" y="142" as="geometry"/>
+                    <mxGeometry height="14" width="120" x="1522.5" y="142" as="geometry"/>
                 </mxCell>
             </root>
         </mxGraphModel>
