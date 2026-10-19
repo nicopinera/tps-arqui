@@ -1,6 +1,6 @@
 <mxfile host="65bd71144e">
     <diagram id="bHBvgmjyJi8hCCfD4lFA" name="Fig 7.61 (referencia)">
-        <mxGraphModel dx="1516" dy="1061" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1150" math="0" shadow="0">
+        <mxGraphModel dx="1598" dy="1443" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1150" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -1057,7 +1057,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="tp3-datapath" name="Datapath TP3">
-        <mxGraphModel dx="2390" dy="98" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2250" pageHeight="1800" math="0" shadow="0">
+        <mxGraphModel dx="2439" dy="170" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2250" pageHeight="1800" math="0" shadow="0">
             <root>
                 <mxCell id="tp3-0"/>
                 <mxCell id="tp3-root" parent="tp3-0"/>
@@ -1223,8 +1223,8 @@
                 <mxCell id="tp3-49" parent="tp3-root" style="text;html=1;align=left;verticalAlign=middle;fontSize=9;fontColor=#000000;spacing=0;whiteSpace=nowrap;" value="pcF" vertex="1">
                     <mxGeometry height="14" width="120" x="150" y="755" as="geometry"/>
                 </mxCell>
-                <mxCell id="tp3-50" parent="tp3-root" style="text;html=1;align=left;verticalAlign=middle;fontSize=8;fontColor=#D9730D;spacing=0;whiteSpace=nowrap;" value="→ o_pc" vertex="1">
-                    <mxGeometry height="14" width="120" x="150" y="777" as="geometry"/>
+                <mxCell id="tp3-50" parent="tp3-root" style="text;html=1;align=left;verticalAlign=middle;fontSize=8;fontColor=#D9730D;spacing=0;whiteSpace=nowrap;" value="&amp;nbsp;o_pc" vertex="1">
+                    <mxGeometry height="14" width="120" x="170" y="775" as="geometry"/>
                 </mxCell>
                 <mxCell id="tp3-51" edge="1" parent="tp3-root" style="endArrow=none;html=1;rounded=0;strokeColor=#000000;strokeWidth=2;">
                     <mxGeometry relative="1" as="geometry">
@@ -3026,6 +3026,12 @@
                 </mxCell>
                 <mxCell id="tp3-311" parent="tp3-root" style="text;html=1;align=left;verticalAlign=middle;fontSize=7;fontColor=#888888;spacing=0;whiteSpace=nowrap;" value="(solo snapshot)" vertex="1">
                     <mxGeometry height="14" width="120" x="1522.5" y="142" as="geometry"/>
+                </mxCell>
+                <mxCell id="NSNv27Mb_6YbufuqjuSF-0" edge="1" parent="tp3-root" style="endArrow=none;html=1;rounded=0;strokeColor=#D9730D;strokeWidth=1.5;exitX=1.001;exitY=0.705;exitDx=0;exitDy=0;exitPerimeter=0;">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="144.9950000000001" y="784.2499999999999" as="sourcePoint"/>
+                        <mxPoint x="169.97" y="784" as="targetPoint"/>
+                    </mxGeometry>
                 </mxCell>
             </root>
         </mxGraphModel>
