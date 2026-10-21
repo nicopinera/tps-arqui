@@ -4,30 +4,6 @@ Este documento tiene como objetivo guiar el estudio del funcionamiento del proce
 
 ---
 
-## 0. Cómo estudiarlo
-
-El diagrama tiene unos 400 elementos. Si intentás entenderlo todo junto, no lo vas a retener. Conviene ir por **capas**, y no pasar a la siguiente hasta poder explicar la anterior sin mirar.
-
-| Capa | Qué tenés que poder hacer                                                                                         | Sección |
-| ---- | ----------------------------------------------------------------------------------------------------------------- | ------- |
-| 1    | Explicar qué hace cada etapa, qué guarda cada latch y para qué sirve cada señal de control, sin riesgos           | 1, 2    |
-| 2    | Seguir con el dedo el camino de cada tipo de instrucción (`add`, `addi`, `lw`, `sw`, `beq`, `jal`, `jalr`, `lui`) | 3       |
-| 3    | Explicar los riesgos de datos: forwarding, stall de load-use y bypass del banco                                   | 4       |
-| 4    | Explicar los riesgos de control: los dos puntos de redirección, el flush y las prioridades                        | 5       |
-| 5    | Explicar HALT, instrucciones ilegales, el drenado y los puertos de la Debug Unit                                  | 6, 7    |
-| 6    | Armar a mano una carta de pipeline ciclo a ciclo de un programa con todos los riesgos                             | 8       |
-
-**Ejercicios recomendados:**
-
-1. **Dibujarlo de memoria.** Empezá por las 5 etapas y los latches, después agregá los bloques, después los cables de datos y al final el control. Lo que no te sale es lo que no entendiste.
-2. **Una instrucción por vez.** Imprimí el SVG y resaltá con un color el camino que recorre una instrucción. Repetí con cada tipo.
-3. **Explicarlo en voz alta.** Es lo que te va a pedir el profesor en la defensa, así que practicalo: "¿por qué está este mux acá?".
-4. **Cartas de pipeline.** Escribí programas cortos y armá la tabla ciclo × etapa. Con la sección 8 como modelo, hacé tu propio programa de 10 instrucciones.
-5. **Preguntas de la sección 10.** Respondelas sin mirar y después verificá.
-6. **Más adelante, en simulación.** Cuando exista `riscv_core`, corré tus programas en el testbench y compará la forma de onda con tu carta hecha a mano. Cualquier diferencia es un bug, o algo que no entendiste.
-
----
-
 ## 1. Panorama general
 
 ### 1.1 La idea del pipeline
@@ -53,15 +29,15 @@ Los **latches** (IF/ID, ID/EX, EX/MEM, MEM/WB) son registros que en cada flanco 
 
 ### 1.3 Decisiones de diseño que tenés que poder defender
 
-| Decisión                                                               | Por qué                                                                                                  | ADR              |
-| ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ---------------- |
-| Memorias con lectura **combinacional** (LUTRAM)                        | IF y MEM leen en el mismo ciclo, igual que en el libro; sin alineación especial del PC                   | ADR-005          |
-| `jal` se resuelve en **ID**; branches y `jalr` en **EX**               | `jal` no depende de registros, así que se adelanta (1 ciclo); los otros necesitan operandos forwardeados | ADR-006          |
-| Forwarding completo + stall solo para load-use                         | Solo se pierde 1 ciclo, y solo en load-use                                                               | ADR-007          |
-| Bypass interno en el banco (en vez de escribir en el flanco de bajada) | Un solo flanco de reloj en todo el diseño                                                                | ADR-007, ADR-001 |
-| Comparador de igualdad dedicado (`branch_cmp`)                         | Más rápido que restar con la ALU; acorta el camino crítico                                               | ADR-019          |
-| Ilegal = HALT con causa de error                                       | Reutiliza el drenado del HALT; el error queda visible                                                    | ADR-018          |
-| `i_enable` como clock enable, nunca compuertas en el reloj             | Un solo dominio de reloj; STEP = 1 ciclo con enable                                                      | ADR-001          |
+| Decisión                                                            | Por qué                                                                                                  | ADR              |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ---------------- |
+| Memorias con lectura **combinacional** (LUTRAM)                     | IF y MEM leen en el mismo ciclo; sin alineación especial del PC                                          | ADR-005          |
+| `jal` se resuelve en **ID**; branches y `jalr` en **EX**            | `jal` no depende de registros, así que se adelanta (1 ciclo); los otros necesitan operandos forwardeados | ADR-006          |
+| Forwarding completo + stall solo para load-use                      | Solo se pierde 1 ciclo, y solo en load-use                                                               | ADR-007          |
+| Bypass interno en el banco (en vez de escr. en el flanco de bajada) | Un solo flanco de reloj en todo el diseño                                                                | ADR-007, ADR-001 |
+| Comparador de igualdad dedicado (`branch_cmp`)                      | Más rápido que restar con la ALU; acorta el camino crítico                                               | ADR-019          |
+| Ilegal = HALT con causa de error                                    | Reutiliza el drenado del HALT; el error queda visible                                                    | ADR-018          |
+| `i_enable` como clock enable, nunca compuertas en el reloj          | Un solo dominio de reloj; STEP = 1 ciclo con enable                                                      | ADR-001          |
 
 ### 1.4 Los registros
 
@@ -71,7 +47,7 @@ RV32I tiene **32 registros de 32 bits**, `x0` a `x31`, más el **PC**, que no es
 
 - **`x0` vale siempre 0.** Leerlo da 0 y escribirlo no tiene efecto: el banco ignora la escritura y el forwarding nunca reenvía un resultado con destino `x0`. No es un registro "inicializado en 0": está **cableado** a 0.
 - **`x1` a `x31`** son registros de propósito general. Cualquier instrucción puede leerlos o escribirlos.
-- **El PC** solo cambia por el propio flujo del programa: `+4`, branches, `jal` y `jalr`. Para obtenerlo hay que usar `jal`/`jalr`, que guardan `PC + 4` en `rd` (`auipc` no está implementada).
+- **El PC** solo cambia por el propio flujo del programa: `+4`, branches, `jal` y `jalr`. Para obtenerlo hay que usar `jal`/`jalr`, que guardan `PC + 4` en `rd`.
 
 **Nomeclatura ABI.** Además del número, cada registro tiene un nombre que indica para qué se **acostumbra** usarlo. Es una convención de software (la ABI, _Application Binary Interface_), no una regla del hardware. El ensamblador acepta los dos nombres: `addi t0, t0, 1` es lo mismo que `addi x5, x5, 1`.
 
@@ -112,7 +88,7 @@ Cada instrucción es una palabra de **32 bits**. En IF/ID viaja junto con `pc`, 
 
 Los 32 bits se reparten en campos, y el reparto depende del **formato**:
 
-```
+```txt
  31        25 24   20 19   15 14  12 11         7 6       0
 ┌────────────┬───────┬───────┬──────┬────────────┬─────────┐
 │   funct7   │  rs2  │  rs1  │funct3│     rd     │ opcode  │  R  → 6 campos
@@ -130,12 +106,12 @@ Los 32 bits se reparten en campos, y el reparto depende del **formato**:
 ```
 
 - **El opcode está en todos, siempre en los bits `[6:0]`.** Es lo primero que mira la Control Unit.
-- **`rs1`, `rs2` y `rd` están siempre en la misma posición** cuando existen. Por eso en ID el banco de registros se puede leer *al mismo tiempo* que la Control Unit decide qué instrucción es: extraer los campos son solo cables.
-- **El inmediato es lo que cambia de lugar** en cada formato. Lo arma `imm_gen` según `imm_type` (§2.6.1).
+- **`rs1`, `rs2` y `rd` están siempre en la misma posición** cuando existen. Por eso en ID el banco de registros se puede leer _al mismo tiempo_ que la Control Unit decide qué instrucción es: extraer los campos son solo cables.
+- **El inmediato es lo que cambia de lugar** en cada formato. Lo arma `imm_gen` según `imm_type`.
 
 #### opcode → funct3 → funct7: una jerarquía de tres niveles
 
-"funct" viene de *function*. funct3 y funct7 **completan al opcode** para decir exactamente qué instrucción es:
+"funct" viene de _function_. funct3 y funct7 **completan al opcode** para decir exactamente qué instrucción es:
 
 1. **opcode (7 bits) dice la familia.**
    - `0110011` = operación entre registros (R)
@@ -167,6 +143,17 @@ Los 32 bits se reparten en campos, y el reparto depende del **formato**:
 
    Por eso a ID/EX y a `alu_control` les llega `funct7_b5` (un solo bit) y no los 7.
 
+   **Ejemplo:** `add x3, x1, x2` (x3 = x1 + x2) y `sub x3, x1, x2` (x3 = x1 − x2) difieren en un único bit:
+
+   ```text
+            funct7   rs2   rs1  funct3  rd    opcode
+   add:    0000000 00010 00001  000   00011 0110011   = 0x002081B3
+   sub:    0100000 00010 00001  000   00011 0110011   = 0x402081B3
+            ↑ bit 30
+   ```
+
+   Cualquier otro valor de funct7 es **ilegal** en este diseño.
+
 **Por qué está hecho así:**
 
 - **Ahorra opcodes.** Con 7 bits hay 128 combinaciones; agrupando por familia, un solo opcode (R) cubre 10 instrucciones.
@@ -188,7 +175,7 @@ Por eso en este diseño **funct3 viaja en los latches**:
 
 #### Trampa: en los otros formatos, esos bits son inmediato
 
-funct7 solo existe en el formato R (y, como caso especial, en los shifts con inmediato: `slli`, `srli`, `srai`). En I, S, B, U y J, los bits `[31:25]` **son parte del inmediato**.
+funct7 solo existe en el formato R (y, como caso especial, en los shifts con inmediato: `slli`, `srli`, `srai`). En I, S, B, U y J, los bits `[31:25]` **son parte del inmediato**. ¿Por qué los shifts sí tienen funct7? Correr un registro de 32 bits más de 31 posiciones no tiene sentido, así que la cantidad (`shamt`) entra en 5 bits (`[24:20]`). Los 7 bits de arriba quedan libres y se reusan como funct7.
 
 **Ejemplo:** en `addi x1, x1, -1024` el bit 30 vale 1, pero no significa "resta": es un bit del número. Por eso:
 
@@ -323,8 +310,8 @@ Lo mismo vale para funct3 en U y J: en `lui` y `jal` esos bits también son inme
 
 Hay dos familias de señales de control. Conviene separarlas porque se generan en lugares distintos:
 
-1. **Las del decodificador** (`control_unit`, en ID). Dependen solo de *qué instrucción es* y viajan con ella por los latches.
-2. **Las que coordinan el pipeline** (Hazard Unit, Forwarding Unit y Debug Unit). Dependen de *qué instrucciones conviven* en el pipeline en ese ciclo.
+1. **Las del decodificador** (`control_unit`, en ID). Dependen solo de _qué instrucción es_ y viajan con ella por los latches.
+2. **Las que coordinan el pipeline** (Hazard Unit, Forwarding Unit y Debug Unit). Dependen de _qué instrucciones conviven_ en el pipeline en ese ciclo.
 
 La codificación exacta de cada una está en `docs/interfaces/tabla_control.md`.
 
@@ -365,7 +352,7 @@ Las que solo se usan en ID (`imm_type` y `uses_rs1/2`) no necesitan latch. `jump
 - **Qué hace:** el destino `PC_ID + imm_J` se calcula en ID con un sumador propio, y la Hazard Unit pone `pc_sel = 01`.
 - **Por qué en ID:** `jal` no depende de ningún registro, así que se puede resolver apenas se decodifica. Eso deja 1 ciclo de penalidad en vez de 2 (ADR-006).
 
-**`uses_rs1` / `uses_rs2` (1 bit c/u)** dicen si la instrucción *de verdad* lee ese registro. Solo los usa la Hazard Unit para detectar load-use.
+**`uses_rs1` / `uses_rs2` (1 bit c/u)** dicen si la instrucción _de verdad_ lee ese registro. Solo los usa la Hazard Unit para detectar load-use.
 
 - **Por qué existen:** los campos `rs1` y `rs2` siempre tienen bits, aunque la instrucción no los use. En `lui x5, 0x12345`, los bits que caen en el campo `rs1` son parte del inmediato.
 - **Si no estuvieran:** un `lw x9, …` seguido de ese `lui` podría "coincidir" por casualidad y generar un **stall falso**.
@@ -376,22 +363,22 @@ Las que solo se usan en ID (`imm_type` y `uses_rs1/2`) no necesitan latch. `jump
 **`alu_src` (1 bit)** elige el operando B de la ALU: `0` = `rs2` (ya forwardeado), `1` = inmediato.
 
 - **Ejemplos:** `add` → 0; `addi`, loads, stores, `jalr` y `lui` → 1.
-- **Stores:** usan `alu_src = 1` porque la ALU calcula la dirección `rs1 + imm`. El `rs2` es el *dato*: pasa por al lado de la ALU, como `store_data`.
+- **Stores:** usan `alu_src = 1` porque la ALU calcula la dirección `rs1 + imm`. El `rs2` es el _dato_: pasa por al lado de la ALU, como `store_data`.
 
 **`alu_op` (2 bits)** es una "pista" para `alu_control`. Con ella más `funct3` y `funct7[5]`, `alu_control` elige una de las 11 operaciones (`alu_ctrl[3:0]`, ADR-019).
 
-| Valor | Significado  | Instrucciones                                                    |
-| ----- | ------------ | ---------------------------------------------------------------- |
-| `00`  | ADD fijo     | loads, stores, `jalr` (siempre suman una dirección)              |
-| `01`  | PASS_B       | `lui`: deja pasar el inmediato. No hay mux en el operando A       |
-| `10`  | R-type       | mira `funct3` y `funct7[5]`                                      |
-| `11`  | I aritmético | mira `funct3`; `funct7[5]` solo cuenta en los shifts             |
+| Valor | Significado  | Instrucciones                                               |
+| ----- | ------------ | ----------------------------------------------------------- |
+| `00`  | ADD fijo     | loads, stores, `jalr` (siempre suman una dirección)         |
+| `01`  | PASS_B       | `lui`: deja pasar el inmediato. No hay mux en el operando A |
+| `10`  | R-type       | mira `funct3` y `funct7[5]`                                 |
+| `11`  | I aritmético | mira `funct3`; `funct7[5]` solo cuenta en los shifts        |
 
 **Por qué `10` y `11` son distintos:** en `addi`, el bit 30 es parte del inmediato. Si se interpretara como `funct7[5]`, `addi x1, x1, -1024` haría una **resta**. Por eso, con `alu_op = 11` y `funct3 = 000`, siempre es ADD (US-201 AC2).
 
 **`branch` (1 bit)** vale 1 para `beq` y `bne`.
 
-- **Qué hace:** en EX, `branch_cmp` compara los operandos *forwardeados* y, con `funct3`, decide si se toma: `000` = igual, `001` = distinto.
+- **Qué hace:** en EX, `branch_cmp` compara los operandos _forwardeados_ y, con `funct3`, decide si se toma: `000` = igual, `001` = distinto.
 - **Si se toma:** `redirect_ex = 1`. La Hazard Unit pone `pc_sel = 10` y hace flush de IF/ID e ID/EX.
 - **Por qué no usa la ALU:** la ALU podría estar ocupada calculando algo, y así el diseño queda más claro. Por eso `alu_op` es "—" para los branches.
 
@@ -403,7 +390,7 @@ Las que solo se usan en ID (`imm_type` y `uses_rs1/2`) no necesitan latch. `jump
 
 **`mem_read` (1 bit)** marca los loads. Su uso funcional está **en EX**, en la Hazard Unit:
 
-```
+```verilog
 stall = validE && mem_readE && rdE != 0 && ((uses_rs1D && rdE == rs1D) || (uses_rs2D && rdE == rs2D))
 ```
 
@@ -422,11 +409,11 @@ stall = validE && mem_readE && rdE != 0 && ((uses_rs1D && rdE == rs1D) || (uses_
 
 **`result_src` (2 bits)** elige qué se escribe en `rd`:
 
-| Valor | Fuente                                                 | Instrucciones                        |
-| ----- | ------------------------------------------------------ | ------------------------------------ |
-| `00`  | resultado de la ALU                                    | aritméticas, lógicas, `lui`          |
-| `01`  | dato leído de memoria, ya extendido por `load_extend`  | loads                                |
-| `10`  | `PC+4`                                                 | `jal`, `jalr` (dirección de retorno) |
+| Valor | Fuente                                                | Instrucciones                        |
+| ----- | ----------------------------------------------------- | ------------------------------------ |
+| `00`  | resultado de la ALU                                   | aritméticas, lógicas, `lui`          |
+| `01`  | dato leído de memoria, ya extendido por `load_extend` | loads                                |
+| `10`  | `PC+4`                                                | `jal`, `jalr` (dirección de retorno) |
 
 **Ejemplo:** `jal ra, f` escribe `PC+4` en `ra`, no lo que calcule la ALU.
 
@@ -445,26 +432,26 @@ stall = validE && mem_readE && rdE != 0 && ((uses_rs1D && rdE == rs1D) || (uses_
 
 Estas no dependen de una instrucción sola, sino de la relación entre instrucciones en distintas etapas. Se ven en detalle en las secciones 4, 5 y 6.
 
-| Señal                     | La genera       | Qué hace                                                                                                                                                                                       |
-| ------------------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`valid`** (1 por latch) | cada etapa      | Dice si en ese latch hay una instrucción real o una burbuja. Todo efecto (escribir registro o memoria, forwardear, pedir stall, terminar) se condiciona con `valid`. Un flush **no borra** el latch: pone `valid = 0` |
-| **`fwd_a` / `fwd_b`** (2 bits) | Forwarding Unit | Elige de dónde salen los operandos en EX: `00` = banco (vía ID/EX), `10` = EX/MEM (distancia 1), `01` = MEM/WB (distancia 2). EX/MEM tiene prioridad porque es el valor más nuevo                  |
-| **`StallF`**              | Hazard Unit     | Congela el PC: `stall \| halt_fetch \| i_stop_fetch`                                                                                                                                             |
-| **`StallD`**              | Hazard Unit     | Congela IF/ID: la instrucción en ID repite el ciclo (load-use)                                                                                                                                  |
-| **`FlushD`**              | Hazard Unit     | Burbuja en IF/ID: descarta lo que estaba en IF. Se activa con un `jal` en ID o una redirección desde EX                                                                                          |
-| **`FlushE`**              | Hazard Unit     | Burbuja en ID/EX: por load-use (no se manda a EX una instrucción sin su dato) o por redirección desde EX (lo que estaba en ID era especulativo)                                                  |
-| **`pc_sel`** (2 bits)     | Hazard Unit     | Mux del PC: `00` = `PC+4` · `01` = destino de `jal` (ID) · `10` = destino de EX (branch o `jalr`). Prioridad: EX > `jal` > stall > HALT (§5.2)                                                  |
-| **`halt_fetch`**          | ID              | Un HALT o una instrucción ilegal en ID detienen la búsqueda. Se cancela si EX redirige, porque entonces el HALT era especulativo (R-EJ-4)                                                         |
+| Señal                          | La genera       | Qué hace                                                                                                                                                                                                              |
+| ------------------------------ | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`valid`** (1 por latch)      | cada etapa      | Dice si en ese latch hay una instrucción real o una burbuja. Todo efecto (escribir registro o memoria, forwardear, pedir stall, terminar) se condiciona con `valid`. Un flush **no borra** el latch: pone `valid = 0` |
+| **`fwd_a` / `fwd_b`** (2 bits) | Forwarding Unit | Elige de dónde salen los operandos en EX: `00` = banco (vía ID/EX), `10` = EX/MEM (distancia 1), `01` = MEM/WB (distancia 2). EX/MEM tiene prioridad porque es el valor más nuevo                                     |
+| **`StallF`**                   | Hazard Unit     | Congela el PC: `stall \| halt_fetch \| i_stop_fetch`                                                                                                                                                                  |
+| **`StallD`**                   | Hazard Unit     | Congela IF/ID: la instrucción en ID repite el ciclo (load-use)                                                                                                                                                        |
+| **`FlushD`**                   | Hazard Unit     | Burbuja en IF/ID: descarta lo que estaba en IF. Se activa con un `jal` en ID o una redirección desde EX                                                                                                               |
+| **`FlushE`**                   | Hazard Unit     | Burbuja en ID/EX: por load-use (no se manda a EX una instrucción sin su dato) o por redirección desde EX (lo que estaba en ID era especulativo)                                                                       |
+| **`pc_sel`** (2 bits)          | Hazard Unit     | Mux del PC: `00` = `PC+4` · `01` = destino de `jal` (ID) · `10` = destino de EX (branch o `jalr`). Prioridad: EX > `jal` > stall > HALT (§5.2)                                                                        |
+| **`halt_fetch`**               | ID              | Un HALT o una instrucción ilegal en ID detienen la búsqueda. Se cancela si EX redirige, porque entonces el HALT era especulativo (R-EJ-4)                                                                             |
 
 **Señales que vienen de la Debug Unit** (ADR-001, 009 y 010; ver §7):
 
-- **`i_enable`:** *clock enable* de todo el núcleo. Con 0, nada cambia. Un STEP es exactamente 1 ciclo con `i_enable = 1`.
+- **`i_enable`:** _clock enable_ de todo el núcleo. Con 0, nada cambia. Un STEP es exactamente 1 ciclo con `i_enable = 1`.
 - **`i_stop_fetch`** (ABORT): hace lo mismo que el HALT, pero se pide desde afuera. Congela el PC y deja que el pipeline se vacíe.
 - **`i_flush_all`:** reset del pipeline. Pone `valid = 0` en los 4 latches, y el PC y los registros en 0.
 
 #### 2.6.3 Cómo encaja todo, con un ejemplo
 
-```
+```asm
 lw  x1, 0(x2)
 add x3, x1, x4
 ```
@@ -662,7 +649,7 @@ EX: la ALU calcula `ra + 0`, se le aplica `& ~1`, se redirige el PC y se hace fl
 
 ### 4.1 El problema
 
-```
+```asm
 add x1, x2, x3     # escribe x1 en WB (ciclo 5)
 sub x4, x1, x5     # necesita x1 en EX (ciclo 4)  ← todavía no está en el banco
 ```
@@ -671,7 +658,7 @@ sub x4, x1, x5     # necesita x1 en EX (ciclo 4)  ← todavía no está en el ba
 
 Condición para el operando A. La del B es igual, cambiando `rs1E` por `rs2E`:
 
-```
+```txt
 si   EX/MEM.reg_write && EX/MEM.valid && rdM != 0 && rdM == rs1E   → fwd_a = 10
 sino MEM/WB.reg_write && MEM/WB.valid && rdW != 0 && rdW == rs1E   → fwd_a = 01
 sino                                                               → fwd_a = 00
@@ -685,14 +672,14 @@ Tres detalles para la defensa:
 
 ### 4.3 Load-use: el único stall (Hazard Unit, en ID)
 
-```
+```asm
 lw  x1, 0(x2)
 add x3, x1, x4     # en EX necesita x1, pero lw recién lo tiene al final de MEM
 ```
 
 Condición, evaluada con `lw` en EX y `add` en ID:
 
-```
+```verilog
 stall = validE && mem_readE && rdE != 0 &&
         ((uses_rs1D && rdE == rs1D) || (uses_rs2D && rdE == rs2D))
 ```
@@ -794,7 +781,7 @@ Mientras está activo: el PC se congela y IF/ID e ID/EX reciben burbujas, así q
 
 Programa (la DMEM arranca en 0):
 
-```
+```txt
 0x00  addi x1, x0, 8
 0x04  lw   x2, 0(x1)       # x2 = M[8]
 0x08  add  x3, x2, x1      # load-use con lw  → 1 stall
@@ -857,74 +844,50 @@ Carta de pipeline. "—" = burbuja (`valid=0`).
 
 Respondé sin mirar y después abrí la respuesta.
 
-<details><summary>1. ¿Por qué hay un latch entre cada par de etapas y qué pasaría sin ellos?</summary>
+- **¿Por qué hay un latch entre cada par de etapas y qué pasaría sin ellos?**
 
 Cada etapa trabaja sobre una instrucción distinta. El latch guarda, al final del ciclo, todo lo que la instrucción necesita en las etapas siguientes. Sin latches, las señales de una instrucción se mezclarían con las de la siguiente y el diseño sería combinacional de punta a punta, como un procesador uniciclo.
 
-</details>
-
-<details><summary>2. ¿Por qué rd viaja hasta WB si se decodifica en ID?</summary>
+- **¿Por qué rd viaja hasta WB si se decodifica en ID?**
 
 Porque recién en WB se sabe el resultado y se escribe el banco. Si se usara `rd` directamente desde ID, se escribiría el registro destino de la instrucción que está en ID en ese momento, que es otra (3 instrucciones más nueva).
 
-</details>
-
-<details><summary>3. ¿Por qué el forwarding desde EX/MEM tiene prioridad sobre MEM/WB?</summary>
+- **¿Por qué el forwarding desde EX/MEM tiene prioridad sobre MEM/WB?**
 
 Si las dos instrucciones escriben el mismo registro, la de EX/MEM es la más reciente en el orden del programa, así que su valor es el correcto.
 
-</details>
-
-<details><summary>4. ¿Por qué el load-use necesita un stall y no se resuelve con forwarding?</summary>
+- **¿Por qué el load-use necesita un stall y no se resuelve con forwarding?**
 
 El dato del load recién existe al final de MEM. La instrucción siguiente lo necesita al principio de EX, en ese mismo ciclo. No se puede adelantar un dato que todavía no existe: hay que esperar un ciclo y forwardearlo desde MEM/WB.
 
-</details>
-
-<details><summary>5. ¿Por qué jal se resuelve en ID pero jalr en EX?</summary>
+- **¿Por qué jal se resuelve en ID pero jalr en EX?**
 
 `jal` solo depende de `PC + inmediato`, que se conocen en ID, así que se resuelve antes y cuesta 1 ciclo. `jalr` depende de `rs1`, que puede venir de una instrucción anterior todavía en vuelo. El forwarding llega a EX, no a ID, y resolverlo en ID exigiría forwarding hacia ID y stalls nuevos.
 
-</details>
-
-<details><summary>6. ¿Qué hace el bit `valid` y qué pasaría si no existiera?</summary>
+- **¿Qué hace el bit `valid` y qué pasaría si no existiera?**
 
 Marca si el contenido del latch es una instrucción real o una burbuja. Todas las escrituras y el forwarding se condicionan con él. Sin `valid`, una burbuja no se distinguiría de una instrucción, el flush tendría que convertir la instrucción en un NOP real, y no se podría saber cuándo el pipeline está vacío para el HALT.
 
-</details>
-
-<details><summary>7. Un `sw x5, 0(x6)` justo después de `add x5, ...`: ¿de dónde sale el dato que se guarda?</summary>
+Un `sw x5, 0(x6)` justo después de `add x5, ...`: ¿de dónde sale el dato que se guarda?
 
 Del forwarding `10` sobre el operando B. El valor forwardeado alimenta tanto el mux `alu_src` como `store_data`, que viaja a MEM por EX/MEM.
 
-</details>
-
-<details><summary>8. ¿Qué pasa si hay un HALT inmediatamente después de un beq tomado?</summary>
+- **¿Qué pasa si hay un HALT inmediatamente después de un beq tomado?**
 
 El HALT se detecta en ID mientras el `beq` está en EX. En ese mismo ciclo el `beq` redirige, y la redirección desde EX tiene prioridad: el HALT se descarta con el flush de IF/ID e ID/EX, `halt_fetch` se desactiva y la ejecución sigue en el destino (R-EJ-4).
 
-</details>
-
-<details><summary>9. ¿Por qué hay un mux en el puerto de escritura de la DMEM?</summary>
+- **¿Por qué hay un mux en el puerto de escritura de la DMEM?**
 
 La memoria distribuida tiene un solo puerto de escritura. Lo usan el núcleo (stores) y la Debug Unit (limpieza a cero en LOAD/RESET). La Debug Unit solo escribe con el núcleo congelado, así que nunca hay conflicto real.
 
-</details>
-
-<details><summary>10. ¿Por qué `lui` no genera stall detrás de un `lw` aunque su campo rs1 coincida con el rd del load?</summary>
+- **¿Por qué `lui` no genera stall detrás de un `lw` aunque su campo rs1 coincida con el rd del load?**
 
 Porque `uses_rs1 = 0` para `lui`. La Hazard Unit solo compara los registros que la instrucción realmente lee. Sin esa bandera habría stalls falsos.
 
-</details>
-
-<details><summary>11. ¿Cuántos ciclos tarda en total un programa de N instrucciones sin riesgos?</summary>
+- **¿Cuántos ciclos tarda en total un programa de N instrucciones sin riesgos?**
 
 N + 4: 4 ciclos para llenar el pipeline, y después termina una instrucción por ciclo (CPI → 1). Cada stall suma 1, cada `jal` 1, y cada branch tomado o `jalr` 2.
 
-</details>
-
-<details><summary>12. ¿Qué ves en el snapshot cuando hay un stall de load-use?</summary>
+- **¿Qué ves en el snapshot cuando hay un stall de load-use?**
 
 `o_stall = 1`. IF/ID muestra la misma instrucción en dos snapshots seguidos, y en el ciclo siguiente ID/EX aparece con `valid = 0` (la burbuja). Un ciclo después, la instrucción dependiente aparece en EX con `fwd = 01`.
-
-</details>
