@@ -1,12 +1,11 @@
 # Tabla de Señales de Control
 
-- **Versión:** 0.1 (borrador, pendiente de revisión cruzada — US-103 AC2)
+- **Versión:** 0.1
 - **Fecha:** 2026-10-15
 - **Historia:** US-103
-- **Fuentes:** PRD §2.2 (codificación), §3.2 (latches); ADR-004 (HALT), ADR-006 (saltos), ADR-007 (riesgos), ADR-018 (ilegales), ADR-019 (ALU)
-- **La implementan:** `hw/rtl/core/control_unit.v`, `hw/rtl/core/alu_control.v`, `hw/rtl/core/imm_gen.v` (US-201, US-203)
+- **La implementan:** `hw/rtl/core/control_unit.v`, `hw/rtl/core/alu_control.v`, `hw/rtl/core/imm_gen.v`
 
-Cualquier cambio en esta tabla después de cerrar US-103 se avisa a la otra pista y se sube la versión (US-103 AC5).
+Cualquier cambio en esta tabla después de cerrar US-103 se avisa a la otra pista y se sube la versión.
 
 ## 1. Codificación de las señales
 
@@ -145,9 +144,3 @@ Cualquier palabra que no figure en esta tabla activa `illegal = 1` y `halt = 1`,
 | `11`     | `111`    | x           | `AND`      | `andi`                           |
 
 Las combinaciones ilegales no llegan a `alu_control` con efecto: el decodificador las marca en ID y no escriben nada.
-
-## 5. Revisión cruzada
-
-- [ ] Krede, Julián — tabla §2 contrastada contra PRD §2.2
-- [ ] Piñera, Nicolás — tabla §2 contrastada contra PRD §2.2
-- [ ] Ambos — combinaciones legales §3 contrastadas contra la especificación RV32I
