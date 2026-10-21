@@ -1,10 +1,6 @@
 # Carta de pipeline — US-103 AC4
 
-> **Estado:** completa
-> **Autor:** Julián Krede
-> **Se reutiliza en:** US-507 AC2. La carta que dibuje la GUI tiene que coincidir con esta.
-
-Recorrido "en papel", ciclo por ciclo, de un programa de **10 instrucciones** con un load-use, un forwarding EX/MEM y un `beq` tomado (PRD §9, US-103 AC4). Los nombres de señales son los de `docs/diagramas/datapath_pipeline.drawio`, página 2 "Datapath TP3".
+Recorrido "en papel", ciclo por ciclo, de un programa de **10 instrucciones** con un load-use, un forwarding EX/MEM y un `beq` tomado. Los nombres de señales son los de `docs/diagramas/datapath_pipeline.drawio`, página 2 "Datapath TP3".
 
 ---
 
@@ -18,12 +14,12 @@ Recorrido "en papel", ciclo por ciclo, de un programa de **10 instrucciones** co
 
 ## 2. Supuestos
 
-- Registros y DMEM en 0 al arrancar (ADR-009).
-- Predicción _not-taken_; `beq`/`bne`/`jalr` se resuelven en EX y `jal` en ID (ADR-006).
-- Forwarding EX/MEM > MEM/WB, stall solo por load-use y bypass del banco WB→ID (ADR-007).
-- Memorias con lectura combinacional (ADR-005).
+- Registros y DMEM en 0 al arrancar.
+- Predicción _not-taken_; `beq`/`bne`/`jalr` se resuelven en EX y `jal` en ID.
+- Forwarding EX/MEM > MEM/WB, stall solo por load-use y bypass del banco WB→ID.
+- Memorias con lectura combinacional.
 - Ciclo 1 = primer ciclo con `i_enable = 1` después del reset: la instrucción #1 está en IF.
-- El HALT en ID activa `halt_fetch`: el PC se congela y lo que se buscó detrás del HALT se descarta (burbuja en IF/ID). La IMEM después del programa está rellena con HALT (ADR-009).
+- El HALT en ID activa `halt_fetch`: el PC se congela y lo que se buscó detrás del HALT se descarta (burbuja en IF/ID). La IMEM después del programa está rellena con HALT.
 
 ## 3. Programa
 
@@ -60,23 +56,23 @@ Notación:
 
 - `IF` `ID` `EX` `MEM` `WB`: etapa que ocupa la instrucción en ese ciclo.
 - **Stall:** la etapa se repite (`ID` `ID`, `IF` `IF`) y en EX queda un hueco (burbuja).
-- **Flush:** `✗` después de la última etapa alcanzada; la fila no avanza más.
+- **Flush:** `X` después de la última etapa alcanzada; la fila no avanza más.
 - Una fila por instrucción **buscada**, incluidas las que se descartan y lo que se busque detrás del `halt`.
 - Control: en cada columna, cada etapa la ocupa **a lo sumo una** instrucción.
 
 | Instrucción                   | 1   | 2   | 3   | 4   | 5   | 6   | 7   | 8   | 9   | 10  | 11  | 12  | 13  | 14  |
 | ----------------------------- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| #1 addi x5, x0, 0x1F          | IF  | ID  | EX  | MEM | WB  |     |     |     |     |     |     |     |     |     |
-| #2 sw x5, 0(x0)               | -   | IF  | ID  | EX  | MEM | WB  |     |     |     |     |     |     |     |     |
-| #3 lw x6, 0(x0)               | -   | -   | IF  | ID  | EX  | MEM | WB  |     |     |     |     |     |     |     |
-| #4 beq x5, x6, subru          | -   | -   | -   | IF  | ID  | ID  | EX  | MEM | WB  |     |     |     |     |     |
-| #5 addi x5, x5, -15           | -   | -   | -   | -   | IF  | IF  | ID  | ✗   |     |     |     |     |     |     |
-| #6 sw x5, 8(x0)               | -   | -   | -   | -   | -   | -   | IF  | ✗   |     |     |     |     |     |     |
-| #7 lw x6, 8(x0) (no se busca) |     |     |     |     |     |     |     |     |     |     |     |     |     |     |
-| #8 subru: nop                 | -   | -   | -   | -   | -   | -   | -   | IF  | ID  | EX  | MEM | WB  |     |     |
-| #9 nop                        | -   | -   | -   | -   | -   | -   | -   | -   | IF  | ID  | EX  | MEM | WB  |     |
+| #1 addi x5, x0, 0x1F          | IF  | ID  | EX  | MEM | WB  | -   | -   | -   | -   | -   | -   | -   | -   | -   |
+| #2 sw x5, 0(x0)               | -   | IF  | ID  | EX  | MEM | WB  | -   | -   | -   | -   | -   | -   | -   | -   |
+| #3 lw x6, 0(x0)               | -   | -   | IF  | ID  | EX  | MEM | WB  | -   | -   | -   | -   | -   | -   | -   |
+| #4 beq x5, x6, subru          | -   | -   | -   | IF  | ID  | ID  | EX  | MEM | WB  | -   | -   | -   | -   | -   |
+| #5 addi x5, x5, -15           | -   | -   | -   | -   | IF  | IF  | ID  | X   | -   | -   | -   | -   | -   | -   |
+| #6 sw x5, 8(x0)               | -   | -   | -   | -   | -   | -   | IF  | X   | -   | -   | -   | -   | -   | -   |
+| #7 lw x6, 8(x0) (no se busca) | -   | -   | -   | -   | -   | -   | -   | -   | -   | -   | -   | -   | -   | -   |
+| #8 subru: nop                 | -   | -   | -   | -   | -   | -   | -   | IF  | ID  | EX  | MEM | WB  | -   | -   |
+| #9 nop                        | -   | -   | -   | -   | -   | -   | -   | -   | IF  | ID  | EX  | MEM | WB  | -   |
 | #10 halt                      | -   | -   | -   | -   | -   | -   | -   | -   | -   | IF  | ID  | EX  | MEM | WB  |
-| `0x28` (HALT de relleno)      | -   | -   | -   | -   | -   | -   | -   | -   | -   | -   | IF  | ✗   |     |     |
+| `0x28` (HALT de relleno)      | -   | -   | -   | -   | -   | -   | -   | -   | -   | -   | IF  | X   | -   | -   |
 
 Ocupación por etapa:
 
@@ -115,7 +111,7 @@ Solo los ciclos en los que pasa algo. Nombrá la señal y el bloque de la págin
 
 ## 7. Cuenta de ciclos
 
-```
+```txt
 instrucciones ejecutadas  =    7   (#1, #2, #3, #4, #8, #9, #10)
 + llenado                 =    4
 + stalls de load-use      =    1
