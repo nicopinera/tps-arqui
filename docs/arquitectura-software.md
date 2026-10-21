@@ -178,7 +178,7 @@ Todo vive en `TP3/tools/riscv_toolkit/`.
 | `verify_board.py`   | Lo mismo, pero en la placa real                                                                                            |
 | `uart_echo_test.py` | Prueba mínima del enlace serie                                                                                             |
 
-No todos los archivos existen desde el primer día: se crean en la historia de usuario que los necesita (US-105 a US-108 para el ensamblador y el golden model, US-410 y US-411 para el protocolo y la CLI, US-503 a US-507 para la GUI).
+No todos los archivos existen desde el primer día: se crean en la historia de usuario que los necesita (US-105 a US-108 para el ensamblador y el golden model, US-409 y US-410 para el protocolo y la CLI, US-501 a US-505 para la GUI).
 
 ---
 

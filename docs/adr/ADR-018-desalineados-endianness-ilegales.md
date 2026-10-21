@@ -3,7 +3,7 @@
 - **Estado:** Aprobado
 - **Fecha:** 2026-10-04
 - **Autores:** Krede, Julián · Piñera, Nicolás
-- **Bloquea:** US-203, US-204, US-210
+- **Bloquea:** US-203, US-204, US-205
 - **Relacionados:** ADR-004 (HALT y su drenado), ADR-006 (flush), ADR-010 (programa sin HALT), ADR-014 (golden model), ADR-017 (flags del snapshot)
 
 ## Contexto
@@ -82,5 +82,5 @@ El enunciado no dice qué tiene que pasar con los accesos a memoria desalineados
 
 ## Referencias
 
-- PRD §2.2 (observaciones: little-endian), §6 (R-EJ-3, R-EJ-4, R-EJ-4bis), §8 (ADR-018), §14 (A9, A10); US-203, US-204, US-210, US-107.
+- PRD §2.2 (observaciones: little-endian), §6 (R-EJ-3, R-EJ-4, R-EJ-4bis), §8 (ADR-018), §14 (A9, A10); US-203, US-204, US-205, US-108.
 - _The RISC-V Instruction Set Manual, Volume I_: modelo de memoria little-endian, accesos desalineados y codificación ilegal `0x00000000`.

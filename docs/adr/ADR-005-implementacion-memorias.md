@@ -3,7 +3,7 @@
 - **Estado:** Aprobado
 - **Fecha:** 2026-10-04
 - **Autores:** Krede, Julián · Piñera, Nicolás
-- **Bloquea:** US-204, US-210
+- **Bloquea:** US-204, US-205
 - **Relacionados:** ADR-001 (clock enable), ADR-008 (tamaños), ADR-009 (limpieza de DMEM), ADR-016 (frecuencia)
 
 ## Contexto

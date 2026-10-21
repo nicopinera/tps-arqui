@@ -3,7 +3,7 @@
 - **Estado:** Aprobado
 - **Fecha:** 2026-10-04
 - **Autores:** Krede, Julián · Piñera, Nicolás
-- **Bloquea:** US-106, US-108
+- **Bloquea:** US-106, US-107
 - **Relacionados:** ADR-004 (HALT), ADR-008 (tamaño de IMEM), ADR-010 (HALT automático), ADR-011 (Python), ADR-014 (golden model)
 
 ## Contexto
@@ -50,7 +50,7 @@ Todas se expanden a **exactamente una** instrucción, así que la primera pasada
 
 | Opción                                     | Ventajas                                                                                                    | Desventajas                                                                                                       |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| **(a) Ensamblador propio de dos pasadas** (elegida) | Son solo 33 instrucciones; reutiliza la tabla ISA; HALT nativo; mensajes de error propios; genera el mapa dirección → línea para la GUI; responde al "sean únicos" | ~6 días·persona de desarrollo (US-106 y US-108)                                                                            |
+| **(a) Ensamblador propio de dos pasadas** (elegida) | Son solo 33 instrucciones; reutiliza la tabla ISA; HALT nativo; mensajes de error propios; genera el mapa dirección → línea para la GUI; responde al "sean únicos" | ~6 días·persona de desarrollo (US-106 y US-107)                                                                            |
 | (b) `riscv64-unknown-elf-as` + `objcopy`   | No hay que escribir el ensamblador; codificación garantizada                                                | HALT solo como `.word 0x0000000B`; hay que instalar el toolchain en ambas máquinas y en Windows; no da el mapa de líneas |
 | (c) Exportar desde RARS / Venus            | Simuladores educativos conocidos                                                                            | Paso manual en otra herramienta; difícil de automatizar; HALT tampoco existe                                      |
 
@@ -81,8 +81,8 @@ Todas se expanden a **exactamente una** instrucción, así que la primera pasada
 
 - El ensamblador rechaza programas de más de 256 palabras (ADR-008), contando el HALT agregado.
 - Los inmediatos de `slli`/`srli`/`srai` se limitan a 0–31; los de B y J tienen que ser pares y estar en rango (US-105, AC3).
-- El listado `.lst` muestra la expansión de cada pseudoinstrucción (US-108, AC4).
+- El listado `.lst` muestra la expansión de cada pseudoinstrucción (US-107, AC4).
 
 ## Referencias
 
-- PRD §2.2 (codificación), §6 (R-PR-1, R-PR-2), §8 (ADR-013), §14 (A12, A13); US-105, US-106, US-108.
+- PRD §2.2 (codificación), §6 (R-PR-1, R-PR-2), §8 (ADR-013), §14 (A12, A13); US-105, US-106, US-107.

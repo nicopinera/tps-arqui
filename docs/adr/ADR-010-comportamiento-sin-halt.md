@@ -3,7 +3,7 @@
 - **Estado:** Aprobado
 - **Fecha:** 2026-10-04
 - **Autores:** Krede, Julián · Piñera, Nicolás
-- **Bloquea:** US-406
+- **Bloquea:** US-407
 - **Relacionados:** ADR-003 (`ABORT`), ADR-004 (codificación de HALT), ADR-008 (tamaño de IMEM), ADR-009 (relleno con HALT), ADR-013 (ensamblador)
 
 ## Contexto
@@ -73,4 +73,4 @@ En modo paso a paso no hace falta `ABORT`: el usuario deja de mandar `STEP` y pu
 
 ## Referencias
 
-- PRD §6 (R-EJ-3, R-EJ-5, R-PR-1, R-DU-1), §7 (NFR-6), §8 (ADR-010), §14 (A11); US-406.
+- PRD §6 (R-EJ-3, R-EJ-5, R-PR-1, R-DU-1), §7 (NFR-6), §8 (ADR-010), §14 (A11); US-407.

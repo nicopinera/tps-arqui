@@ -29,7 +29,7 @@ Cualquier cambio en esta tabla después de cerrar US-103 se avisa a la otra pist
 **Notas de diseño:**
 
 - `jump` y `jalr` son **excluyentes**: `jump` marca solo `jal` (redirección en ID, 1 ciclo de penalidad) y `jalr` marca solo `jalr` (redirección en EX, 2 ciclos). La redirección desde EX es `(branch && taken) || jalr`; la de ID es `jump`.
-- El tamaño y el signo de loads/stores **no** generan señales propias: viajan como `funct3` en ID/EX y EX/MEM, y los interpreta MEM (US-210).
+- El tamaño y el signo de loads/stores **no** generan señales propias: viajan como `funct3` en ID/EX y EX/MEM, y los interpreta MEM (US-205).
 - No hay mux de operando A: `lui` usa `PASS_B` y la dirección de retorno de `jal`/`jalr` viaja como `pc_plus4` (ADR-019).
 - **`—` en la tabla** significa que la señal no se usa para esa instrucción. `control_unit` emite el valor por defecto (0), y `tb_control_unit.v` no la verifica.
 

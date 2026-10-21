@@ -6,7 +6,7 @@
 //
 //   make sim TB=tb_readmemh HEX=hw/tb/common/ejemplo.hex
 //
-// Los testbenches del nucleo (US-209 en adelante) usan este mismo esquema.
+// Los testbenches del nucleo (US-210 en adelante) usan este mismo esquema.
 module tb_readmemh;
   `include "tb_utils.vh"
 
