@@ -74,4 +74,4 @@ jobs:
         run: cd tools && uv run pytest
 
       - name: Vulnerabilidades (pip-audit)
-        run: cd tools && uv run pip-audit --skip-editable
+        run: cd tools && uv run pip-audit

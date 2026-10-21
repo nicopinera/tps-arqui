@@ -552,7 +552,7 @@ treeView-beta
   - **Soporte `$readmemh`:** el testbench recibe la ruta del programa con `+HEX=<ruta>` (`make sim TB=… HEX=…`), sin recompilar. Formato del `.hex`: una palabra de 32 bits por línea (usado en US-210 en adelante).
   - **Testbench de ejemplo:** `tb_uart_loopback.v` (TX conectado a RX del TP2) como prueba de la infraestructura.
   - **CI (`.github/workflows/ci.yml`):** en cada push y PR corre dos trabajos. **HDL:** `make lint` y `make sim-all`. **Python:** `uv sync` y luego `ruff check`, `ruff format --check`, `mypy`, `pytest --cov` y `pip-audit` sobre `tools/` (todos con `uv run`). En local, `make check-py` corre lo mismo y `make check` corre todo.
-  - **Esqueleto de `tools/`:** proyecto uv con el paquete `riscv_toolkit` (los subpaquetes de la sección 4.5 se crean en la historia que los necesita, sin `__init__.py`: son _namespace packages_ y mypy ya está configurado con `explicit_package_bases`), `mypy` en modo estricto y un test mínimo, para que las verificaciones de Python corran desde el primer día.
+  - **Esqueleto de `tools/`:** proyecto uv **no instalable** (`[tool.uv] package = false`, sin `[build-system]`): uv solo maneja el entorno y las dependencias fijadas en `uv.lock`, y el código se corre desde `tools/` con `uv run python -m riscv_toolkit <subcomando>`. `__main__.py` despacha los subcomandos `asm`, `sim`, `dbg` y `gui`; en este documento, `rvasm …`, `rvsim …` y `rvdbg …` son abreviaturas de `uv run python -m riscv_toolkit asm|sim|dbg …`. Contiene el paquete `riscv_toolkit` (los subpaquetes de la sección 4.5 se crean en la historia que los necesita, sin `__init__.py`: son _namespace packages_ y mypy ya está configurado con `explicit_package_bases`), `mypy` en modo estricto y un test mínimo, para que las verificaciones de Python corran desde el primer día.
 - **Criterios de Aceptación:**
   - **AC1.** `make sim TB=tb_uart_loopback` imprime `TEST PASSED` y sale con código 0.
   - **AC2.** Si se modifica el dato esperado del testbench, imprime `TEST FAILED (1 errores)` y sale con código ≠ 0.
@@ -581,7 +581,7 @@ treeView-beta
                     "uart/"
                         "tb_uart_loopback.v"
             "tools/"
-                "pyproject.toml — proyecto uv + configuración de ruff, mypy y pytest"
+                "pyproject.toml — proyecto uv no instalable + configuración de ruff, mypy y pytest"
                 "uv.lock"
                 "riscv_toolkit/ — paquete (los subpaquetes se crean en cada historia)"
                     "__main__.py"
@@ -767,7 +767,7 @@ treeView-beta
 - **Detalle técnico:**
   - **Formatos de salida** (`assembler/salidas.py`): `.hex` (una palabra por línea, para `$readmemh`), `.bin` (little-endian, para UART) y listado `.lst` (dirección, palabra, fuente y expansión de pseudoinstrucciones).
   - **`disasm/disassembler.py`:** `desensamblar(palabra) -> str` (ej. `0x00A28293` → `addi t0, t0, 10`); `halt` para cualquier palabra con opcode _custom-0_ (ADR-004); para palabras ilegales devuelve `.word 0x...` (ADR-018).
-  - **CLI:** `rvasm programa.asm -o programa.hex --format hex|bin|lst`; imprime advertencias (HALT agregado, desalineados) en stderr. Se registra como comando en `[project.scripts]` de `pyproject.toml`.
+  - **CLI:** `rvasm programa.asm -o programa.hex --format hex|bin|lst`; imprime advertencias (HALT agregado, desalineados) en stderr. Es el subcomando `asm` de `python -m riscv_toolkit` (`__main__.py` despacha a `cli/rvasm.py`).
 - **Criterios de Aceptación:**
   - **AC1.** `desensamblar(ensamblar(x))` reproduce la instrucción original para las 33 instrucciones (salvo formato de etiquetas, que se muestran como direcciones).
   - **AC2.** `0x00000000` y otras palabras ilegales se desensamblan como `.word 0x...`.
@@ -788,7 +788,7 @@ treeView-beta
                     "disassembler.py"
                 "cli/"
                     "rvasm.py"
-            "pyproject.toml — ([project.scripts]: rvasm)"
+            "riscv_toolkit/__main__.py — (subcomando asm)"
             "tests/"
                 "assembler/"
                     "test_salidas.py"
@@ -807,7 +807,7 @@ treeView-beta
   - Semántica según sección 2.2: extensión de signo/cero en loads, enmascarado de `jalr` (`& ~1`), `shamt` de 5 bits, `x0` siempre 0, aritmética en 32 bits con `& 0xFFFFFFFF`.
   - Comportamiento de desalineados e ilegales según ADR-018: los desalineados ignoran los bits bajos y quedan registrados como **advertencia**; una ilegal detiene con `ILLEGAL`.
   - `estado_final() -> EstadoArquitectonico(regs, mem_usada, pc, motivo)` en el mismo formato que la sección de registros/memoria del snapshot.
-  - CLI: `rvsim programa.asm --dump` imprime registros y memoria usada; `rvsim programa.asm --expect salida.expected` escribe el estado final en el formato que leen `tb_core_programs.v` (US-210) y `verify_rtl.py` (US-305). `rvsim` se registra en `[project.scripts]`.
+  - CLI: `rvsim programa.asm --dump` imprime registros y memoria usada; `rvsim programa.asm --expect salida.expected` escribe el estado final en el formato que leen `tb_core_programs.v` (US-210) y `verify_rtl.py` (US-305). `rvsim` es el subcomando `sim`.
 - **Criterios de Aceptación:**
   - **AC1.** Cada una de las 33 instrucciones tiene un test con valores borde (overflow en `add`, `sra` de negativos, `sltu` con `-1`, `lb` de `0x80`, `lbu` de `0x80`, `jalr` con dirección impar).
   - **AC2.** Un programa con un loop infinito se detiene al llegar a `max_instr` e informa `TIMEOUT`, sin colgarse. Un programa que ejecuta `0x00000000` termina con `ILLEGAL` y el PC correcto.
@@ -827,7 +827,7 @@ treeView-beta
                     "golden_model.py"
                 "cli/"
                     "rvsim.py"
-            "pyproject.toml — ([project.scripts]: rvsim)"
+            "riscv_toolkit/__main__.py — (subcomando sim)"
             "tests/"
                 "iss/"
                     "test_golden_model.py"
@@ -1747,7 +1747,7 @@ treeView-beta
   - **`session/debug_session.py`:** clase `DebugSession(transport)` con `ping()`, `load(imagen)`, `run()`, `step()`, `dump()`, `dump_mem(addr, n)`, `reset()`, `abort()`; manejo de `ACK`/`NACK` como excepciones con el código de error; timeouts configurables (durante `RUN` espera el snapshot final sin timeout corto, ADR-003); reintento de `PING` al conectar.
   - **`session/history.py`:** `SnapshotHistory` (lista de snapshots de la sesión, con índice actual).
   - **`session/diff.py`:** `diff(a, b) -> CambiosEstado` (registros y palabras de memoria que cambiaron).
-  - **`cli/main.py`** (comando `rvdbg`): subcomandos `ping`, `load <archivo.asm>`, `run`, `step [N]`, `dump`, `dump-mem <addr> <n>`, `reset`, `abort`, y `shell` (modo interactivo); opciones `--port`, `--fake`, `--json` (salida en JSON para scripts). `run` permite cortar con Ctrl+C, que envía `ABORT`. `rvdbg` se registra en `[project.scripts]` de `pyproject.toml`.
+  - **`cli/main.py`** (comando `rvdbg`): subcomandos `ping`, `load <archivo.asm>`, `run`, `step [N]`, `dump`, `dump-mem <addr> <n>`, `reset`, `abort`, y `shell` (modo interactivo); opciones `--port`, `--fake`, `--json` (salida en JSON para scripts). `run` permite cortar con Ctrl+C, que envía `ABORT`. `rvdbg` es el subcomando `dbg`.
 - **Criterios de Aceptación:**
   - **AC1.** `rvdbg --fake load demos/fibonacci.asm && rvdbg --fake run` muestra registros y memoria finales.
   - **AC2.** Un `NACK` se muestra con un mensaje legible (ej. "No se puede ejecutar STEP: el procesador está detenido (HALTED). Cargá o reseteá el programa.").
@@ -1768,7 +1768,7 @@ treeView-beta
                     "diff.py"
                 "cli/"
                     "main.py"
-            "pyproject.toml — ([project.scripts]: rvdbg)"
+            "riscv_toolkit/__main__.py — (subcomando dbg)"
             "tests/"
                 "session/"
                     "test_debug_session.py"

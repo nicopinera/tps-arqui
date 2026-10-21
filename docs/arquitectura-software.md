@@ -147,11 +147,13 @@ Todo vive en `TP3/tools/riscv_toolkit/`.
 
 ### `cli/` — los comandos de terminal
 
+Cada archivo es un subcomando de `python -m riscv_toolkit` (los despacha `__main__.py`); `rvasm`, `rvsim` y `rvdbg` son los nombres cortos que usa la documentación.
+
 | Archivo    | Comando | Qué hace                                                |
 | ---------- | ------- | ------------------------------------------------------- |
-| `rvasm.py` | `rvasm` | Ensambla un `.asm` y genera `.hex`, `.bin` y `.lst`     |
-| `rvsim.py` | `rvsim` | Corre un programa en el golden model                    |
-| `main.py`  | `rvdbg` | Controla la placa: cargar, correr, paso, volcar memoria |
+| `rvasm.py` | `asm`   | Ensambla un `.asm` y genera `.hex`, `.bin` y `.lst`     |
+| `rvsim.py` | `sim`   | Corre un programa en el golden model                    |
+| `main.py`  | `dbg`   | Controla la placa: cargar, correr, paso, volcar memoria |
 
 ### `ui/` — la interfaz gráfica (Flet, ADR-012)
 
@@ -184,6 +186,6 @@ No todos los archivos existen desde el primer día: se crean en la historia de u
 
 ## 4. Cómo se organiza y se ejecuta
 
-- **Un solo proyecto de uv**, en `TP3/tools/`, con un `pyproject.toml` y un `uv.lock`. No se publica ni se instala a mano: `uv sync` deja el entorno listo y los comandos se corren con `uv run` (`uv run rvasm programa.asm`, `uv run rvdbg --port COM4`).
+- **Un solo proyecto de uv**, en `TP3/tools/`, con un `pyproject.toml` y un `uv.lock`. Es un proyecto **no instalable** (`[tool.uv] package = false`): `uv sync` crea el entorno con las dependencias, pero no instala el proyecto, y los comandos se corren desde `TP3/tools/` como subcomandos (`uv run python -m riscv_toolkit asm programa.asm`, `uv run python -m riscv_toolkit dbg --port COM4`).
 - **La GUI es una aplicación de escritorio.** Necesita abrir el puerto serie de la placa, que es un dispositivo USB de la máquina. Flet permite, con el mismo código, abrirla en el navegador (`flet run --web`) si alguna vez hiciera falta.
 - **Verificaciones**, en local y en el CI: `pytest` con cobertura, `ruff`, `mypy` y `pip-audit` (ADR-011, ADR-015).
