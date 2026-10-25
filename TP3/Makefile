@@ -18,7 +18,7 @@ UV_RUN := cd $(TOOLS_DIR) && uv run
 
 help:
 	@echo "Objetivos:"
-	@echo "  make setup                     Instala las herramientas (Icarus, Verilator, uv) y el entorno de Python"
+	@echo "  make setup                     Instala las herramientas (Icarus, Verilator, binutils RISC-V, uv) y el entorno de Python"
 	@echo "  make lint                      Lint del RTL con Verilator (falla con cualquier advertencia)"
 	@echo "  make sim TB=<tb>               Simula un testbench de hw/tb con Icarus (PASS/FAIL)"
 	@echo "       WAVES=1                     genera build/<tb>.vcd"
@@ -33,12 +33,13 @@ help:
 
 setup:
 	sudo apt-get update
-	sudo apt-get install -y make iverilog verilator curl
+	sudo apt-get install -y make iverilog verilator curl binutils-riscv64-unknown-elf
 	@command -v uv > /dev/null || curl -LsSf https://astral.sh/uv/install.sh | sh
 	@export PATH="$$HOME/.local/bin:$$PATH" && cd $(TOOLS_DIR) && uv sync
 	@echo
 	@iverilog -V | head -n 1
 	@verilator --version
+	@riscv64-unknown-elf-as --version | head -n 1
 	@export PATH="$$HOME/.local/bin:$$PATH" && uv --version
 
 # --- Hardware ----------------------------------------------------------------------------
