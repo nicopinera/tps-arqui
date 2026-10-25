@@ -107,7 +107,7 @@ Los 32 bits se reparten en campos, y el reparto depende del **formato**:
 
 - **El opcode está en todos, siempre en los bits `[6:0]`.** Es lo primero que mira la Control Unit.
 - **`rs1`, `rs2` y `rd` están siempre en la misma posición** cuando existen. Por eso en ID el banco de registros se puede leer _al mismo tiempo_ que la Control Unit decide qué instrucción es: extraer los campos son solo cables.
-- **El inmediato es lo que cambia de lugar** en cada formato. Lo arma `imm_gen` según `imm_type`.
+- **El inmediato es lo que cambia de lugar** en cada formato. Lo arma `imm_gen` según `imm_type`. Qué bit del inmediato va en qué bit de la palabra, formato por formato y con ejemplos, está en [`interfaces/formatos.md`](../interfaces/formatos.md).
 
 #### opcode → funct3 → funct7: una jerarquía de tres niveles
 
