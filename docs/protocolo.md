@@ -6,7 +6,7 @@
 - **Fuentes:** ADR-002 (UART), ADR-003 (comandos y tramas), ADR-008 (`DUMP_MEM`, memoria usada), ADR-009 (`LOAD`/`RESET`), ADR-010 (`ABORT`), ADR-017 (snapshot), ADR-018 (`ILLEGAL`), [`interfaces/riscv_core.md`](interfaces/riscv_core.md) (bits de los latches)
 - **Lo implementan:** `hw/rtl/debug/*` y `tools/riscv_toolkit/protocol/*`
 
-Este documento es el contrato byte a byte entre el hardware y el software. Cualquier cambio en un valor, un campo o un orden **sube la versión del protocolo** y se refleja en `protocol/comandos.py` (la fuente de las constantes en código; `du_defs.vh` se genera desde ahí).
+Este documento es el contrato byte a byte entre el hardware y el software. Cualquier cambio en un valor, un campo o un orden **sube la versión del protocolo** y se refleja en `protocol/comandos.py` (la fuente de las constantes en código; `du_defs.vh` se genera desde ahí). Excepción: `HALT_WORD` y `HALT_OPCODE` son de la ISA y viven en `isa/instrucciones.py`.
 
 ## 1. Capa física (ADR-002)
 

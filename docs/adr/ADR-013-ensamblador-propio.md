@@ -26,7 +26,7 @@ El enunciado exige "contar con un mecanismo para traducir instrucciones a lengua
 ### Alcance del lenguaje
 
 - Etiquetas (`loop:`), comentarios con `#`.
-- Registros por número (`x5`) y por nombre ABI (`t0`).
+- Registros **solo por número** (`x0`–`x31`). Los nombres ABI (`t0`, `sp`, `ra`, …) no se aceptan: el enunciado no los pide y son una convención de software, no de la ISA. Quedan en el roadmap (PRD §15.3).
 - Inmediatos decimales, hexadecimales (`0x…`) y negativos.
 - Sintaxis `offset(rs1)` para loads, stores y `jalr`.
 - Directiva `.word` para insertar palabras crudas.
@@ -63,6 +63,13 @@ Todas se expanden a **exactamente una** instrucción, así que la primera pasada
 | + `beqz`, `bnez`                      | Comparaciones contra cero más legibles           | Poco valor agregado; se pueden escribir como `beq rs, x0, …`                                      |
 | Ninguna                               | Mínimo trabajo                                   | Programas de prueba menos legibles                                                                |
 
+**Nombres de registros**
+
+| Opción                                     | Ventajas                                                               | Desventajas                                                                                |
+| ------------------------------------------ | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| **Solo `x0`–`x31`** (elegida)              | Una sola forma de escribir cada registro; `registros.py` trivial       | Los ejemplos de libros e internet que usan `t0`, `sp`, … hay que traducirlos a mano        |
+| `x0`–`x31` + nombres ABI                   | Se pueden copiar ejemplos tal cual; la GUI podría mostrar `x5 (t0)`    | El enunciado no lo pide; más casos que probar (65 nombres, alias `fp`/`s0`)                |
+
 ## Consecuencias
 
 **Positivas**
@@ -76,11 +83,12 @@ Todas se expanden a **exactamente una** instrucción, así que la primera pasada
 
 - Es código propio que hay que mantener y probar (cobertura ≥ 95 %, NFR-10).
 - Sin `li` ni `.data`, los programas que necesitan constantes grandes o datos iniciales son más largos.
+- Sin nombres ABI, un programa copiado de otro lado (`addi t0, t0, 1`) da error hasta traducirlo a `x5`.
 
 **Restricciones que impone**
 
 - El ensamblador rechaza programas de más de 256 palabras (ADR-008), contando el HALT agregado.
-- Los inmediatos de `slli`/`srli`/`srai` se limitan a 0–31; los de B y J tienen que ser pares y estar en rango (US-105, AC3).
+- Los inmediatos de `slli`/`srli`/`srai` se limitan a 0–31 (lo valida el ensamblador, US-106); los de B y J tienen que ser pares y estar en rango (lo valida `isa/formatos.py`, US-105 AC3).
 - El listado `.lst` muestra la expansión de cada pseudoinstrucción (US-107, AC4).
 
 ## Referencias

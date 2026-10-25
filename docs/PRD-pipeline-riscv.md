@@ -276,7 +276,7 @@ treeView-beta
                 "isa/"
                     "instrucciones.py — tabla de las 33 instrucciones"
                     "formatos.py — empaquetado de campos R/I/S/B/U/J"
-                    "registros.py — nombres x0..x31 y ABI (zero, ra, sp, ...)"
+                    "registros.py — nombres x0..x31"
                 "assembler/"
                     "lexer.py"
                     "parser.py"
@@ -679,19 +679,19 @@ treeView-beta
 
 #### US-105 — Tabla ISA Compartida (Fuente Única de Verdad)
 
-- **Esfuerzo:** S (1 día) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** ADR-004, ADR-011
+- **Esfuerzo:** S (1 día) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** ADR-004, ADR-011, ADR-013
 - **Objetivo Funcional:** definir las 33 instrucciones una sola vez en código, con funciones de codificación y decodificación de campos, para que ensamblador, desensamblador y golden model no puedan divergir.
 - **Narrativa:** Como desarrollador, quiero una tabla ISA única, para que un error de codificación se corrija en un solo lugar.
 - **Detalle técnico (`tools/riscv_toolkit/isa/`):**
-  - **`instrucciones.py`:** `@dataclass(frozen=True) InstructionSpec(mnemonico, formato, opcode, funct3, funct7)` y el diccionario `INSTRUCCIONES` con las 33 entradas de la sección 2.2.
-  - **`formatos.py`:** `encode_r(...)`, `encode_i(...)`, `encode_s(...)`, `encode_b(...)`, `encode_u(...)`, `encode_j(...)` y sus inversas `decode_*` que devuelven campos + inmediato extendido en signo; `sign_extend(valor, bits)`.
-  - **`registros.py`:** mapeo `x0..x31` y nombres ABI (`zero`, `ra`, `sp`, `gp`, `tp`, `t0–t6`, `s0/fp–s11`, `a0–a7`).
+  - **`instrucciones.py`:** enum `Formato`, `@dataclass(frozen=True) InstructionSpec(mnemonico, formato, opcode, funct3, funct7)` (`funct3`/`funct7` en `None` si la instrucción no los tiene) y el diccionario `INSTRUCCIONES` con las 33 entradas de la sección 2.2. También `HALT_OPCODE` y `HALT_WORD` (ADR-004): `gen_du_defs.py` los toma de acá.
+  - **`formatos.py`:** un dataclass de campos por formato (`CamposR`, `CamposI`, …), `encode_r(campos) -> int` … `encode_j(campos) -> int` y sus inversas `decode_*(palabra) -> Campos*`; `sign_extend(valor, bits)`. El inmediato siempre es el **valor real**, no el campo crudo: en B y J el offset en bytes (par), en U el valor de 32 bits con los 12 bits bajos en 0 (sin signo), en I/S/B/J extendido en signo. Los shifts (`slli`/`srli`/`srai`) usan `encode_i` con `imm = (funct7 << 5) | shamt`. Cada `encode_*` verifica que todos los campos entren en sus bits y, si no, lanza `ErrorCodificacion(ValueError)`.
+  - **`registros.py`:** mapeo `x0..x31` → 0..31. Sin nombres ABI (`t0`, `sp`, …): el enunciado no los pide (ADR-013).
 - **Criterios de Aceptación:**
   - **AC1.** Las 33 instrucciones están en la tabla con los valores de la sección 2.2.
   - **AC2.** Para cada formato, `decode(encode(campos)) == campos` en todos los casos de prueba, incluyendo inmediatos negativos y extremos (−2048, 2047 en I/S; −4096, 4094 en B; ±1 MiB en J).
   - **AC3.** `encode_b` y `encode_j` rechazan inmediatos impares o fuera de rango con una excepción clara.
   - **AC4.** El módulo no importa nada fuera de la biblioteca estándar.
-- **Testing Mínimo:** _unitarias_ (`tests/isa/test_formatos.py`): ida y vuelta por formato; casos borde de inmediatos; `test_tabla_completa` verifica que existen exactamente 33 mnemónicos.
+- **Testing Mínimo:** _unitarias_: `tests/isa/test_formatos.py` (ida y vuelta por formato, casos borde de inmediatos, una palabra conocida por formato); `tests/isa/test_instrucciones.py` (`test_tabla_completa`: exactamente 33 mnemónicos, y cada fila contra la sección 2.2); `tests/isa/test_registros.py`.
 - **Archivos a crear:**
 
 ```mermaid
@@ -706,6 +706,8 @@ treeView-beta
             "tests/"
                 "isa/"
                     "test_formatos.py"
+                    "test_instrucciones.py"
+                    "test_registros.py"
 ```
 
 #### US-106 — Ensamblador de Dos Pasadas
@@ -720,12 +722,12 @@ treeView-beta
     - _Primera pasada:_ asigna direcciones (PC += 4 por instrucción; todas las pseudoinstrucciones se expanden a exactamente una instrucción) y arma la tabla de símbolos.
     - _Segunda pasada:_ resuelve etiquetas como offsets relativos al PC (branches, `jal`) y codifica con `isa/formatos.py`.
     - Agrega HALT final si falta (R-PR-1) con una advertencia.
-  - **Alcance del lenguaje (ADR-013):** etiquetas, comentarios `#`, registros por número y ABI, inmediatos decimales/hex/negativos, sintaxis `offset(rs1)`, directiva `.word`, `halt` nativo. Sin sección `.data` (los datos iniciales se escriben con stores).
+  - **Alcance del lenguaje (ADR-013):** etiquetas, comentarios `#`, registros solo por número (`x0`–`x31`), inmediatos decimales/hex/negativos, sintaxis `offset(rs1)`, directiva `.word`, `halt` nativo. Sin sección `.data` (los datos iniciales se escriben con stores).
   - **Pseudoinstrucciones (ADR-013):** solo `nop`, `mv rd, rs`, `j etiqueta`, `ret`. `li` **no** se soporta.
   - **`Imagen`** (`imagen.py`): `palabras: list[int]`, `simbolos: dict[str,int]`, `mapa_lineas: dict[int, int]` (dirección → línea de fuente, para que la GUI resalte la línea en ejecución), `advertencias: list[str]`.
   - **Advertencias de desalineado (ADR-018):** si puede detectarlo estáticamente (por ejemplo, `lw` con offset no múltiplo de 4 y base `x0`), emite una advertencia sin abortar.
 - **Criterios de Aceptación:**
-  - **AC1.** Ensambla las 33 instrucciones con registros por número y por nombre ABI.
+  - **AC1.** Ensambla las 33 instrucciones con registros `x0`–`x31`; un nombre ABI (`t0`) o un registro inexistente (`x32`) da error con número de línea.
   - **AC2.** Las 32 instrucciones estándar producen **exactamente** la misma palabra que `riscv64-unknown-elf-as -march=rv32i` para un archivo de prueba que las contiene todas (ADR-013).
   - **AC3.** Etiquetas hacia adelante y hacia atrás se resuelven correctamente en `beq`, `bne` y `jal`.
   - **AC4.** Errores con número de línea y mensaje claro: mnemónico desconocido (incluido `li`), registro inválido, inmediato fuera de rango, etiqueta inexistente o duplicada, cantidad de operandos incorrecta. El ensamblado se aborta sin generar salida.
@@ -766,7 +768,7 @@ treeView-beta
 - **Narrativa:** Como usuario, quiero ensamblar desde la terminal y obtener el formato que necesito, y ver cualquier palabra de 32 bits como instrucción legible.
 - **Detalle técnico:**
   - **Formatos de salida** (`assembler/salidas.py`): `.hex` (una palabra por línea, para `$readmemh`), `.bin` (little-endian, para UART) y listado `.lst` (dirección, palabra, fuente y expansión de pseudoinstrucciones).
-  - **`disasm/disassembler.py`:** `desensamblar(palabra) -> str` (ej. `0x00A28293` → `addi t0, t0, 10`); `halt` para cualquier palabra con opcode _custom-0_ (ADR-004); para palabras ilegales devuelve `.word 0x...` (ADR-018).
+  - **`disasm/disassembler.py`:** `desensamblar(palabra) -> str` (ej. `0x00A28293` → `addi x5, x5, 10`); `halt` para cualquier palabra con opcode _custom-0_ (ADR-004); para palabras ilegales devuelve `.word 0x...` (ADR-018).
   - **CLI:** `rvasm programa.asm -o programa.hex --format hex|bin|lst`; imprime advertencias (HALT agregado, desalineados) en stderr. Es el subcomando `asm` de `python -m riscv_toolkit` (`__main__.py` despacha a `cli/rvasm.py`).
 - **Criterios de Aceptación:**
   - **AC1.** `desensamblar(ensamblar(x))` reproduce la instrucción original para las 33 instrucciones (salvo formato de etiquetas, que se muestran como direcciones).
@@ -1243,7 +1245,7 @@ treeView-beta
   - **AC3.** Doble coincidencia (EX/MEM y MEM/WB escriben el mismo `rd`) → gana EX/MEM.
   - **AC4.** `rd = x0` nunca genera forwarding.
   - **AC5.** Forwarding sobre `rs2` de un store (`add x5,…` seguido de `sw x5, 0(x6)`) guarda el valor nuevo.
-  - **AC6.** Forwarding del resultado de `jal` (`pc + 4`) hacia una instrucción que usa `ra`.
+  - **AC6.** Forwarding del resultado de `jal` (`pc + 4`) hacia una instrucción que usa su `rd` (ej. `jal x1, f` seguido de `addi x2, x1, 0`).
   - **AC7.** `addi x1,…` seguido de `beq x1, x2, …` compara con el valor nuevo de `x1` (forwarding hacia `branch_cmp`).
 - **Testing Mínimo:** `tb_forwarding_unit.v` (vectores de AC1–AC4) + programas de US-304.
 - **Archivos a crear:**
@@ -1940,12 +1942,12 @@ treeView-beta
 
 - **Esfuerzo:** S (2 días) · **Prioridad:** Alta · **Dependencias:** US-501
 - **Objetivo Funcional:** mostrar los 32 registros y la memoria usada de forma legible, destacando qué cambió en el último paso.
-- **Narrativa:** Como usuario, quiero ver los registros con su nombre ABI y la memoria usada, y que se resalte lo que acaba de cambiar, para seguir la ejecución sin comparar números a ojo.
+- **Narrativa:** Como usuario, quiero ver los registros y la memoria usada, y que se resalte lo que acaba de cambiar, para seguir la ejecución sin comparar números a ojo.
 - **Detalle técnico:**
-  - **`registers_view.py`:** tabla 32 filas: `xN`, nombre ABI, valor en hex, decimal con signo y sin signo (formato conmutable); fila resaltada si cambió respecto del snapshot anterior (usa `session/diff.py`).
+  - **`registers_view.py`:** tabla 32 filas: `xN`, valor en hex, decimal con signo y sin signo (formato conmutable); fila resaltada si cambió respecto del snapshot anterior (usa `session/diff.py`).
   - **`memory_view.py`:** tabla de palabras usadas: dirección, hex, 4 bytes individuales, ASCII (útil para el demo de cadenas); resaltado de cambios; opción de pedir un rango con `DUMP_MEM` (`DebugSession.dump_mem`, US-410).
 - **Criterios de Aceptación:**
-  - **AC1.** Tras un `addi x5,x0,-1`, `x5 (t0)` se muestra como `0xFFFFFFFF`, `-1` y `4294967295`, y resaltado.
+  - **AC1.** Tras un `addi x5,x0,-1`, `x5` se muestra como `0xFFFFFFFF`, `-1` y `4294967295`, y resaltado.
   - **AC2.** Un `sb` resalta la palabra afectada y el byte cambiado.
   - **AC3.** La vista de memoria muestra solo la memoria usada por defecto, y un rango pedido con `DUMP_MEM` se muestra aparte, marcado como "leído a pedido".
 - **Testing Mínimo:** manual (el test de `diff.py` ya existe desde US-410).
@@ -2279,10 +2281,10 @@ treeView-beta
 
 - **Idioma:** documentación, comentarios e informe en español; nombres de módulos, señales, clases y funciones siguiendo el estilo del TP2 (identificadores en inglés técnico con prefijos `i_`/`o_`/`r_`/`w_`). _Si el equipo prefiere nombres en español en Python, se fija acá y se aplica a todo `tools/`._
 - **Un módulo Verilog por archivo**, con el mismo nombre que el archivo.
-- **Constantes compartidas hardware/software** (comandos, códigos de error, motivos de terminación, opcode de HALT, tamaños de memoria, dirección de firma): se definen en `docs/protocolo.md`; la fuente en código es `tools/riscv_toolkit/protocol/comandos.py` y `tools/scripts/gen_du_defs.py` genera `hw/rtl/debug/du_defs.vh`. Un test verifica que el `.vh` versionado está al día (US-104).
+- **Constantes compartidas hardware/software** (comandos, códigos de error, motivos de terminación, opcode de HALT, tamaños de memoria, dirección de firma): se definen en `docs/protocolo.md`; la fuente en código es `tools/riscv_toolkit/protocol/comandos.py` (el opcode y la palabra de HALT, `tools/riscv_toolkit/isa/instrucciones.py`) y `tools/scripts/gen_du_defs.py` genera `hw/rtl/debug/du_defs.vh`. Un test verifica que el `.vh` versionado está al día (US-104).
 - **Identificadores en Python** (ADR-011): nombres de dominio en español (`instrucciones.py`, `ensamblar()`, `Imagen`, `LineaAsm`) y términos técnicos sin traducción natural en inglés (`Transport`, `Snapshot`, `encode_r`). Comentarios y docstrings en español.
 - **Direcciones y valores en hexadecimal** en logs, GUI e informe (`0x0000_0010`), con separador cada 4 dígitos en la GUI.
-- **Registros** se muestran como `xN (abi)` en la GUI, ej. `x5 (t0)`.
+- **Registros** se escriben y se muestran solo como `xN` (ej. `x5`), en el assembly y en la GUI (ADR-013).
 - **Programas de prueba:** un archivo por caso, nombre en minúsculas con guion bajo, encabezado con qué prueba y resultado esperado.
 - **Nada de números mágicos** en Verilog: todo tamaño es un parámetro o `localparam`.
 - **Reportes de Vivado** que respalden números del informe se guardan en `hw/reports/` con la versión del release.
@@ -2291,7 +2293,7 @@ treeView-beta
 
 ## 14. Incoherencias y Errores de la Presentación del TP
 
-Revisión de la presentación `TRABAJO_FINAL_2026.pdf` contra la especificación oficial de RISC-V. Se documenta para: (1) no implementar algo mal por seguir la diapositiva; (2) dejar asentado en el informe cada interpretación que tomó el equipo; (3) llevar preguntas concretas a la cátedra.
+Revisión de la presentación `enunciados/TRABAJO FINAL 2026.pdf` contra la especificación oficial de RISC-V. Se documenta para: (1) no implementar algo mal por seguir la diapositiva; (2) dejar asentado en el informe cada interpretación que tomó el equipo; (3) llevar preguntas concretas a la cátedra.
 
 ### 14.1 Errores técnicos
 
@@ -2320,6 +2322,7 @@ Revisión de la presentación `TRABAJO_FINAL_2026.pdf` contra la especificación
 | Qué significa "terminar" en modo paso a paso   | Se exige pipeline vacío "al momento de terminar la ejecución" en ambos modos, pero en paso a paso el usuario podría dejar de avanzar en cualquier momento.                                                                | "Terminar" = el HALT llegó a WB (R-EJ-5), en cualquier modo. Además, `ABORT` también drena el pipeline. |
 | Datos iniciales en memoria                     | No se indica si el programa puede traer datos precargados en la memoria de datos.                                                                                                                                         | No: los datos iniciales se escriben con stores (ADR-013); `.data` queda en el roadmap.                  |
 | Pseudoinstrucciones                            | No se indica si el ensamblador debe soportar `li`, `mv`, `j`, `ret`, `nop`.                                                                                                                                               | ADR-013: `nop`, `mv`, `j`, `ret`; `li` no.                                                              |
+| Nombres de registros                           | No se indica si el assembly usa `x5` o los nombres ABI (`t0`, `sp`, …).                                                                                                                                                   | ADR-013: solo `x0`–`x31`; los nombres ABI quedan en el roadmap.                                         |
 | Formato del informe y de la defensa            | No se especifica formato de entrega, extensión, ni duración de la defensa.                                                                                                                                                | A confirmar con la cátedra; se asume Markdown como en el TP2.                                           |
 | Bibliografía                                   | "Pipeline: Libro" no identifica el libro ni la edición.                                                                                                                                                                   | A confirmar (probablemente Patterson & Hennessy, _Computer Organization and Design — RISC-V Edition_).  |
 
@@ -2371,3 +2374,4 @@ Mejoras identificadas durante el diseño y descartadas para v1.0 por costo o pla
 | 5   | Memorias en BRAM                                           | ADR-005 | Libera LUTs y escala a memorias grandes; obliga a realinear IF y MEM con la lectura sincrónica     |
 | 6   | Testbenches con cocotb reutilizando el golden model        | ADR-015 | Verificación más expresiva en Python                                                               |
 | 7   | Detección de accesos desalineados en hardware              | ADR-018 | Estado `MISALIGNED` en lugar de ignorar los bits bajos                                             |
+| 8   | Nombres ABI de registros (`t0`, `sp`, `ra`, …)             | ADR-013 | El ensamblador los acepta y la GUI muestra `x5 (t0)`; solo cambian `isa/registros.py` y la vista   |
