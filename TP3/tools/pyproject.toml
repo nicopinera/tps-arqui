@@ -58,7 +58,7 @@ known-first-party = ["riscv_toolkit"]
 python_version = "3.13"
 strict = true
 warn_unreachable = true
-files = ["riscv_toolkit", "tests"]
+files = ["riscv_toolkit", "scripts", "tests"]
 explicit_package_bases = true
 mypy_path = "."
 
