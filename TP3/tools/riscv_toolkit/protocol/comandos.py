@@ -14,8 +14,6 @@ PROTO_VERSION: Final = 0x01  # payload de PING_INFO
 SYNC: Final = 0xA5  # primer byte de toda trama FPGA → PC (ADR-003)
 IMEM_DEPTH: Final = 0x100  # palabras de la IMEM: 256 (ADR-008)
 DMEM_DEPTH: Final = 0x100  # palabras de la DMEM: 256 (ADR-008)
-HALT_WORD: Final = 0x0000000B  # relleno de la IMEM (ADR-004)
-HALT_OPCODE: Final = 0x0B  # opcode custom-0, 0b0001011 (ADR-004)
 SIGNATURE_ADDR: Final = 0x3FC  # dirección en bytes de la firma de los tests (ADR-014)
 RX_TIMEOUT_MS: Final = 0x64  # timeout de recepción en hardware: 100 ms (R-DU-6, protocolo §7.3)
 
