@@ -18,14 +18,14 @@ En Ubuntu, Linux Mint o WSL (Ubuntu 24.04):
 ```bash
 sudo apt install -y make     # solo la primera vez
 cd TP3
-make setup                   # instala Icarus, Verilator y uv, y crea el entorno de Python
+make setup                   # instala Icarus, Verilator, binutils RISC-V y uv, y crea el entorno de Python
 ```
 
 O a mano:
 
 ```bash
 sudo apt update
-sudo apt install -y make iverilog verilator
+sudo apt install -y make iverilog verilator binutils-riscv64-unknown-elf
 ```
 
 Comprobar:
@@ -33,6 +33,7 @@ Comprobar:
 ```bash
 iverilog -V | head -1      # Icarus Verilog version 12.0
 verilator --version        # Verilator 5.020
+riscv64-unknown-elf-as --version | head -1   # GNU assembler (solo para generar el .hex de referencia, US-106)
 ```
 
 En WSL, el repositorio se usa directamente desde `/mnt/c/...`.
