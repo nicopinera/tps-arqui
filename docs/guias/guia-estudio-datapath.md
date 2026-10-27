@@ -49,7 +49,7 @@ RV32I tiene **32 registros de 32 bits**, `x0` a `x31`, más el **PC**, que no es
 - **`x1` a `x31`** son registros de propósito general. Cualquier instrucción puede leerlos o escribirlos.
 - **El PC** solo cambia por el propio flujo del programa: `+4`, branches, `jal` y `jalr`. Para obtenerlo hay que usar `jal`/`jalr`, que guardan `PC + 4` en `rd`.
 
-**Nomeclatura ABI.** Además del número, cada registro tiene un nombre que indica para qué se **acostumbra** usarlo. Es una convención de software (la ABI, _Application Binary Interface_), no una regla del hardware. El ensamblador acepta los dos nombres: `addi t0, t0, 1` es lo mismo que `addi x5, x5, 1`.
+**Nomeclatura ABI.** Además del número, cada registro tiene un nombre que indica para qué se **acostumbra** usarlo. Es una convención de software (la ABI, _Application Binary Interface_), no una regla del hardware: `addi t0, t0, 1` y `addi x5, x5, 1` son la misma instrucción. **Nuestro ensamblador acepta solo `x0`–`x31`** (ADR-013); la tabla sirve para leer ejemplos de libros o de internet y traducirlos.
 
 | Registro    | Nombre ABI  | Uso por convención                               | ¿Lo preserva una subrutina? |
 | ----------- | ----------- | ------------------------------------------------ | --------------------------- |
@@ -68,13 +68,13 @@ RV32I tiene **32 registros de 32 bits**, `x0` a `x31`, más el **PC**, que no es
 
 **Qué tenés que saber para este TP:**
 
-1. **`zero`** se usa todo el tiempo:
-   - `addi t0, zero, 5` carga 5;
-   - `beq t0, zero, fin` salta si t0 es 0;
-   - `sub t1, zero, t0` niega t0.
-2. **`ra`** es donde `jal ra, funcion` guarda la dirección de retorno, y `ret` (= `jalr x0, 0(ra)`) vuelve a ella. Si una subrutina llama a otra sin guardar `ra`, pierde su propia dirección de retorno.
-3. **Las demás convenciones** (`sp`, `s*`, `a*`) solo importan si escribís subrutinas. En los programas de prueba podés usar `t0`–`t6` y `s0`–`s11` libremente. El procesador no controla las convenciones.
-4. **Valores iniciales:** después de un `LOAD` o un `RESET`, los 32 registros valen 0. `sp` no se inicializa a ninguna dirección: si un programa usa pila, primero tiene que cargar `sp` con una dirección de la DMEM (de `0x000` a `0x3FF`).
+1. **`x0`** se usa todo el tiempo:
+   - `addi x5, x0, 5` carga 5;
+   - `beq x5, x0, fin` salta si `x5` es 0;
+   - `sub x6, x0, x5` niega `x5`.
+2. **`x1`** (`ra`) es donde, por convención, `jal x1, funcion` guarda la dirección de retorno, y `ret` (= `jalr x0, 0(x1)`) vuelve a ella. Si una subrutina llama a otra sin guardar `x1`, pierde su propia dirección de retorno.
+3. **Las demás convenciones** (pila, argumentos, registros que se preservan) solo importan si escribís subrutinas. En los programas de prueba podés usar `x5`–`x31` libremente. El procesador no controla las convenciones.
+4. **Valores iniciales:** después de un `LOAD` o un `RESET`, los 32 registros valen 0. `x2` (`sp`) no se inicializa a ninguna dirección: si un programa usa pila, primero tiene que cargarlo con una dirección de la DMEM (de `0x000` a `0x3FF`).
 5. **En el datapath:**
    - los campos `rs1`, `rs2` y `rd` de 5 bits son el **número** del registro (0 a 31);
    - el chequeo `rd != 0` del forwarding y de la hazard unit es justamente el caso de `x0`;
@@ -107,7 +107,7 @@ Los 32 bits se reparten en campos, y el reparto depende del **formato**:
 
 - **El opcode está en todos, siempre en los bits `[6:0]`.** Es lo primero que mira la Control Unit.
 - **`rs1`, `rs2` y `rd` están siempre en la misma posición** cuando existen. Por eso en ID el banco de registros se puede leer _al mismo tiempo_ que la Control Unit decide qué instrucción es: extraer los campos son solo cables.
-- **El inmediato es lo que cambia de lugar** en cada formato. Lo arma `imm_gen` según `imm_type`.
+- **El inmediato es lo que cambia de lugar** en cada formato. Lo arma `imm_gen` según `imm_type`. Qué bit del inmediato va en qué bit de la palabra, formato por formato y con ejemplos, está en [`interfaces/formatos.md`](../interfaces/formatos.md).
 
 #### opcode → funct3 → funct7: una jerarquía de tres niveles
 
@@ -415,7 +415,7 @@ stall = validE && mem_readE && rdE != 0 && ((uses_rs1D && rdE == rs1D) || (uses_
 | `01`  | dato leído de memoria, ya extendido por `load_extend` | loads                                |
 | `10`  | `PC+4`                                                | `jal`, `jalr` (dirección de retorno) |
 
-**Ejemplo:** `jal ra, f` escribe `PC+4` en `ra`, no lo que calcule la ALU.
+**Ejemplo:** `jal x1, f` escribe `PC+4` en `x1`, no lo que calcule la ALU.
 
 **`reg_write` (1 bit)** habilita la escritura de `rd` en el banco.
 
@@ -545,8 +545,8 @@ El destino de `beq`, `bne` y `jal` es **relativo al PC de la propia instrucción
 | 29  | `beq rs1, rs2, etiq` | Si `rs1 == rs2`, salta a `PC + imm`; si no, sigue en `PC + 4`        | `beq x1, x0, fin` → salta si x1 = 0                      | Alcance ±4 KiB. Se resuelve en EX: si se toma, cuesta 2 ciclos               |
 | 30  | `bne rs1, rs2, etiq` | Si `rs1 ≠ rs2`, salta                                                | `bne x1, x2, loop` → repite mientras x1 ≠ x2             | Es la base de los loops con contador                                         |
 | 31  | `lui rd, imm20`      | `rd = imm20 << 12`: carga los 20 bits altos y pone en 0 los 12 bajos | `lui x1, 0x12345` → x1 = `0x12345000`                    | Con `addi` arma constantes de 32 bits (ver abajo)                            |
-| 32  | `jal rd, etiq`       | `rd = PC + 4` y salta a `PC + imm`                                   | `jal ra, funcion` → llamada a subrutina                  | Alcance ±1 MiB. Se resuelve en ID (1 ciclo). `jal x0, etiq` = pseudo `j`     |
-| 25  | `jalr rd, imm(rs1)`  | `rd = PC + 4` y salta a `(rs1 + imm) & ~1`                           | `jalr x0, 0(ra)` → vuelve de la subrutina (pseudo `ret`) | Salto a una dirección calculada en un registro. Se resuelve en EX (2 ciclos) |
+| 32  | `jal rd, etiq`       | `rd = PC + 4` y salta a `PC + imm`                                   | `jal x1, funcion` → llamada a subrutina                  | Alcance ±1 MiB. Se resuelve en ID (1 ciclo). `jal x0, etiq` = pseudo `j`     |
+| 25  | `jalr rd, imm(rs1)`  | `rd = PC + 4` y salta a `(rs1 + imm) & ~1`                           | `jalr x0, 0(x1)` → vuelve de la subrutina (pseudo `ret`) | Salto a una dirección calculada en un registro. Se resuelve en EX (2 ciclos) |
 
 `lui` no es un salto, pero va acá porque es tipo U (Upper), como el inmediato de `jal`.
 
@@ -571,8 +571,8 @@ El ensamblador solo soporta las pseudoinstrucciones `nop`, `mv`, `j` y `ret`. El
 | `rd = (rs == 0)`                  | `sltiu rd, rs, 1`                         |
 | `rd = (rs ≠ 0)`                   | `sltu rd, x0, rs`                         |
 | Salto incondicional               | `j etiq` = `jal x0, etiq`                 |
-| Llamar a una subrutina            | `jal ra, funcion`                         |
-| Volver de una subrutina           | `ret` = `jalr x0, 0(ra)`                  |
+| Llamar a una subrutina            | `jal x1, funcion`                         |
+| Volver de una subrutina           | `ret` = `jalr x0, 0(x1)`                  |
 | Saltar si es cero / si no es cero | `beq rs, x0, etiq` / `bne rs, x0, etiq`   |
 
 (\*) **Trampa de `lui` + `addi`:** el `addi` extiende su inmediato con signo. Si el bit 11 de la parte baja vale 1, el `addi` resta, y hay que sumarle 1 a la parte alta. Ejemplo para `0x12345FFF`: `lui x1, 0x12346` + `addi x1, x1, -1`, y no `lui x1, 0x12345` + `addi x1, x1, 0xFFF` (eso no entra en 12 bits con signo).
@@ -619,17 +619,17 @@ EX: `branch_cmp` compara los operandos forwardeados y el sumador calcula `pcE + 
 
 `bne` es igual, con la condición negada: `funct3 = 001`.
 
-#### `jal ra, etiqueta`
+#### `jal x1, etiqueta`
 
 `jump=1`, `reg_write=1`, `result_src=10`, `imm_type=J`.
 
-ID: el sumador calcula `pcD + immD`, el PC se redirige y se hace flush de IF/ID (**1 ciclo**). Después la instrucción sigue su camino normal para escribir `pc_plus4` en `ra` en WB.
+ID: el sumador calcula `pcD + immD`, el PC se redirige y se hace flush de IF/ID (**1 ciclo**). Después la instrucción sigue su camino normal para escribir `pc_plus4` en `x1` en WB.
 
-#### `jalr x0, 0(ra)` (por ejemplo, `ret`)
+#### `jalr x0, 0(x1)` (por ejemplo, `ret`)
 
 `jalr=1`, `reg_write=1`, `result_src=10`, `alu_src=1`, `alu_op=00`.
 
-EX: la ALU calcula `ra + 0`, se le aplica `& ~1`, se redirige el PC y se hace flush de 2 instrucciones. En WB se escribe `pc_plus4` en rd (acá x0, así que no tiene efecto).
+EX: la ALU calcula `x1 + 0`, se le aplica `& ~1`, se redirige el PC y se hace flush de 2 instrucciones. En WB se escribe `pc_plus4` en rd (acá x0, así que no tiene efecto).
 
 **Por qué se resuelve en EX y no en ID:** depende de un registro que podría estar recién calculado, y el forwarding llega a EX, no a ID.
 
@@ -667,7 +667,7 @@ sino                                                               → fwd_a = 0
 Tres detalles para la defensa:
 
 1. **EX/MEM tiene prioridad** sobre MEM/WB, porque tiene el valor más reciente. Ejemplo: `add x1,..` / `add x1,..` / `sub x2,x1,..` → tiene que usar el segundo `add`.
-2. **Nunca se forwardea x0**, aunque una instrucción "escriba" x0 (como `jalr x0, 0(ra)`), porque x0 vale siempre 0.
+2. **Nunca se forwardea x0**, aunque una instrucción "escriba" x0 (como `jalr x0, 0(x1)`), porque x0 vale siempre 0.
 3. **Nunca se forwardea desde una burbuja** (`valid=0`): podría tener basura en `rd`.
 
 ### 4.3 Load-use: el único stall (Hazard Unit, en ID)

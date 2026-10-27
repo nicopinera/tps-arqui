@@ -101,7 +101,7 @@ Todo vive en `TP3/tools/riscv_toolkit/`.
 | ------------------ | ---------------------------------------------------------------------------------------------- |
 | `instrucciones.py` | La tabla de las 33 instrucciones: mnemónico, formato, opcode, `funct3`, `funct7`. Fuente única |
 | `formatos.py`      | Cómo se empaquetan y desempaquetan los campos de cada formato (R, I, S, B, U, J) en 32 bits    |
-| `registros.py`     | Los nombres de los registros: `x0`…`x31` y sus alias (`zero`, `ra`, `sp`, …)                   |
+| `registros.py`     | Los nombres de los registros, `x0`…`x31`, y su número. Sin nombres ABI (ADR-013)               |
 
 ### `assembler/` — de texto a código de máquina
 
@@ -175,7 +175,7 @@ Cada archivo es un subcomando de `python -m riscv_toolkit` (los despacha `__main
 
 | Archivo             | Qué hace                                                                                                                   |
 | ------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `gen_du_defs.py`    | Genera el archivo de constantes de Verilog a partir de `comandos.py`, para que hardware y software usen los mismos valores |
+| `gen_du_defs.py`    | Genera las constantes de Verilog desde `comandos.py` e `isa/`, para que hardware y software usen los mismos valores        |
 | `verify_rtl.py`     | Corre toda la suite de programas en la simulación del RTL y la compara con el golden model                                 |
 | `verify_board.py`   | Lo mismo, pero en la placa real                                                                                            |
 | `uart_echo_test.py` | Prueba mínima del enlace serie                                                                                             |

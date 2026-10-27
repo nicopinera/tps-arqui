@@ -6,6 +6,7 @@ Uso (desde TP3/tools/):  uv run python -m scripts.gen_du_defs
 from enum import IntEnum
 from pathlib import Path
 
+from riscv_toolkit.isa.instrucciones import HALT_OPCODE, HALT_WORD
 from riscv_toolkit.protocol import comandos as c
 from riscv_toolkit.protocol.comandos import Comando, ErrorNack, EstadoDU, Motivo, TipoTrama
 
@@ -24,8 +25,8 @@ GRUPOS: list[tuple[type[IntEnum], str, int]] = [
 CONSTANTES: list[tuple[str, int, int | None]] = [
     ("PROTO_VERSION", c.PROTO_VERSION, 8),
     ("SYNC", c.SYNC, 8),
-    ("HALT_WORD", c.HALT_WORD, 32),
-    ("HALT_OPCODE", c.HALT_OPCODE, 7),
+    ("HALT_WORD", HALT_WORD, 32),
+    ("HALT_OPCODE", HALT_OPCODE, 7),
     ("IMEM_DEPTH", c.IMEM_DEPTH, None),
     ("DMEM_DEPTH", c.DMEM_DEPTH, None),
     ("RX_TIMEOUT_MS", c.RX_TIMEOUT_MS, None),

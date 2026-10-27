@@ -23,7 +23,7 @@ Restricciones: Python (ADR-011), Linux y Windows (NFR-7), uso sin placa con `--f
 - **La GUI se hace con Flet** (Python puro, renderizado con Flutter), como aplicación de escritorio.
 - Vistas previstas en `ui/views/`:
   - `pipeline_view.py`: 5 columnas (IF, ID, EX, MEM, WB) con la instrucción desensamblada, colores para burbuja, stall, flush y forwarding, y flechas o indicadores de forwarding. Se arma con contenedores de Flet o `flet.canvas`.
-  - `registers_view.py`: tabla de 32 registros con formato `x5 (t0)` y valores en hex, resaltando los que cambiaron.
+  - `registers_view.py`: tabla de 32 registros (`x0`–`x31`, sin nombres ABI: ADR-013) y valores en hex, resaltando los que cambiaron.
   - `memory_view.py`: palabras usadas de la DMEM (ADR-008), con `DUMP_MEM` para ver otros rangos.
   - `editor_view.py`: editor de texto del programa y listado ensamblado con la línea en ejecución resaltada (usando `Imagen.mapa_lineas`).
 - **Se mantiene una CLI** (`cli/main.py`, US-410) para pruebas automatizadas y uso desde scripts.
