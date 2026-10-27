@@ -3,7 +3,7 @@
 - **Estado:** Aprobado
 - **Fecha:** 2026-10-04
 - **Autores:** Krede, Julián · Piñera, Nicolás
-- **Bloquea:** US-204, US-405, US-409
+- **Bloquea:** US-204, US-405, US-408
 - **Relacionados:** ADR-002 (velocidad del enlace), ADR-003 (protocolo), ADR-005 (memoria distribuida), ADR-009 (limpieza en cada carga), ADR-017 (layout del snapshot)
 
 ## Contexto
@@ -76,4 +76,4 @@ El enunciado pide enviar a la PC "la memoria de datos usada", pero no define qu�
 
 ## Referencias
 
-- PRD §3.5 (presupuesto de volcado), §6 (R-PR-2), §7 (NFR-3, NFR-4), §8 (ADR-008), §14 (A3, A7); US-204, US-405, US-409.
+- PRD §3.4 (presupuesto de volcado), §6 (R-PR-2), §7 (NFR-3, NFR-4), §8 (ADR-008), §14 (A3, A7); US-204, US-405, US-408.

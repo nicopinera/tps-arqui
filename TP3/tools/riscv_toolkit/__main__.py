@@ -1,11 +1,13 @@
 """Punto de entrada de `python -m riscv_toolkit`."""
 
-from importlib.metadata import version
+# El proyecto no se instala (pyproject: `package = false`), así que no hay metadata de la que
+# leer la versión. shortcut: duplicada con `version` de pyproject.toml; mantenerlas iguales.
+VERSION = "0.1.0"
 
 
 def main() -> int:
-    """Muestra la versión instalada; los comandos reales se agregan en las historias siguientes."""
-    print(f"riscv-toolkit {version('riscv-toolkit')}")
+    """Muestra la versión; los subcomandos (asm, sim, dbg, gui) se agregan en sus historias."""
+    print(f"riscv-toolkit {VERSION}")
     return 0
 
 

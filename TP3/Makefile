@@ -75,7 +75,7 @@ check-py:
 	@$(UV_RUN) ruff format --check .
 	@$(UV_RUN) mypy
 	@$(UV_RUN) pytest
-	@$(UV_RUN) pip-audit --skip-editable
+	@$(UV_RUN) pip-audit
 
 # --- Todo --------------------------------------------------------------------------------
 

@@ -85,4 +85,4 @@ El orden exacto de los bits dentro de cada byte de flags se fija en `docs/protoc
 
 ## Referencias
 
-- PRD §3.2, §3.5, §6 (R-DU-3), §8 (ADR-017), §14 (A4); US-103, US-104, US-405, US-410.
+- PRD §3.2, §3.4, §6 (R-DU-3), §8 (ADR-017), §14 (A4); US-103, US-104, US-405, US-409.

@@ -3,7 +3,7 @@
 - **Estado:** Aprobado
 - **Fecha:** 2026-10-04
 - **Autores:** Krede, Julián · Piñera, Nicolás
-- **Bloquea:** US-104, Hito 4, US-410
+- **Bloquea:** US-104, Hito 4, US-409
 - **Relacionados:** ADR-002 (UART y paridad), ADR-008 (memoria usada), ADR-010 (`ABORT`), ADR-017 (layout del snapshot)
 
 ## Contexto

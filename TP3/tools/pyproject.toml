@@ -19,12 +19,10 @@ dev = [
     "ruff>=0.17.0",
 ]
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.hatch.build.targets.wheel]
-packages = ["riscv_toolkit"]
+# Proyecto no instalable: uv solo maneja el entorno y las dependencias; el código se
+# corre desde esta carpeta con `uv run python -m riscv_toolkit <subcomando>`.
+[tool.uv]
+package = false
 
 # --- ruff: lint y formato ----------------------------------------------------------------
 
@@ -60,7 +58,7 @@ known-first-party = ["riscv_toolkit"]
 python_version = "3.13"
 strict = true
 warn_unreachable = true
-files = ["riscv_toolkit", "tests"]
+files = ["riscv_toolkit", "scripts", "tests"]
 explicit_package_bases = true
 mypy_path = "."
 
@@ -68,6 +66,7 @@ mypy_path = "."
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."] # el proyecto no se instala: los tests importan riscv_toolkit desde acá
 addopts = [
     "--strict-markers",
     "--strict-config",
