@@ -37,6 +37,9 @@ _PSEUDO = {
 
 _LINEA_HALT_AGREGADO = 0  # el HALT que agrega el ensamblador no viene de ninguna línea
 
+# Alineación que exige cada acceso a memoria (ADR-018); lb, lbu y sb leen o escriben 1 byte.
+_ALINEACION = {"lh": 2, "lhu": 2, "sh": 2, "lw": 4, "sw": 4}
+
 
 def ensamblar(texto: str) -> Imagen:
     """Ensambla un programa completo. Lanza `ErrorEnsamblado` ante el primer error."""
@@ -82,6 +85,17 @@ def ensamblar(texto: str) -> Imagen:
 
     # --- Segunda pasada: etiquetas → offsets y codificación ---
     palabras = [_codificar(linea, 4 * i, simbolos) for i, linea in enumerate(instrucciones)]
+
+    # Desalineados (ADR-018): solo se pueden ver sin ejecutar con base x0, donde la dirección
+    # es el offset. Loads y stores comparten el orden [rd o rs2, offset, base].
+    for linea in instrucciones:
+        tam = _ALINEACION.get(linea.mnemonico or "")
+        if tam and linea.operandos[2] == 0 and int(linea.operandos[1]) % tam:
+            advertencias.append(
+                f"línea {linea.nro_linea}: {linea.mnemonico} desalineado: la dirección "
+                f"{linea.operandos[1]} no es múltiplo de {tam} y el hardware ignora los "
+                "bits bajos (ADR-018)"
+            )
     return Imagen(palabras, simbolos, mapa_lineas, expansiones, advertencias)
 
 
