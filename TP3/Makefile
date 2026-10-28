@@ -14,7 +14,7 @@ BUILD_DIR := build
 TB_NAMES  := $(sort $(basename $(notdir $(shell find hw/tb -type f -name 'tb_*.v' 2>/dev/null))))
 UV_RUN := cd $(TOOLS_DIR) && uv run
 
-.PHONY: help setup lint sim sim-all test-py check-py check clean
+.PHONY: help setup lint sim sim-all test-py check-py gnu-ref check clean
 
 help:
 	@echo "Objetivos:"
@@ -26,6 +26,7 @@ help:
 	@echo "  make sim-all                   Corre todos los hw/tb/**/tb_*.v y resume el resultado"
 	@echo "  make test-py                   Tests de Python con cobertura"
 	@echo "  make check-py                  ruff + mypy + pytest + pip-audit"
+	@echo "  make gnu-ref                   Regenera el .hex de referencia del ensamblador con GNU as (US-106)"
 	@echo "  make check                     Todo: lint + sim-all + check-py (lo mismo que corre el CI)"
 	@echo "  make clean                     Borra build/ y las caches de Python"
 
@@ -77,6 +78,18 @@ check-py:
 	@$(UV_RUN) mypy
 	@$(UV_RUN) pytest
 	@$(UV_RUN) pip-audit
+
+# Referencia de GNU para test_vs_gnu.py (US-106, AC2). Se corre solo si cambia el .asm;
+# el .hex se versiona para que los tests no necesiten GNU. -mno-relax: GNU resuelve los
+# saltos a etiquetas locales en vez de dejarlos para el linker.
+GNU_REF := $(TOOLS_DIR)/tests/assembler/fixtures/todas_las_instrucciones
+
+gnu-ref:
+	@mkdir -p $(BUILD_DIR)
+	riscv64-unknown-elf-as -march=rv32i -mabi=ilp32 -mno-relax -o $(BUILD_DIR)/gnu_ref.o $(GNU_REF).asm
+	riscv64-unknown-elf-objcopy -O binary -j .text $(BUILD_DIR)/gnu_ref.o $(BUILD_DIR)/gnu_ref.bin
+	od -An -v -t x4 -w4 $(BUILD_DIR)/gnu_ref.bin | tr -d ' ' > $(GNU_REF).hex
+	@echo "$(GNU_REF).hex: $$(wc -l < $(GNU_REF).hex) palabras"
 
 # --- Todo --------------------------------------------------------------------------------
 
