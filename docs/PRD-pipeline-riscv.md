@@ -717,14 +717,14 @@ treeView-beta
 - **Narrativa:** Como usuario, quiero escribir mi programa en assembly con etiquetas y comentarios y obtener el código máquina, para no calcular a mano offsets de saltos ni inmediatos partidos.
 - **Detalle técnico (`tools/riscv_toolkit/assembler/`):**
   - **`lexer.py`:** tokens (mnemónico, registro, inmediato decimal/hex/negativo, etiqueta, `(`, `)`, `,`, comentario `#`, directiva).
-  - **`parser.py`:** una línea → `LineaAsm(etiqueta, mnemonico, operandos, nro_linea)`; valida cantidad y tipo de operandos por formato.
-  - **`assembler.py`:** clase `Assembler` con `ensamblar(texto) -> Imagen`:
+  - **`parser.py`:** una línea → `LineaAsm(etiqueta, mnemonico, operandos, nro_linea)`; valida cantidad y tipo de operandos según la tabla `SINTAXIS` de cada mnemónico (el `Formato` no alcanza: `addi` y `lw` son I pero se escriben distinto).
+  - **`assembler.py`:** función `ensamblar(texto) -> Imagen` (no una clase: no hay estado que sobreviva entre llamadas; ver guía del ensamblador §9.6):
     - _Primera pasada:_ asigna direcciones (PC += 4 por instrucción; todas las pseudoinstrucciones se expanden a exactamente una instrucción) y arma la tabla de símbolos.
     - _Segunda pasada:_ resuelve etiquetas como offsets relativos al PC (branches, `jal`) y codifica con `isa/formatos.py`.
     - Agrega HALT final si falta (R-PR-1) con una advertencia.
   - **Alcance del lenguaje (ADR-013):** etiquetas, comentarios `#`, registros solo por número (`x0`–`x31`), inmediatos decimales/hex/negativos, sintaxis `offset(rs1)`, directiva `.word`, `halt` nativo. Sin sección `.data` (los datos iniciales se escriben con stores).
   - **Pseudoinstrucciones (ADR-013):** solo `nop`, `mv rd, rs`, `j etiqueta`, `ret`. `li` **no** se soporta.
-  - **`Imagen`** (`imagen.py`): `palabras: list[int]`, `simbolos: dict[str,int]`, `mapa_lineas: dict[int, int]` (dirección → línea de fuente, para que la GUI resalte la línea en ejecución), `advertencias: list[str]`.
+  - **`Imagen`** (`imagen.py`): `palabras: list[int]`, `simbolos: dict[str,int]`, `mapa_lineas: dict[int, int]` (dirección → línea de fuente, para que la GUI resalte la línea en ejecución), `expansiones: dict[int, str]` (dirección → instrucción real de cada pseudo, AC6), `advertencias: list[str]`.
   - **Advertencias de desalineado (ADR-018):** si puede detectarlo estáticamente (por ejemplo, `lw` con offset no múltiplo de 4 y base `x0`), emite una advertencia sin abortar.
 - **Criterios de Aceptación:**
   - **AC1.** Ensambla las 33 instrucciones con registros `x0`–`x31`; un nombre ABI (`t0`) o un registro inexistente (`x32`) da error con número de línea.
@@ -737,7 +737,7 @@ treeView-beta
 - **Entidades/Modelos implicados:** `LineaAsm`, `Imagen`, `InstructionSpec`.
 - **Testing Mínimo:**
   - _Unitarias:_ `test_lexer.py`, `test_parser.py`, `test_assembler.py` (una prueba por instrucción, por error, por pseudoinstrucción).
-  - _Contraste:_ `test_vs_gnu.py` compara contra un archivo de referencia `.hex` generado una vez con el toolchain GNU y versionado en `tools/tests/fixtures/` (así los tests no requieren tener GNU instalado).
+  - _Contraste:_ `test_vs_gnu.py` compara contra un archivo de referencia `.hex` generado una vez con el toolchain GNU y versionado en `tools/tests/assembler/fixtures/` (así los tests no requieren tener GNU instalado). Se regenera con `make gnu-ref`.
 - **Archivos a crear:**
 
 ```mermaid
