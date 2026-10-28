@@ -67,9 +67,15 @@ Detalles que conviene tener presentes:
 - **`lui` recibe los 20 bits altos**, como en GNU: `lui x1, 0x12345` deja `x1 = 0x12345000`. `CamposU.imm` espera el valor de 32 bits, así que el ensamblador hace `imm20 << 12` antes de llamar a `encode_u`.
 - **Todo en minúsculas**: `ADDI` o `X5` son errores, igual que en `registros.py`.
 
+### 3.1 Directivas
+
+Una **directiva** es una orden para el ensamblador, no para el procesador; se escribe con un punto adelante para distinguirla de un mnemónico. Nuestro ensamblador acepta una sola: `.word valor`, que pone `valor` tal cual como palabra de 32 bits en la IMEM, en la dirección que le corresponde según su posición en el programa. Pasa por el lexer y el parser como cualquier línea (se valida que tenga un único inmediato), pero en la segunda pasada no se codifica con `isa/formatos.py`: solo se verifica que el valor entre en 32 bits (`-2^31 .. 2^32 − 1`, §9.14). Cualquier otra directiva (`.data`, `.text`, `.align`, …) da error de mnemónico desconocido.
+
+Su uso principal es meter en la IMEM palabras que el ensamblador no generaría por sí solo, en particular **instrucciones ilegales**, para verificar que el núcleo las trate como HALT con estado `ILLEGAL` (ADR-018). Las instrucciones normales solo se pueden escribir con los mnemónicos de `SINTAXIS`, y los `encode_*` solo arman codificaciones válidas, así que sin `.word` no hay otra forma de cargar una palabra malformada. También sirve para probar instrucciones de otras extensiones (`mul`, `ecall`), que para nuestro núcleo son ilegales, y palabras desconocidas en el desensamblador. Como no hay memoria compartida (Harvard, ADR-005), `.word` **no** sirve para cargar datos: un `lw` lee la DMEM, no la IMEM.
+
 ## 4. Primera pasada: direcciones y símbolos
 
-Recorre las `LineaAsm` con un **contador de posición** (*location counter*): la dirección de la próxima instrucción. Arranca en 0 y suma 4 por cada instrucción; una línea que solo tiene una etiqueta no suma. Cada vez que encuentra una etiqueta, la guarda en la **tabla de símbolos** (*symbol table*, `etiqueta → dirección`) con la dirección actual; si ya existía, es un error que cita las dos líneas:
+Recorre las `LineaAsm` con un **contador de posición** (_location counter_): la dirección de la próxima instrucción. Arranca en 0 y suma 4 por cada instrucción; una línea que solo tiene una etiqueta no suma. Cada vez que encuentra una etiqueta, la guarda en la **tabla de símbolos** (_symbol table_, `etiqueta → dirección`) con la dirección actual; si ya existía, es un error que cita las dos líneas:
 
 ```txt
 línea 3: etiqueta 'a' duplicada (ya definida en la línea 1)
@@ -205,7 +211,7 @@ make gnu-ref
 
 Hace tres cosas:
 
-1. `riscv64-unknown-elf-as -march=rv32i -mabi=ilp32 -mno-relax` ensambla a un objeto ELF. `-mno-relax` es importante: sin él, GNU deja los saltos a etiquetas como *relocaciones* para que los resuelva el linker (que podría acortarlos), y en el objeto quedan con offset 0.
+1. `riscv64-unknown-elf-as -march=rv32i -mabi=ilp32 -mno-relax` ensambla a un objeto ELF. `-mno-relax` es importante: sin él, GNU deja los saltos a etiquetas como _relocaciones_ para que los resuelva el linker (que podría acortarlos), y en el objeto quedan con offset 0.
 2. `objcopy -O binary -j .text` extrae solo los bytes del código.
 3. `od -An -v -t x4 -w4` los imprime como palabras de 4 bytes, una por línea. `od` lee en el orden de la máquina (x86, little-endian), que es el mismo de RISC-V, así que las palabras salen bien.
 
