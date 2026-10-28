@@ -216,6 +216,48 @@ def test_word_no_cuenta_como_halt() -> None:
     assert ensamblar(".word 0x0000000B").advertencias == [HALT_AGREGADO]
 
 
+# --- Desalineados (ADR-018) ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("linea", "tam"),
+    [
+        ("lw x1, 6(x0)", 4),
+        ("sw x1, -2(x0)", 4),
+        ("lh x1, 3(x0)", 2),
+        ("lhu x1, 0x7FF(x0)", 2),
+        ("sh x1, 1(x0)", 2),
+    ],
+)
+def test_avisa_desalineado_con_base_x0(linea: str, tam: int) -> None:
+    (aviso,) = ensamblar(f"nop\n{linea}\nhalt").advertencias
+    assert aviso.startswith(f"línea 2: {linea.split()[0]} desalineado")
+    assert f"no es múltiplo de {tam}" in aviso
+
+
+@pytest.mark.parametrize(
+    "linea",
+    [
+        "lw x1, 8(x0)",
+        "sw x1, -4(x0)",
+        "lh x1, 2(x0)",
+        "lb x1, 3(x0)",
+        "lbu x1, 1(x0)",
+        "sb x1, 7(x0)",
+        "lw x1, 6(x2)",  # la base no se conoce sin ejecutar
+        "jalr x0, 6(x0)",  # no accede a memoria
+    ],
+)
+def test_no_avisa(linea: str) -> None:
+    assert ensamblar(f"{linea}\nhalt").advertencias == []
+
+
+def test_desalineado_no_impide_ensamblar() -> None:
+    imagen = ensamblar("lw x5, -2(x0)")
+    assert len(imagen.palabras) == 2
+    assert len(imagen.advertencias) == 2  # desalineado y HALT agregado
+
+
 # --- Errores de rango (AC4) ---------------------------------------------------------------
 
 
