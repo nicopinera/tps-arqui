@@ -34,6 +34,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `tools/riscv_toolkit/assembler/`: ensamblador de dos pasadas `ensamblar(texto) -> Imagen` con lexer por expresiones regulares, parser con la sintaxis de cada mnemónico, etiquetas, pseudoinstrucciones `nop`/`mv`/`j`/`ret`, `.word`, HALT final automático, límite de 256 palabras, errores con número de línea (`ErrorEnsamblado`) y advertencias de accesos desalineados con base `x0` (US-106).
 - `make gnu-ref` y `tools/tests/assembler/fixtures/todas_las_instrucciones.{asm,hex}`: referencia de GNU `as` para las 32 instrucciones estándar; `test_vs_gnu.py` verifica que el ensamblador produzca las mismas palabras (US-106).
 - `docs/guias/guia-ensamblador.md` (etapas, pasadas, errores y decisiones de diseño) y `docs/guias/guia-regex.md` (expresiones regulares y la regex del lexer) (US-106).
+- `tools/riscv_toolkit/disasm/disassembler.py`: `desensamblar(palabra, pc=None) -> str` con la sintaxis del ensamblador; `halt` para todo opcode custom-0, `.word 0x...` para las ilegales de `tabla_control.md` §3, y destino de branches y `jal` absoluto con `pc` (`0x1c`) o relativo sin él (`.+8`). Tests de ida y vuelta de las 33 instrucciones y de los casos ilegales (US-107).
 
 ### Changed
 
