@@ -21,7 +21,7 @@ El enunciado exige "contar con un mecanismo para traducir instrucciones a lengua
 
 - **Primera pasada:** asigna direcciones (PC += 4 por instrucción, ya con las pseudoinstrucciones expandidas) y arma la tabla de símbolos.
 - **Segunda pasada:** resuelve las etiquetas y codifica usando `isa/formatos.py`, la misma tabla que usan el desensamblador y el golden model.
-- El toolchain GNU (`riscv64-unknown-elf-as -march=rv32i`) se usa **solo para validar**: se genera una vez un `.hex` de referencia con las 32 instrucciones estándar, se versiona en `tools/tests/fixtures/` y el test compara contra ese archivo (US-106, AC2). Los tests no necesitan GNU instalado.
+- El toolchain GNU (`riscv64-unknown-elf-as -march=rv32i`) se usa **solo para validar**: se genera una vez un `.hex` de referencia con las 32 instrucciones estándar, se versiona en `tools/tests/assembler/fixtures/` (lo regenera `make gnu-ref`) y el test compara contra ese archivo (US-106, AC2). Los tests no necesitan GNU instalado.
 
 ### Alcance del lenguaje
 
