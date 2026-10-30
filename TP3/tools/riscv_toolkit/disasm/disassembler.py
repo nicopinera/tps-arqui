@@ -1,44 +1,17 @@
 """Desensamblador: de una palabra de 32 bits a su texto en assembly (US-107).
 
 Lo usan la GUI y el golden model para mostrar qué instrucción hay en cada etapa. Reconoce la
-instrucción con la misma tabla que el ensamblador (`isa/instrucciones.py`), saca los campos con
+instrucción con `identificar` de la tabla compartida (`isa/instrucciones.py`), saca los campos con
 los `decode_*` de `isa/formatos.py` y escribe con la sintaxis del parser, así que
 `ensamblar(desensamblar(p)) == p` para toda palabra (salvo branches y `jal`, ver `_destino`).
 """
 
 from riscv_toolkit.assembler.parser import MEM, SINTAXIS
 from riscv_toolkit.isa.formatos import decode_b, decode_i, decode_j, decode_r, decode_s, decode_u
-from riscv_toolkit.isa.instrucciones import INSTRUCCIONES, Formato, InstructionSpec
+from riscv_toolkit.isa.instrucciones import Formato, identificar
 
 _PALABRA_MAX = 0xFFFFFFFF
 _SHAMT = 0x1F  # imm[4:0] de slli/srli/srai; imm[11:5] es su funct7
-
-# (opcode, funct3, funct7) → instrucción. funct3 y funct7 son None donde la tabla no los usa
-# (U, J y HALT no tienen funct3; solo R y los shifts tienen funct7).
-_INDICE: dict[tuple[int, int | None, int | None], InstructionSpec] = {
-    (i.opcode, i.funct3, i.funct7): i for i in INSTRUCCIONES.values()
-}
-
-
-def _identificar(palabra: int) -> InstructionSpec | None:
-    """Instrucción de `palabra`, o None si es ilegal.
-
-    Se prueba de la clave más específica a la menos: `(opcode, funct3, funct7)` encuentra R y
-    shifts, `(opcode, funct3)` el resto de I, S y B, y `opcode` solo U, J y HALT. Una
-    combinación que no está en la tabla (`slli` con funct7 != 0, `blt`, `mul`…) no encaja en
-    ninguna y es ilegal, igual que en `tabla_control.md`.
-    """
-    campos = decode_r(palabra)  # opcode, funct3 y funct7 están en el mismo lugar en todo tipo
-    claves = (
-        (campos.opcode, campos.funct3, campos.funct7),
-        (campos.opcode, campos.funct3, None),
-        (campos.opcode, None, None),
-    )
-
-    for c in claves:
-        if c in _INDICE:
-            return _INDICE[c]
-    return None
 
 
 def desensamblar(palabra: int, pc: int | None = None) -> str:
@@ -51,7 +24,7 @@ def desensamblar(palabra: int, pc: int | None = None) -> str:
     """
     if not 0 <= palabra <= _PALABRA_MAX:
         raise ValueError(f"la palabra no entra en 32 bits: {palabra:#x}")
-    spec = _identificar(palabra)
+    spec = identificar(palabra)
     if spec is None:
         return f".word 0x{palabra:08x}"  # ilegal: .word es la única forma de escribirla
 
