@@ -12,11 +12,20 @@ Convenciones (ADR-008, ADR-009, ADR-018):
   y dejan una advertencia.
 """
 
+import operator
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum, auto
 
-from riscv_toolkit.isa.formatos import decode_i, decode_r, decode_s, sign_extend
+from riscv_toolkit.isa.formatos import (
+    decode_b,
+    decode_i,
+    decode_j,
+    decode_r,
+    decode_s,
+    decode_u,
+    sign_extend,
+)
 from riscv_toolkit.isa.instrucciones import HALT_WORD, Formato, identificar
 from riscv_toolkit.protocol.comandos import DMEM_DEPTH, IMEM_DEPTH
 
@@ -82,6 +91,8 @@ _LOADS: dict[str, tuple[int, bool]] = {
 }
 # Store → bytes que escribe (los bajos de rs2).
 _STORES: dict[str, int] = {"sb": 1, "sh": 2, "sw": 4}
+# Branch → condición para saltar. Comparan igualdad, así que el signo no importa.
+_BRANCHES: dict[str, Callable[[int, int], bool]] = {"beq": operator.eq, "bne": operator.ne}
 
 
 class GoldenModel:
@@ -142,6 +153,7 @@ class GoldenModel:
             self.motivo = Motivo.HALTED
             return Motivo.HALTED
 
+        siguiente = self.pc + 4  # el camino normal; los saltos lo cambian
         if spec.formato is Formato.R:
             r = decode_r(palabra)
             self._escribir(r.rd, _ALU[spec.mnemonico](self.regs[r.rs1], self.regs[r.rs2]))
@@ -164,22 +176,49 @@ class GoldenModel:
             d = self._direccion(self.regs[s.rs1], s.imm, n, spec.mnemonico)
             self.dmem[d : d + n] = (self.regs[s.rs2] & ((1 << 8 * n) - 1)).to_bytes(n, "little")
             self.mem_escrita.add(d & ~(_BYTES_PALABRA - 1))  # marca la palabra entera (ADR-008)
-        # TODO(nico): T4 branches, jal, jalr y lui. Ojo: los offsets de branch
-        # y jal se suman al PC de la instrucción, no a PC + 4.
+        elif spec.formato is Formato.B:
+            b = decode_b(palabra)
+            if _BRANCHES[spec.mnemonico](self.regs[b.rs1], self.regs[b.rs2]):
+                siguiente = self.pc + b.imm  # relativo a esta instrucción, no a PC + 4
+        elif spec.formato is Formato.J:
+            j = decode_j(palabra)
+            siguiente = self.pc + j.imm
+            self._escribir(j.rd, self.pc + 4)
+        elif spec.mnemonico == "jalr":
+            i = decode_i(palabra)
+            # el destino se calcula antes de escribir rd: en `jalr x1, 0(x1)` son el mismo
+            siguiente = (self.regs[i.rs1] + i.imm) & ~1
+            self._escribir(i.rd, self.pc + 4)
+        elif spec.formato is Formato.U:
+            u = decode_u(palabra)
+            self._escribir(u.rd, u.imm)
 
-        self.pc += 4
+        self.pc = siguiente & _MASCARA_32
         self.instrucciones_retiradas += 1
         return None
 
     def run(self, max_instr: int) -> Motivo:
-        """Ejecuta hasta HALT, una ilegal o `max_instr` instrucciones (TIMEOUT)."""
-        # TODO(nico): T5
-        raise NotImplementedError
+        """Ejecuta hasta HALT, una ilegal o `max_instr` instrucciones (TIMEOUT).
+
+        `max_instr` cuenta los pasos, incluido el del halt o la ilegal. Un loop infinito no
+        cuelga: termina con TIMEOUT y el modelo queda donde estaba.
+        """
+        for _ in range(max_instr):
+            motivo = self.step()
+            if motivo is not None:
+                return motivo
+        self.motivo = Motivo.TIMEOUT
+        return Motivo.TIMEOUT
 
     def estado_final(self) -> EstadoArquitectonico:
         """Estado al terminar `run()`. Falla si todavía no terminó."""
-        # TODO(nico): T5 — `mem_usada` en orden de dirección creciente, como el snapshot.
-        raise NotImplementedError
+        if self.motivo is None:
+            raise RuntimeError("el programa todavía no terminó: falta llamar a run()")
+        mem_usada = {  # en orden de dirección creciente, como el snapshot (ADR-017)
+            d: int.from_bytes(self.dmem[d : d + _BYTES_PALABRA], "little")
+            for d in sorted(self.mem_escrita)
+        }
+        return EstadoArquitectonico(tuple(self.regs), mem_usada, self.pc, self.motivo)
 
     def _direccion(self, base: int, imm: int, n: int, mnemonico: str) -> int:
         """Índice en `dmem` de un acceso de `n` bytes a `base + imm` (ADR-008, ADR-018).
