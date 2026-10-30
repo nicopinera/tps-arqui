@@ -9,7 +9,7 @@ from riscv_toolkit.__main__ import VERSION, main
 
 
 def test_main_muestra_la_version(capsys: pytest.CaptureFixture[str]) -> None:
-    assert main() == 0
+    assert main([]) == 0  # sin subcomando
     assert VERSION in capsys.readouterr().out
 
 

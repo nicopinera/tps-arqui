@@ -34,9 +34,13 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `tools/riscv_toolkit/assembler/`: ensamblador de dos pasadas `ensamblar(texto) -> Imagen` con lexer por expresiones regulares, parser con la sintaxis de cada mnemónico, etiquetas, pseudoinstrucciones `nop`/`mv`/`j`/`ret`, `.word`, HALT final automático, límite de 256 palabras, errores con número de línea (`ErrorEnsamblado`) y advertencias de accesos desalineados con base `x0` (US-106).
 - `make gnu-ref` y `tools/tests/assembler/fixtures/todas_las_instrucciones.{asm,hex}`: referencia de GNU `as` para las 32 instrucciones estándar; `test_vs_gnu.py` verifica que el ensamblador produzca las mismas palabras (US-106).
 - `docs/guias/guia-ensamblador.md` (etapas, pasadas, errores y decisiones de diseño) y `docs/guias/guia-regex.md` (expresiones regulares y la regex del lexer) (US-106).
+- `tools/riscv_toolkit/disasm/disassembler.py`: `desensamblar(palabra, pc=None) -> str` con la sintaxis del ensamblador; `halt` para todo opcode custom-0, `.word 0x...` para las ilegales de `tabla_control.md` §3, y destino de branches y `jal` absoluto con `pc` (`0x1c`) o relativo sin él (`.+8`). Tests de ida y vuelta de las 33 instrucciones y de los casos ilegales (US-107).
+- `tools/riscv_toolkit/assembler/salidas.py`: `a_hex` (una palabra por línea, para `$readmemh`), `a_bin` (`4·N` bytes little-endian, el payload de `LOAD`) y `a_lst(imagen, texto)` (dirección, palabra, línea y fuente, con las etiquetas en su renglón y la expansión de cada pseudoinstrucción). Un test carga el `.hex` con `tb_readmemh` si hay Icarus instalado (US-107).
+- CLI `rvasm` como subcomando `asm` de `python -m riscv_toolkit` (`tools/riscv_toolkit/cli/rvasm.py`): `asm programa.asm [-o salida|-] [--format hex|bin|lst]`, formato deducido de la extensión de `-o` (por defecto `.hex` al lado de la entrada), errores y advertencias en stderr como `archivo:línea: ...`, y código de salida 1 ante errores de ensamblado o de archivo (US-107).
 
 ### Changed
 
+- `python -m riscv_toolkit` usa argparse y despacha subcomandos; sin subcomando sigue mostrando la versión, y se agregó `--version` (US-107).
 - Módulos UART: correcciones para dejar el lint en cero, sin cambio de comportamiento (constantes con el ancho de los contadores, `default` en las máquinas de estado, señal sin usar eliminada en `baudrate_gen`) (US-102).
 - `mypy` también revisa `tools/scripts/` (US-104).
 - `HALT_OPCODE` y `HALT_WORD` pasan de `protocol/comandos.py` a `isa/instrucciones.py`; `gen_du_defs.py` los toma de ahí y `du_defs.vh` no cambia (US-105).
