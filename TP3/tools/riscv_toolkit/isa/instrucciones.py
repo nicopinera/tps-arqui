@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Final
 
+from riscv_toolkit.isa.formatos import decode_r
+
 HALT_OPCODE: Final = 0x0B  # opcode custom-0, 0b0001011 (ADR-004)
 HALT_WORD: Final = 0x0000000B  # palabra canónica de HALT; también rellena la IMEM (ADR-004)
 
@@ -69,3 +71,30 @@ _TABLA: list[InstructionSpec] = [
 ]
 
 INSTRUCCIONES: dict[str, InstructionSpec] = {i.mnemonico: i for i in _TABLA}
+
+# (opcode, funct3, funct7) → instrucción. funct3 y funct7 son None donde la tabla no los usa
+# (U, J y HALT no tienen funct3; solo R y los shifts tienen funct7).
+_INDICE: dict[tuple[int, int | None, int | None], InstructionSpec] = {
+    (i.opcode, i.funct3, i.funct7): i for i in INSTRUCCIONES.values()
+}
+
+
+def identificar(palabra: int) -> InstructionSpec | None:
+    """Instrucción de `palabra`, o None si es ilegal. La usan el desensamblador y el golden model.
+
+    Se prueba de la clave más específica a la menos: `(opcode, funct3, funct7)` encuentra R y
+    shifts, `(opcode, funct3)` el resto de I, S y B, y `opcode` solo U, J y HALT. Una
+    combinación que no está en la tabla (`slli` con funct7 != 0, `blt`, `mul`…) no encaja en
+    ninguna y es ilegal, igual que en `tabla_control.md`.
+    """
+    campos = decode_r(palabra)  # opcode, funct3 y funct7 están en el mismo lugar en todo tipo
+    claves = (
+        (campos.opcode, campos.funct3, campos.funct7),
+        (campos.opcode, campos.funct3, None),
+        (campos.opcode, None, None),
+    )
+
+    for c in claves:
+        if c in _INDICE:
+            return _INDICE[c]
+    return None
