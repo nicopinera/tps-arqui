@@ -7,7 +7,6 @@ module tb_uart_loopback;
 
   localparam NBIT      = 8;
   localparam COUNT_MAX = 4;      // tick cada 4 ciclos: simulacion corta
-  localparam BITS      = 3;
   localparam MAX_CICLOS = 20000; // limite por byte
 
   reg  clock = 1'b0;
@@ -23,7 +22,7 @@ module tb_uart_loopback;
 
   integer ciclos;
 
-  baudrate_gen #(.COUNT_MAX(COUNT_MAX), .BITS(BITS)) u_baud (
+  baudrate_gen #(.COUNT_MAX(COUNT_MAX)) u_baud (
     .clock(clock), .i_reset(i_reset), .o_baudrate(w_s_tick)
   );
 
