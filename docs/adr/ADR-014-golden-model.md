@@ -3,7 +3,7 @@
 - **Estado:** Aprobado
 - **Fecha:** 2026-10-04
 - **Autores:** Krede, Julián · Piñera, Nicolás
-- **Bloquea:** US-107, US-305, US-506
+- **Bloquea:** US-108, US-305, US-505
 - **Relacionados:** ADR-008 (memoria usada), ADR-009 (estado inicial en cero), ADR-011 (Python), ADR-012 (GUI), ADR-013 (tabla ISA compartida), ADR-018 (desalineados e ilegales)
 
 ## Contexto
@@ -25,8 +25,8 @@ Se combinan dos mecanismos complementarios:
 - Comportamiento de desalineados e ilegales según ADR-018.
 - Usos:
   - **Verificación cruzada automática** RTL / placa vs. golden model (US-305): se comparan registros y memoria usada al final.
-  - **`FakeTransport`** (US-410): responde al protocolo usando el ISS, así la GUI y la CLI funcionan sin placa. Los latches se aproximan sin riesgos y el snapshot se marca `simulado = True`.
-  - **Modo "verificar" en la GUI** (US-506): compara el estado de la placa con el esperado.
+  - **`FakeTransport`** (US-409): responde al protocolo usando el ISS, así la GUI y la CLI funcionan sin placa. Los latches se aproximan sin riesgos y el snapshot se marca `simulado = True`.
+  - **Modo "verificar" en la GUI** (US-505): compara el estado de la placa con el esperado.
 
 ### (b) Firma en memoria en cada programa de prueba
 
@@ -54,7 +54,7 @@ Se combinan dos mecanismos complementarios:
 
 **Negativas**
 
-- El ISS es una segunda implementación de la ISA: si ambos (ISS y RTL) interpretan mal una instrucción de la misma forma, la comparación no lo detecta. Se mitiga con los tests de valores borde del ISS (US-107, AC1) y con la firma, que se calcula con valores esperados escritos a mano.
+- El ISS es una segunda implementación de la ISA: si ambos (ISS y RTL) interpretan mal una instrucción de la misma forma, la comparación no lo detecta. Se mitiga con los tests de valores borde del ISS (US-108, AC1) y con la firma, que se calcula con valores esperados escritos a mano.
 - Los latches que muestra `FakeTransport` son una aproximación: no sirven para verificar riesgos.
 - La firma usa una palabra de la DMEM y siempre aparece en la memoria usada.
 
@@ -66,4 +66,4 @@ Se combinan dos mecanismos complementarios:
 
 ## Referencias
 
-- PRD §1.4 (métricas), §4.4 (`FakeTransport`), §7 (NFR-9), §8 (ADR-014); US-107, US-305, US-410, US-506.
+- PRD §1.4 (métricas), §4.4 (`FakeTransport`), §7 (NFR-9), §8 (ADR-014); US-108, US-305, US-409, US-505.

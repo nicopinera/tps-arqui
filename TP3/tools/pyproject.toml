@@ -1,0 +1,84 @@
+[project]
+name = "riscv-toolkit"
+version = "0.1.0"
+description = "Software de PC del TP3: ensamblador, golden model, protocolo de la Debug Unit, CLI y GUI para un RV32I segmentado en Basys 3"
+readme = "README.md"
+authors = [
+    { name = "Nicolas Piñera", email = "nicolas.pinera@unc.edu.ar" },
+    { name = "Julian Krede" },
+]
+requires-python = ">=3.13"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "mypy>=2.4.0",
+    "pip-audit>=2.9.0",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.17.0",
+]
+
+# Proyecto no instalable: uv solo maneja el entorno y las dependencias; el código se
+# corre desde esta carpeta con `uv run python -m riscv_toolkit <subcomando>`.
+[tool.uv]
+package = false
+
+# --- ruff: lint y formato ----------------------------------------------------------------
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle (errores)
+    "W",   # pycodestyle (advertencias)
+    "F",   # pyflakes
+    "I",   # orden de imports
+    "N",   # nombres
+    "UP",  # sintaxis moderna
+    "B",   # bugbear: errores probables
+    "C4",  # comprehensions
+    "SIM", # simplificaciones
+    "PT",  # estilo de pytest
+    "RUF", # reglas propias de ruff
+    "S",   # seguridad (bandit)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"] # assert es la forma normal de verificar en pytest
+
+[tool.ruff.lint.isort]
+known-first-party = ["riscv_toolkit"]
+
+# --- mypy: tipos -------------------------------------------------------------------------
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_unreachable = true
+files = ["riscv_toolkit", "scripts", "tests"]
+explicit_package_bases = true
+mypy_path = "."
+
+# --- pytest y cobertura ------------------------------------------------------------------
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."] # el proyecto no se instala: los tests importan riscv_toolkit desde acá
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--cov",
+    "--cov-report=term-missing",
+]
+
+[tool.coverage.run]
+source = ["riscv_toolkit"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+exclude_also = ["if __name__ == .__main__.:"]

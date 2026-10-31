@@ -1,0 +1,133 @@
+<mxfile host="65bd71144e">
+    <diagram id="J4VPQ-vw6HGSq1YZpSbz" name="Arquitectura del sistema">
+        <mxGraphModel dx="1530" dy="1104" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1320" pageHeight="500" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="arq-1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=none;verticalAlign=top;" value="" vertex="1">
+                    <mxGeometry height="420" width="560" x="10" y="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;text;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=22;" value="COMPUTADORA" vertex="1">
+                    <mxGeometry height="34" width="560" x="10" y="68" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;text;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=10;fontColor=#666666;" value="Python 3.13" vertex="1">
+                    <mxGeometry height="18" width="560" x="10" y="96" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-4" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=none;verticalAlign=top;" value="" vertex="1">
+                    <mxGeometry height="420" width="600" x="700" y="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-5" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;text;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=22;" value="FPGA" vertex="1">
+                    <mxGeometry height="34" width="600" x="700" y="68" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-6" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;text;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=10;fontColor=#666666;" value="Basys3" vertex="1">
+                    <mxGeometry height="18" width="600" x="700" y="96" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-7" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;" value="&lt;b&gt;GUI / CLI&lt;/b&gt;&lt;br&gt;&lt;span style=&#39;font-size:9px;font-weight:normal&#39;&gt;ui/ · cli/&lt;/span&gt;" vertex="1">
+                    <mxGeometry height="60" width="110" x="25" y="190" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-8" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;" value="&lt;b&gt;Sesión&lt;/b&gt;&lt;br&gt;&lt;span style=&#39;font-size:9px;font-weight:normal&#39;&gt;cargar, correr, paso,&lt;br&gt;historial de snapshots&lt;/span&gt;" vertex="1">
+                    <mxGeometry height="60" width="120" x="160" y="190" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-9" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;" value="&lt;b&gt;Protocolo&lt;/b&gt;&lt;br&gt;&lt;span style=&#39;font-size:9px;font-weight:normal&#39;&gt;codifica comandos,&lt;br&gt;decodifica tramas&lt;/span&gt;" vertex="1">
+                    <mxGeometry height="60" width="110" x="305" y="190" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-10" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;" value="&lt;b&gt;Transporte serie&lt;/b&gt;&lt;br&gt;&lt;span style=&#39;font-size:9px;font-weight:normal&#39;&gt;pyserial&lt;/span&gt;" vertex="1">
+                    <mxGeometry height="60" width="115" x="440" y="190" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-11" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;" value="&lt;b&gt;Ensamblador&lt;/b&gt;&lt;br&gt;&lt;span style=&#39;font-size:9px;font-weight:normal&#39;&gt;.asm → imagen&lt;/span&gt;" vertex="1">
+                    <mxGeometry height="50" width="110" x="115" y="320" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-12" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;" value="&lt;b&gt;Golden model&lt;/b&gt;&lt;br&gt;&lt;span style=&#39;font-size:9px;font-weight:normal&#39;&gt;simulador de referencia&lt;/span&gt;" vertex="1">
+                    <mxGeometry height="50" width="110" x="245" y="320" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-13" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;strokeColor=#666666;" value="&lt;b&gt;Tabla ISA&lt;/b&gt;&lt;br&gt;&lt;span style=&#39;font-size:9px;font-weight:normal&#39;&gt;fuente única de verdad&lt;/span&gt;" vertex="1">
+                    <mxGeometry height="42" width="140" x="165" y="415" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-14" edge="1" parent="1" source="arq-7" style="html=1;endArrow=classic;rounded=0;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;startArrow=classic;" target="arq-8" value="">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-15" edge="1" parent="1" source="arq-8" style="html=1;endArrow=classic;rounded=0;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;startArrow=classic;" target="arq-9" value="">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-16" edge="1" parent="1" source="arq-9" style="html=1;endArrow=classic;rounded=0;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;startArrow=classic;" target="arq-10" value="">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-17" edge="1" parent="1" source="arq-8" style="html=1;endArrow=classic;rounded=0;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;exitX=0.3;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;edgeStyle=orthogonalEdgeStyle;" target="arq-11" value="usa">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-18" edge="1" parent="1" source="arq-8" style="html=1;endArrow=classic;rounded=0;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;exitX=0.7;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;edgeStyle=orthogonalEdgeStyle;" target="arq-12" value="compara">
+                    <mxGeometry relative="1" x="0.0016" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-19" edge="1" parent="1" source="arq-11" style="html=1;endArrow=classic;rounded=0;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#666666;fontColor=#666666;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;edgeStyle=orthogonalEdgeStyle;" target="arq-13" value="">
+                    <mxGeometry relative="1" x="-0.0006" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-20" edge="1" parent="1" source="arq-12" style="html=1;endArrow=classic;rounded=0;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#666666;fontColor=#666666;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;edgeStyle=orthogonalEdgeStyle;" target="arq-13" value="">
+                    <mxGeometry relative="1" x="-0.0006" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-21" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;" value="&lt;b&gt;UART RX/TX&lt;/b&gt;&lt;br&gt;&lt;span style=&#39;font-size:9px;font-weight:normal&#39;&gt;del TP2&lt;/span&gt;" vertex="1">
+                    <mxGeometry height="60" width="90" x="715" y="190" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-22" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;strokeColor=#D9730D;strokeWidth=2;" value="&lt;b&gt;Debug Unit&lt;/b&gt;&lt;br&gt;&lt;span style=&#39;font-size:9px;font-weight:normal&#39;&gt;intérprete de comandos,&lt;br&gt;carga, ejecución,&lt;br&gt;volcado (snapshot)&lt;/span&gt;" vertex="1">
+                    <mxGeometry height="90" width="120" x="845" y="175" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-23" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;strokeColor=#1F6FB5;strokeWidth=2;verticalAlign=top;" value="" vertex="1">
+                    <mxGeometry height="300" width="170" x="1115" y="125" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-24" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;text;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=12;" value="&lt;b&gt;RISC-V CORE&lt;/b&gt;&lt;div&gt;&lt;span style=&quot;font-size:9px&quot;&gt;RV32I - pipeline de 5 etapas&lt;/span&gt;&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="36" width="170" x="1115" y="132" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-25" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fontStyle=1;fontSize=10;" value="IF - ID - EX - MEM - WB&lt;br&gt;&lt;span style=&quot;font-size:9px;font-weight:normal&quot;&gt;forwarding - stall - flush&lt;/span&gt;" vertex="1">
+                    <mxGeometry height="55" width="146" x="1127" y="185" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-26" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fontSize=10;" value="&lt;b&gt;IMEM&lt;/b&gt;&lt;br&gt;&lt;span style=&#39;font-size:9px;font-weight:normal&#39;&gt;programa&lt;/span&gt;" vertex="1">
+                    <mxGeometry height="50" width="68" x="1127" y="300" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-27" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fontSize=10;" value="&lt;b&gt;DMEM&lt;/b&gt;&lt;br&gt;&lt;span style=&#39;font-size:9px;font-weight:normal&#39;&gt;datos + bitmap&lt;/span&gt;" vertex="1">
+                    <mxGeometry height="50" width="68" x="1205" y="300" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-30" edge="1" parent="1" source="arq-22" style="html=1;endArrow=classic;rounded=0;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#D9730D;fontColor=#D9730D;exitX=1;exitY=0.278;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;" target="arq-23" value="i_enable - i_stop_fetch - i_flush_all">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint y="-18" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="arq-31" edge="1" parent="1" source="arq-23" style="html=1;endArrow=classic;rounded=0;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#D9730D;fontColor=#D9730D;exitX=0;exitY=0.4;exitDx=0;exitDy=0;entryX=1;entryY=0.778;entryDx=0;entryDy=0;" target="arq-22" value="registros - latches -&lt;br&gt;memoria usada - o_halted">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint y="18" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="arq-32" edge="1" parent="1" source="arq-22" style="html=1;endArrow=classic;rounded=0;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#D9730D;fontColor=#D9730D;edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="arq-26" value="carga del programa">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="905" y="325"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="arq-33" edge="1" parent="1" source="arq-10" style="html=1;endArrow=classic;rounded=0;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;exitX=1;exitY=0.3;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;" target="arq-21" value="comandos: LOAD, RUN, STEP,&lt;br&gt;DUMP, ABORT">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint y="-22" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="arq-34" edge="1" parent="1" source="arq-21" style="html=1;endArrow=classic;rounded=0;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;exitX=0;exitY=0.7;exitDx=0;exitDy=0;entryX=1;entryY=0.7;entryDx=0;entryDy=0;" target="arq-10" value="ACK / NACK / snapshots">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint y="16" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="arq-35" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;text;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=10;" value="&lt;b&gt;USB serie&lt;/b&gt;&lt;br&gt;19200 bps" vertex="1">
+                    <mxGeometry height="30" width="150" x="560" y="138" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-pipe-imem" edge="1" parent="1" source="arq-25" style="html=1;endArrow=classic;startArrow=classic;rounded=0;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;exitX=0.23;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="arq-26" value="IF">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-pipe-dmem" edge="1" parent="1" source="arq-25" style="html=1;endArrow=classic;startArrow=classic;rounded=0;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;exitX=0.77;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="arq-27" value="MEM">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="JU3ykuqfOdAWeBOO9uSH-1" edge="1" parent="1" source="arq-21" style="endArrow=classic;startArrow=classic;html=1;" target="arq-22" value="">
+                    <mxGeometry height="50" relative="1" width="50" as="geometry">
+                        <mxPoint x="820" y="270" as="sourcePoint"/>
+                        <mxPoint x="870" y="220" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

@@ -56,6 +56,14 @@ Un **procesador RISC-V (subconjunto de RV32I) segmentado en 5 etapas sobre la Ba
 - **Análisis temporal:** camino crítico, skew, frecuencia óptima y aplicación de esa frecuencia con Clock Wizard si corresponde (ADR-016).
 - **Informe final** que responda todas las preguntas del enunciado.
 
+### 1.4 Métricas de éxito
+
+| Métrica                     | Definición                                                                                                                                                                                                                                                                                                                                      | Objetivo       | Dónde se mide                                             |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | --------------------------------------------------------- |
+| **North Star**              | Porcentaje de los programas de `asm/tests/instr/` y `asm/tests/hazards/` que, ejecutados **en la placa** en modo `RUN`, terminan con el mismo estado que el golden model                                                                                                                                                                         | 100 %          | US-411 AC1; se repite a la frecuencia final en US-602 AC3 |
+| **Cobertura de riesgos**    | Cada caso tiene al menos un programa de prueba: forwarding desde EX/MEM, desde MEM/WB, doble coincidencia, hacia `store_data` y hacia `branch_cmp`; `x0` sin forwarding; load-use (también con un store); branch tomado y no tomado; branch después de un load; `jal`/`jalr`; `jal` y branch en el mismo ciclo; HALT e ilegal especulativos | 100 % de casos | US-304 AC2                                                |
+| **Reprogramación dinámica** | Cargas consecutivas de programas distintos, sin reset entre ellas, todas con resultado correcto                                                                                                                                                                                                                                               | 5 de 5         | US-404 AC5 (simulación) y US-411 AC3 (placa)              |
+
 ---
 
 ## 2. Contexto del Dominio
@@ -126,7 +134,7 @@ Fuente: especificación oficial RISC-V (volumen no privilegiado, RV32I). Esta ta
 
 **Observaciones que impactan el diseño:**
 
-- En los formatos S, B y J el inmediato está **partido y reordenado** en la instrucción (ej. B: `imm[12|10:5]` en [31:25] y `imm[4:1|11]` en [11:7]). El generador de inmediatos (`imm_gen.v`) y el ensamblador tienen que reordenarlos exactamente igual — es la fuente más común de bugs.
+- En los formatos S, B y J el inmediato está **partido y reordenado** en la instrucción (ej. B: `imm[12|10:5]` en [31:25] y `imm[4:1|11]` en [11:7]). El generador de inmediatos (`imm_gen.v`) y el ensamblador tienen que reordenarlos exactamente igual — es la fuente más común de bugs. Los bits de cada campo y el reordenamiento del inmediato, con ejemplos, están en [`interfaces/formatos.md`](interfaces/formatos.md).
 - En B y J el bit 0 del inmediato es siempre 0 (no se codifica): los saltos son múltiplos de 2 bytes.
 - `x0` vale siempre 0: escribirlo no tiene efecto, y el forwarding **nunca** debe reenviar un "resultado" con destino `x0`.
 - RISC-V es **little-endian**: el byte menos significativo de una palabra está en la dirección más baja. Importa para `lb`/`lh`/`sb`/`sh` y para cómo se envían las palabras por UART.
@@ -189,7 +197,7 @@ En este proyecto "datos" son las estructuras de información que viajan entre la
 - La DMEM (memoria distribuida, ADR-005) tiene dos puertos de lectura (núcleo y Debug Unit) y un único puerto de escritura con un multiplexor: lo usa el núcleo (stores) o la Debug Unit (limpieza de ADR-009). La Debug Unit solo accede con el núcleo detenido (`i_enable = 0`), por lo que nunca hay conflicto real. Las escrituras de limpieza no marcan el bitmap de memoria usada (ADR-008).
 - El snapshot se toma siempre con el pipeline congelado: todos los valores enviados corresponden al **mismo ciclo**.
 
-### 3.5 Presupuesto de volcado (dimensionamiento)
+### 3.4 Presupuesto de volcado (dimensionamiento)
 
 | Contenido                                   | Tamaño aproximado                |
 | ------------------------------------------- | -------------------------------- |
@@ -210,9 +218,19 @@ Por acuerdo del equipo, esta sección no desarrolla la arquitectura interna del 
 
 **Regla de oro del hardware:** el reloj llega a todos los flip-flops por la red global (BUFG / MMCM) **sin pasar por ninguna compuerta**. `i_enable` entra como _clock enable_ a PC, latches, banco de registros, puertos de escritura de memoria y bitmap de memoria usada (ADR-001). Las lecturas de IMEM/DMEM son combinacionales (ADR-005), así que no necesitan enable. La Debug Unit y la UART **siempre** están habilitadas.
 
+### 4.1 Mapa de módulos de hardware
+
+| Carpeta / archivo         | Módulos                                                                                                                                                                                                                                                                 | Historias               |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `hw/rtl/core/`            | `riscv_core`; etapas `if_stage`, `id_stage`, `ex_stage`, `mem_stage`, `wb_stage`; latches `*_reg`; `alu`, `alu_control`, `control_unit`, `imm_gen`, `reg_file`, `branch_cmp`, `instr_mem`, `data_mem`, `store_align`, `load_extend`, `forwarding_unit`, `hazard_unit` | Hitos 2 y 3             |
+| `hw/rtl/debug/`           | `debug_unit`, `du_cmd_fsm`, `du_tx_mux`, `du_loader`, `du_dumper`, `du_exec_ctrl`; `du_defs.vh` (generado)                                                                                                                                                              | US-104, US-403 a US-408 |
+| `hw/rtl/uart/`            | `baudrate_gen`, `uart_rx*`, `uart_tx*` (del TP2)                                                                                                                                                                                                                        | US-101, US-401          |
+| `hw/rtl/top.v`            | UART + Debug Unit + núcleo (stub o real) + MMCM si ADR-016 lo pide                                                                                                                                                                                                      | US-401, US-411, US-602  |
+| `hw/tb/debug/core_stub.v` | Núcleo falso con la misma interfaz que `riscv_core`                                                                                                                                                                                                                     | US-402                  |
+
 ### 4.2 Software de PC — capas y responsabilidades
 
-Python 3.11+ (ADR-011), GUI en Flet (ADR-012). La organización es en capas, pero adaptada a una herramienta y no a un sistema con base de datos:
+Python 3.13+ (ADR-011), GUI en Flet (ADR-012). La organización es en capas, pero adaptada a una herramienta y no a un sistema con base de datos:
 
 | Capa                                               | Responsabilidad                                                                                  |
 | -------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
@@ -258,7 +276,7 @@ treeView-beta
                 "isa/"
                     "instrucciones.py — tabla de las 33 instrucciones"
                     "formatos.py — empaquetado de campos R/I/S/B/U/J"
-                    "registros.py — nombres x0..x31 y ABI (zero, ra, sp, ...)"
+                    "registros.py — nombres x0..x31"
                 "assembler/"
                     "lexer.py"
                     "parser.py"
@@ -280,11 +298,11 @@ treeView-beta
                     "debug_session.py"
                     "history.py"
                     "diff.py"
-                    "export.py — exportar / reabrir sesiones (US-506)"
+                    "export.py — exportar / reabrir sesiones (US-505)"
                 "cli/"
-                    "main.py — rvdbg (US-411)"
-                    "rvasm.py — ensamblador (US-108)"
-                    "rvsim.py — golden model (US-107)"
+                    "main.py — rvdbg (US-410)"
+                    "rvasm.py — ensamblador (US-107)"
+                    "rvsim.py — golden model (US-108)"
                 "ui/ — Flet (ADR-012)"
                     "app.py"
                     "state.py — estado de la UI, independiente de Flet"
@@ -375,18 +393,18 @@ Reglas que aplican a todo el sistema. Las específicas de una historia están de
 
 ## 7. Requisitos No Funcionales (NFR)
 
-| ID     | Requisito                            | Medición / Umbral                                                                                                                                                                                     | Severidad  |
-| ------ | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| NFR-1  | Timing                               | WNS ≥ 0 y WHS ≥ 0 post-implementación a la frecuencia elegida en ADR-016                                                                                                                              | Bloqueante |
-| NFR-2  | Reloj intacto                        | 0 instancias de lógica en la red de reloj (verificable en el esquemático post-síntesis y con `report_clock_networks`)                                                                                 | Bloqueante |
-| NFR-3  | Recursos                             | Diseño completo < 50 % de LUTs del XC7A35T, incluidas las memorias en LUTRAM (ADR-005), con margen para depuración con ILA                                                                            | Media      |
-| NFR-4  | Latencia de un paso                  | STEP + recepción del snapshot + actualización de la GUI < 1 s con el volcado típico (sección 3.5). Con toda la DMEM usada el volcado tarda ~1 s a 19200 bps (ADR-002): queda en el límite y se acepta | Alta       |
-| NFR-5  | Tiempo de carga                      | Ensamblar y cargar un programa de 256 instrucciones < 3 s                                                                                                                                             | Alta       |
-| NFR-6  | Robustez del enlace                  | Una trama corrupta (paridad o checksum inválidos) o incompleta (timeout) nunca deja la Debug Unit colgada (R-DU-4 a R-DU-6); un loop infinito se corta con `ABORT` (ADR-010)                          | Bloqueante |
-| NFR-7  | Portabilidad del software de PC      | Funciona en Linux (Mint/Ubuntu) y Windows 10+, detectando el puerto serie de la Basys 3                                                                                                               | Alta       |
-| NFR-8  | Reproducibilidad del proyecto Vivado | El repositorio contiene solo fuentes (`TP3/hw/rtl`, `TP3/hw/constraints`, `.xci` si hay IP): cualquiera arma su proyecto local en Vivado 2025.2 agregando esos archivos según el `TP3/README.md`, y ningún archivo generado por Vivado se versiona | Alta       |
-| NFR-9  | Desarrollo sin placa                 | Toda la interfaz de PC es usable en modo `--fake` (sin FPGA)                                                                                                                                          | Media      |
-| NFR-10 | Cobertura de tests Python            | ≥ 80 % general; ≥ 95 % en `isa/`, `assembler/` y `protocol/codec.py`                                                                                                                                  | Alta       |
+| ID     | Requisito                            | Medición / Umbral                                                                                                                                                                                                                                           | Severidad  |
+| ------ | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| NFR-1  | Timing                               | WNS ≥ 0 y WHS ≥ 0 post-implementación a la frecuencia elegida en ADR-016                                                                                                                                                                                    | Bloqueante |
+| NFR-2  | Reloj intacto                        | 0 instancias de lógica en la red de reloj (verificable en el esquemático post-síntesis y con `report_clock_networks`)                                                                                                                                       | Bloqueante |
+| NFR-3  | Recursos                             | Diseño completo < 50 % de LUTs del XC7A35T, incluidas las memorias en LUTRAM (ADR-005), con margen para depuración con ILA                                                                                                                                  | Media      |
+| NFR-4  | Latencia de un paso                  | STEP + recepción del snapshot + actualización de la GUI < 1 s con el volcado típico (sección 3.4). Con toda la DMEM usada el volcado tarda ~1 s a 19200 bps (ADR-002): queda en el límite y se acepta                                                       | Alta       |
+| NFR-5  | Tiempo de carga                      | Ensamblar y cargar un programa de 256 instrucciones < 3 s                                                                                                                                                                                                   | Alta       |
+| NFR-6  | Robustez del enlace                  | Una trama corrupta (paridad o checksum inválidos) o incompleta (timeout) nunca deja la Debug Unit colgada (R-DU-4 a R-DU-6); un loop infinito se corta con `ABORT` (ADR-010)                                                                                | Bloqueante |
+| NFR-7  | Portabilidad del software de PC      | Funciona en Linux (Mint/Ubuntu) y Windows 10+, detectando el puerto serie de la Basys 3                                                                                                                                                                     | Alta       |
+| NFR-8  | Reproducibilidad del proyecto Vivado | El repositorio contiene solo fuentes (`TP3/hw/rtl`, `TP3/hw/constraints`, `.xci` si hay IP): cualquiera arma su proyecto local en Vivado 2025.2 agregando esos archivos según `docs/guia-herramientas.md`, y ningún archivo generado por Vivado se versiona | Alta       |
+| NFR-9  | Desarrollo sin placa                 | Toda la interfaz de PC es usable en modo `--fake` (sin FPGA)                                                                                                                                                                                                | Media      |
+| NFR-10 | Cobertura de tests Python            | ≥ 80 % general; ≥ 95 % en `isa/`, `assembler/` y `protocol/codec.py`                                                                                                                                                                                        | Alta       |
 
 ---
 
@@ -394,28 +412,28 @@ Reglas que aplican a todo el sistema. Las específicas de una historia están de
 
 Cada decisión no trivial tiene su ADR en [`docs/adr/`](adr/) con la estructura Contexto → Decisión → Alternativas consideradas → Consecuencias (positivas / negativas / restricciones). Esta tabla es solo un índice: **el detalle y la justificación viven en cada ADR** y no se duplican acá, para que no diverjan. El índice también está en [`docs/adr/README.md`](adr/README.md).
 
-| ID                                                         | Título                                                    | Estado    | Decisión                                                                                        | Bloquea                 |
-| ---------------------------------------------------------- | --------------------------------------------------------- | --------- | ----------------------------------------------------------------------------------------------- | ----------------------- |
-| [ADR-001](adr/ADR-001-control-ejecucion-clock-enable.md)   | Control de ejecución por clock enable                     | Aprobado  | `i_enable` como CE de todo el núcleo; sin clock gating ni BUFGCE                                | Hito 2                  |
-| [ADR-002](adr/ADR-002-parametros-uart.md)                  | Parámetros de la UART                                     | Aprobado  | 19200 bps 8E1 como el TP2; paridad validada; `COUNT_MAX` calculado desde `CLK_FREQ_HZ` y `BAUD` | US-401                  |
-| [ADR-003](adr/ADR-003-protocolo-debug-unit.md)             | Protocolo de comandos de la Debug Unit                    | Aprobado  | Comando ASCII de 1 byte + args binarios; respuestas en trama con XOR; `RUN` = `ACK` + snapshot  | US-104, Hito 4, US-410  |
-| [ADR-004](adr/ADR-004-codificacion-halt.md)                | Codificación de HALT                                      | Aprobado  | Opcode _custom-0_, palabra `0x0000000B`; detección por opcode                                   | US-105, US-203          |
-| [ADR-005](adr/ADR-005-implementacion-memorias.md)          | Implementación de memorias                                | Aprobado  | Memoria distribuida (LUTRAM) inferida, lectura combinacional                                    | US-204                  |
-| [ADR-006](adr/ADR-006-resolucion-saltos.md)                | Punto de resolución de saltos                             | Aprobado  | `jal` en ID; `beq`/`bne`/`jalr` en EX; predict not-taken                                        | US-205 a US-207, US-303 |
-| [ADR-007](adr/ADR-007-riesgos-datos-banco-registros.md)    | Estrategia de riesgos de datos y banco de registros       | Aprobado  | Forwarding completo + stall load-use; bypass interno en el banco                                | US-202, Hito 3          |
-| [ADR-008](adr/ADR-008-tamanos-memoria-memoria-usada.md)    | Tamaños de memoria y definición de "memoria usada"        | Aprobado  | IMEM y DMEM de 256 palabras; bitmap de escritas + contador; comando `DUMP_MEM`                  | US-204, US-405, US-409  |
-| [ADR-009](adr/ADR-009-politica-reprogramacion.md)          | Política de reprogramación                                | Aprobado  | `LOAD` limpia todo y rellena la IMEM con HALT; `RESET` igual sin tocar la IMEM                  | US-403                  |
-| [ADR-010](adr/ADR-010-comportamiento-sin-halt.md)          | Comportamiento sin instrucción de parada                  | Aprobado  | Relleno con HALT + HALT automático del ensamblador + `ABORT`                                    | US-406                  |
-| [ADR-011](adr/ADR-011-lenguaje-software-pc.md)             | Lenguaje del software de PC                               | Aprobado  | Python 3.11+; identificadores mixtos (dominio en español, términos técnicos en inglés)          | Hito 1 (US-105)         |
-| [ADR-012](adr/ADR-012-tecnologia-interfaz-usuario.md)      | Tecnología de la interfaz de usuario                      | Aprobado  | Flet (GUI) + CLI                                                                                | Hito 5                  |
-| [ADR-013](adr/ADR-013-ensamblador-propio.md)               | Ensamblador propio vs. toolchain externo                  | Aprobado  | Propio de dos pasadas; pseudo `nop`, `mv`, `j`, `ret`; GNU solo para validar                    | US-106, US-108          |
-| [ADR-014](adr/ADR-014-golden-model.md)                     | Simulador de referencia (golden model)                    | Aprobado  | ISS propio en Python + firma en memoria                                                         | US-107, US-305, US-506  |
-| [ADR-015](adr/ADR-015-simulador-hdl-verificacion.md)       | Simulador HDL y framework de verificación                 | Aprobado  | xsim + testbenches Verilog-2001 portables; CI con Python e Icarus                               | US-102                  |
-| [ADR-016](adr/ADR-016-frecuencia-generacion-reloj.md)      | Frecuencia de operación y generación de reloj             | Propuesto | Criterio fijado (barrido, WNS ≥ 0,3 ns); se aprueba con los datos de US-601/602                 | Hito 6                  |
-| [ADR-017](adr/ADR-017-formato-volcado-latches.md)          | Formato de volcado de latches                             | Aprobado  | Campo a campo alineado a byte, flags agrupados, LE; `instr` con `DEBUG_TRACE`                   | US-103, US-405          |
-| [ADR-018](adr/ADR-018-desalineados-endianness-ilegales.md) | Accesos desalineados, endianness e instrucciones ilegales | Aprobado  | Little-endian; desalineado = ignorar bits bajos; ilegal = detener con estado `ILLEGAL`          | US-203, US-204          |
-| [ADR-019](adr/ADR-019-reutilizacion-alu-tp1.md)            | Reutilización de la ALU del TP1                           | Aprobado  | ALU nueva de 32 bits con `alu_ctrl` de 4 bits; comparador de branches aparte                    | US-201, US-207          |
-| [ADR-020](adr/ADR-020-version-vivado.md)                   | Versión de Vivado de referencia                           | Aprobado  | Vivado 2025.2                                                                                   | US-101                  |
+| ID                                                         | Título                                                    | Estado    | Decisión                                                                                                                          | Bloquea                 |
+| ---------------------------------------------------------- | --------------------------------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| [ADR-001](adr/ADR-001-control-ejecucion-clock-enable.md)   | Control de ejecución por clock enable                     | Aprobado  | `i_enable` como CE de todo el núcleo; sin clock gating ni BUFGCE                                                                  | Hito 2                  |
+| [ADR-002](adr/ADR-002-parametros-uart.md)                  | Parámetros de la UART                                     | Aprobado  | 19200 bps 8E1 como el TP2; paridad validada; `COUNT_MAX` calculado desde `CLK_FREQ_HZ` y `BAUD`                                   | US-401                  |
+| [ADR-003](adr/ADR-003-protocolo-debug-unit.md)             | Protocolo de comandos de la Debug Unit                    | Aprobado  | Comando ASCII de 1 byte + args binarios; respuestas en trama con XOR; `RUN` = `ACK` + snapshot                                    | US-104, Hito 4, US-409  |
+| [ADR-004](adr/ADR-004-codificacion-halt.md)                | Codificación de HALT                                      | Aprobado  | Opcode _custom-0_, palabra `0x0000000B`; detección por opcode                                                                     | US-105, US-203          |
+| [ADR-005](adr/ADR-005-implementacion-memorias.md)          | Implementación de memorias                                | Aprobado  | Memoria distribuida (LUTRAM) inferida, lectura combinacional                                                                      | US-204                  |
+| [ADR-006](adr/ADR-006-resolucion-saltos.md)                | Punto de resolución de saltos                             | Aprobado  | `jal` en ID; `beq`/`bne`/`jalr` en EX; predict not-taken                                                                          | US-206 a US-208, US-303 |
+| [ADR-007](adr/ADR-007-riesgos-datos-banco-registros.md)    | Estrategia de riesgos de datos y banco de registros       | Aprobado  | Forwarding completo + stall load-use; bypass interno en el banco                                                                  | US-202, Hito 3          |
+| [ADR-008](adr/ADR-008-tamanos-memoria-memoria-usada.md)    | Tamaños de memoria y definición de "memoria usada"        | Aprobado  | IMEM y DMEM de 256 palabras; bitmap de escritas + contador; comando `DUMP_MEM`                                                    | US-204, US-405, US-408  |
+| [ADR-009](adr/ADR-009-politica-reprogramacion.md)          | Política de reprogramación                                | Aprobado  | `LOAD` limpia todo y rellena la IMEM con HALT; `RESET` igual sin tocar la IMEM                                                    | US-404                  |
+| [ADR-010](adr/ADR-010-comportamiento-sin-halt.md)          | Comportamiento sin instrucción de parada                  | Aprobado  | Relleno con HALT + HALT automático del ensamblador + `ABORT`                                                                      | US-407                  |
+| [ADR-011](adr/ADR-011-lenguaje-software-pc.md)             | Lenguaje del software de PC                               | Aprobado  | Python 3.13+; identificadores mixtos (dominio en español, términos técnicos en inglés)                                            | Hito 1 (US-105)         |
+| [ADR-012](adr/ADR-012-tecnologia-interfaz-usuario.md)      | Tecnología de la interfaz de usuario                      | Aprobado  | Flet (GUI) + CLI                                                                                                                  | Hito 5                  |
+| [ADR-013](adr/ADR-013-ensamblador-propio.md)               | Ensamblador propio vs. toolchain externo                  | Aprobado  | Propio de dos pasadas; pseudo `nop`, `mv`, `j`, `ret`; GNU solo para validar                                                      | US-106, US-107          |
+| [ADR-014](adr/ADR-014-golden-model.md)                     | Simulador de referencia (golden model)                    | Aprobado  | ISS propio en Python + firma en memoria                                                                                           | US-108, US-305, US-505  |
+| [ADR-015](adr/ADR-015-simulador-hdl-verificacion.md)       | Simulador HDL y framework de verificación                 | Aprobado  | Icarus Verilog para simular y Verilator para lint, en local y en CI; testbenches Verilog-2001; xsim solo manual para IP de Xilinx | US-102                  |
+| [ADR-016](adr/ADR-016-frecuencia-generacion-reloj.md)      | Frecuencia de operación y generación de reloj             | Propuesto | Criterio fijado (barrido, WNS ≥ 0,3 ns); se aprueba con los datos de US-601/602                                                   | Hito 6                  |
+| [ADR-017](adr/ADR-017-formato-volcado-latches.md)          | Formato de volcado de latches                             | Aprobado  | Campo a campo alineado a byte, flags agrupados, LE; `instr` con `DEBUG_TRACE`                                                     | US-103, US-405          |
+| [ADR-018](adr/ADR-018-desalineados-endianness-ilegales.md) | Accesos desalineados, endianness e instrucciones ilegales | Aprobado  | Little-endian; desalineado = ignorar bits bajos; ilegal = detener con estado `ILLEGAL`                                            | US-203, US-204          |
+| [ADR-019](adr/ADR-019-reutilizacion-alu-tp1.md)            | Reutilización de la ALU del TP1                           | Aprobado  | ALU nueva de 32 bits con `alu_ctrl` de 4 bits; comparador de branches aparte                                                      | US-201, US-208          |
+| [ADR-020](adr/ADR-020-version-vivado.md)                   | Versión de Vivado de referencia                           | Aprobado  | Vivado 2025.2                                                                                                                     | US-101                  |
 
 ---
 
@@ -433,9 +451,28 @@ Cada decisión no trivial tiene su ADR en [`docs/adr/`](adr/) con la estructura 
 | 6         | v1.0    | Timing, integración final y entrega           | 3      | 5         | ~12 días·persona      |
 | **Total** |         |                                               | **16** | **44**    | **~106 días·persona** |
 
-**Numeración de historias:** cada historia conserva su número aunque se haya dividido; las partes nuevas toman el próximo número libre de su hito (por eso US-108 sigue a US-107, y US-210 a US-209). Las historias de codec y sesión/CLI (antes US-501/502) se movieron al Hito 4 como US-410/411, porque la validación en placa (US-407) las necesita.
+**Numeración de historias:** dentro de cada hito, las historias se numeran en el orden en que se ejecutan, y cada una depende solo de historias con número menor o de hitos anteriores. El 2026-10-21 se renumeraron para cumplir esta regla (antes cada historia conservaba su número al dividirse, y el orden no coincidía con el de ejecución). Si aparece un número viejo en un commit o un issue, esta es la correspondencia:
 
-**Paralelismo entre integrantes:** a partir del Hito 2 el trabajo se divide en dos **pistas** que avanzan en paralelo y se juntan en la integración en placa (US-407):
+| Antes                         | Ahora  | Historia                                      |
+| ----------------------------- | ------ | --------------------------------------------- |
+| US-107                        | US-108 | Golden model                                  |
+| US-108                        | US-107 | Desensamblador, salidas y CLI `rvasm`         |
+| US-210                        | US-205 | Alineación de stores y extensión de loads     |
+| US-205 … US-209               | +1     | Etapas IF, ID, EX, MEM/WB e integración       |
+| US-408                        | US-402 | Núcleo stub y modelo de UART de PC            |
+| US-402                        | US-403 | Intérprete de comandos                        |
+| US-403                        | US-404 | Carga y reprogramación                        |
+| US-405                        | US-405 | Volcado (sin cambio)                          |
+| US-404                        | US-406 | Modos de ejecución                            |
+| US-406                        | US-407 | ABORT                                         |
+| US-409                        | US-408 | `DUMP_MEM`                                    |
+| US-410, US-411 (y US-501/502) | −1     | Codec y transportes; sesión y CLI             |
+| US-407                        | US-411 | Validación en placa                           |
+| US-503, US-504                | −2     | Estructura de la interfaz; vista del pipeline |
+| US-507                        | US-503 | Carta de pipeline                             |
+| US-505, US-506                | −1     | Registros y memoria; historial                |
+
+**Paralelismo entre integrantes:** a partir del Hito 2 el trabajo se divide en dos **pistas** que avanzan en paralelo y se juntan en la integración en placa (US-411):
 
 - **Pista A — Hardware del núcleo:** Hitos 2 y 3.
 - **Pista B — Debug Unit y software de PC:** Hito 4 (contra un núcleo _stub_ hasta que el real esté listo, y con el software de control contra `FakeTransport`) y Hito 5.
@@ -459,18 +496,16 @@ Cada decisión no trivial tiene su ADR en [`docs/adr/`](adr/) con la estructura 
 - **Narrativa:** Como integrante del equipo, quiero una estructura de carpetas clara y un repositorio que solo tenga fuentes, para agregar los archivos a Vivado sin pelear con conflictos de `.xpr` ni con carpetas generadas en Git.
 - **Detalle técnico:**
   - **Estructura de carpetas** dentro de `TP3/` según sección 12 (`hw/`, `asm/`, `tools/`). La documentación sigue en `docs/` y la configuración de GitHub en `.github/`, ambas en la raíz del repositorio.
-  - **Proyecto de Vivado local, no versionado:** cada integrante crea su proyecto en Vivado 2025.2 (ADR-020) y agrega a mano los fuentes de `TP3/hw/rtl/` (salvo `legacy/`) y `TP3/hw/constraints/basys3.xdc`. El `TP3/README.md` indica qué carpetas agregar, cuál es el `top` y la versión de Vivado.
+  - **Proyecto de Vivado local, no versionado:** cada integrante crea su proyecto en Vivado 2025.2 y agrega a mano los fuentes de `TP3/hw/rtl/` (salvo `legacy/`) y `TP3/hw/constraints/basys3.xdc`. La guía `docs/guia-herramientas.md` indica qué carpetas agregar, cuál es el `top` y la versión de Vivado. El `TP3/README.md` es el informe del trabajo (como en el TP1 y el TP2), no un instructivo.
   - **Migración del TP2:** copiar `baudrate_gen.v`, `uart_rx*.v`, `uart_tx*.v` a `TP3/hw/rtl/uart/` sin modificaciones (los cambios de ADR-002 van en US-401). `uart_interface.v` y la `alu.v` del TP1 se guardan en `TP3/hw/rtl/legacy/` solo como referencia, fuera del proyecto de síntesis.
   - **`TP3/Makefile`** con objetivos `sim`, `sim-all` y `test-py` (se completan en US-102). La síntesis, implementación y programación de la placa se hacen desde la GUI de Vivado.
-  - **`TP3/CHANGELOG.md`** con la sección `[Unreleased]` (sección 15) y **`docs/catalogo-criticidad.md`** inicializado desde la sección 11.
+  - **`TP3/CHANGELOG.md`** con la sección `[Unreleased]` (sección 15).
   - **`.gitignore`** (el de la raíz) con las reglas de Vivado (`*.xpr`, `*.runs/`, `*.cache/`, `*.sim/`, `*.hw/`, `*.ip_user_files/`, `*.gen/`, `.Xil/`, `*.jou`, `*.log`, `*.str`) y de Python (`__pycache__/`, `.venv/`).
 - **Criterios de Aceptación:**
-  - **AC1.** Siguiendo el `TP3/README.md`, un proyecto nuevo en Vivado 2025.2 con los fuentes de `TP3/hw/` sintetiza sin errores.
-  - **AC2.** Ningún archivo generado por Vivado aparece en `git status` después de sintetizar.
-  - **AC3.** El `top` del TP2 (UART + ALU) sintetiza con los fuentes migrados y sigue funcionando en placa (prueba de humo de la migración).
-  - **AC4.** El `TP3/README.md` indica versión de Vivado, versión de Python, qué fuentes agregar al proyecto y los comandos del `Makefile`.
-  - **AC5.** ~~Plantilla y ADR-001 a ADR-020 en `docs/adr/`~~ — ya cumplido antes de iniciar el desarrollo.
-- **Testing Mínimo:** _manual:_ clonar en la otra máquina del equipo, crear el proyecto siguiendo el README y sintetizar.
+  - **AC1.** Ningún archivo generado por Vivado aparece en `git status` después de sintetizar.
+  - **AC2.** El `top` del TP2 (UART + ALU) sintetiza con los fuentes migrados y sigue funcionando en placa (prueba de humo de la migración).
+  - **AC3.** ~~Plantilla y ADR-001 a ADR-020 en `docs/adr/`~~ — ya cumplido antes de iniciar el desarrollo.
+- **Testing Mínimo:** _manual:_ clonar en la otra máquina del equipo, crear el proyecto siguiendo `docs/guia-herramientas.md` y sintetizar.
 - **Archivos a crear:**
 
 ```mermaid
@@ -497,45 +532,62 @@ treeView-beta
                     "basys3.xdc"
         ".gitignore — (actualizado)"
         "docs/"
-            "catalogo-criticidad.md"
+            "guia-herramientas.md"
             "adr/ — ✅ (ya creado: template + ADR-001..020)"
 ```
 
-#### US-102 — Infraestructura de Simulación y Testbenches Autoverificables
+#### US-102 — Infraestructura de Lint, Simulación y Testbenches Autoverificables
 
 - **Esfuerzo:** M (3 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-101, ADR-015
-- **Objetivo Funcional:** tener una forma estándar y rápida de simular cualquier módulo y saber si pasó o falló sin mirar formas de onda, en xsim y en Icarus, y correrlo automáticamente en cada PR (ADR-015).
-- **Narrativa:** Como desarrollador, quiero correr `make sim TB=tb_alu` y obtener un `PASS`/`FAIL` claro, para detectar regresiones en segundos.
+- **Objetivo Funcional:** tener una forma estándar y rápida de revisar el RTL y de simular cualquier módulo desde la terminal, saber si pasó o falló sin mirar formas de onda ni abrir Vivado, y correrlo automáticamente en cada PR (ADR-015).
+- **Narrativa:** Como desarrollador, quiero correr `make lint` y `make sim TB=tb_alu` y obtener un `PASS`/`FAIL` claro, para detectar errores y regresiones en segundos.
 - **Detalle técnico:**
+  - **Herramientas (ADR-015):** **Verilator** para el lint e **Icarus Verilog** para la simulación. No se automatiza xsim: el simulador de Vivado solo se usa a mano, desde su GUI, para lo que dependa de IP de Xilinx.
+  - **`make setup`:** instala Icarus, Verilator y uv, y crea el entorno de Python (`uv sync`).
+  - **`make lint`:** corre `verilator --lint-only -Wall` sobre todo `hw/rtl/` salvo `legacy/`, y falla si hay alguna advertencia. Las excepciones justificadas se anotan en el código con `// verilator lint_off …` y un comentario que diga por qué.
   - **Include `hw/tb/common/tb_utils.vh`:** tareas `check_eq(nombre, obtenido, esperado)` que incrementa un contador de errores e imprime el detalle; `tb_finish()` que imprime `TEST PASSED` o `TEST FAILED (N errores)` y termina.
-  - **Script `hw/scripts/sim.tcl`** (xsim en modo batch) que compila, elabora y corre un testbench por nombre, y devuelve código de salida ≠ 0 si el log contiene `TEST FAILED`.
-  - **Soporte Icarus:** `make sim TB=… SIM=icarus` compila con `iverilog -g2001` y corre con `vvp`, con el mismo criterio de PASS/FAIL. Los testbenches que dependen de IP de Xilinx se marcan como solo-xsim (por ejemplo, con una lista en el Makefile).
-  - **CI (`.github/workflows/ci.yml`):** en cada push y PR corre `ruff check`, `pytest --cov` sobre `tools/` y `make sim-all SIM=icarus`.
-  - **Soporte `$readmemh`:** convención para cargar programas `.hex` en la IMEM desde el testbench (usada en US-209 en adelante).
+  - **`make sim TB=<nombre>`:** busca `hw/tb/**/<nombre>.v`, lo compila con `iverilog -g2001` junto con todo `hw/rtl/` (salvo `legacy/`) y lo corre con `vvp`. Sale con código ≠ 0 si el log contiene `TEST FAILED` o no contiene `TEST PASSED`. La salida va a `build/`, que no se versiona.
+  - **`make sim-all`:** descubre y corre todos los `hw/tb/**/tb_*.v` (no hay que registrarlos en ningún lado: alcanza con crear el archivo) y resume cuántos pasaron.
+  - **Ondas bajo demanda:** `make sim TB=… WAVES=1` genera `build/<nombre>.vcd`.
+  - **Soporte `$readmemh`:** el testbench recibe la ruta del programa con `+HEX=<ruta>` (`make sim TB=… HEX=…`), sin recompilar. Formato del `.hex`: una palabra de 32 bits por línea (usado en US-210 en adelante).
   - **Testbench de ejemplo:** `tb_uart_loopback.v` (TX conectado a RX del TP2) como prueba de la infraestructura.
-  - **Objetivo `make sim-all`:** corre todos los `tb_*.v` y resume cuántos pasaron.
+  - **CI (`.github/workflows/ci.yml`):** en cada push y PR corre dos trabajos. **HDL:** `make lint` y `make sim-all`. **Python:** `uv sync` y luego `ruff check`, `ruff format --check`, `mypy`, `pytest --cov` y `pip-audit` sobre `tools/` (todos con `uv run`). En local, `make check-py` corre lo mismo y `make check` corre todo.
+  - **Esqueleto de `tools/`:** proyecto uv **no instalable** (`[tool.uv] package = false`, sin `[build-system]`): uv solo maneja el entorno y las dependencias fijadas en `uv.lock`, y el código se corre desde `tools/` con `uv run python -m riscv_toolkit <subcomando>`. `__main__.py` despacha los subcomandos `asm`, `sim`, `dbg` y `gui`; en este documento, `rvasm …`, `rvsim …` y `rvdbg …` son abreviaturas de `uv run python -m riscv_toolkit asm|sim|dbg …`. Contiene el paquete `riscv_toolkit` (los subpaquetes de la sección 4.5 se crean en la historia que los necesita, sin `__init__.py`: son _namespace packages_ y mypy ya está configurado con `explicit_package_bases`), `mypy` en modo estricto y un test mínimo, para que las verificaciones de Python corran desde el primer día.
 - **Criterios de Aceptación:**
   - **AC1.** `make sim TB=tb_uart_loopback` imprime `TEST PASSED` y sale con código 0.
   - **AC2.** Si se modifica el dato esperado del testbench, imprime `TEST FAILED (1 errores)` y sale con código ≠ 0.
-  - **AC3.** `make sim-all` lista cada testbench con su resultado y un total.
-  - **AC4.** Los testbenches usan solo Verilog-2001 (sin SystemVerilog) y `make sim TB=tb_uart_loopback SIM=icarus` también imprime `TEST PASSED`.
-  - **AC5.** Se puede generar el archivo de ondas (`.wdb`/`.vcd`) con `WAVES=1` para depurar.
-  - **AC6.** El workflow de CI corre en un PR de prueba y queda en rojo si un testbench o un test de Python falla.
-- **Testing Mínimo:** la propia prueba de loopback.
+  - **AC3.** `make sim-all` lista cada testbench con su resultado y un total; un testbench nuevo en `hw/tb/` se ejecuta sin tocar el `Makefile`.
+  - **AC4.** Los testbenches usan solo Verilog-2001 (sin SystemVerilog).
+  - **AC5.** Se puede generar el archivo de ondas (`.vcd`) con `WAVES=1` para depurar.
+  - **AC6.** El workflow de CI corre en un PR de prueba y queda en rojo si falla el lint, un testbench o una verificación de Python.
+  - **AC7.** `make lint` pasa sin advertencias sobre los módulos migrados del TP2, y falla si se introduce una (por ejemplo, una señal sin usar).
+- **Testing Mínimo:** la propia prueba de loopback y un error de lint introducido a propósito.
 - **Archivos a crear:**
 
 ```mermaid
 treeView-beta
     "tps-arqui/"
         "TP3/"
+            "Makefile — setup, lint, sim, sim-all, test-py, check-py, check, clean"
             "hw/"
+                "scripts/"
+                    "sim.sh — compila y corre un testbench con Icarus"
+                    "lint.sh — lint del RTL con Verilator"
                 "tb/"
                     "common/"
                         "tb_utils.vh"
+                        "tb_readmemh.v — prueba de la convención +HEX"
+                        "ejemplo.hex"
                     "uart/"
                         "tb_uart_loopback.v"
-                "scripts/"
-                    "sim.tcl"
+            "tools/"
+                "pyproject.toml — proyecto uv no instalable + configuración de ruff, mypy y pytest"
+                "uv.lock"
+                "riscv_toolkit/ — paquete (los subpaquetes se crean en cada historia)"
+                    "__main__.py"
+                "tests/"
+                    "test_smoke.py"
+        ".gitattributes — fines de línea LF para scripts y Makefile"
         ".github/"
             "workflows/"
                 "ci.yml"
@@ -559,7 +611,7 @@ treeView-beta
   - **AC1.** El diagrama muestra cada señal que cruza un latch; ninguna señal "aparece" en una etapa sin haber viajado por el latch anterior.
   - **AC2.** La tabla de control cubre las 33 instrucciones y fue revisada por ambos integrantes contra la tabla de la sección 2.2.
   - **AC3.** Los anchos de `o_if_id`, `o_id_ex`, `o_ex_mem`, `o_mem_wb` están fijados en bits y coinciden con ADR-017.
-  - **AC4.** Se recorrió "en papel" la ejecución de un programa de **10 instrucciones** con un load-use, un forwarding EX/MEM y un `beq` tomado, ciclo por ciclo (carta de pipeline), y el diagrama alcanza para explicarlo. Esta carta se reutiliza en US-507 AC2.
+  - **AC4.** Se recorrió "en papel" la ejecución de un programa de **10 instrucciones** con un load-use, un forwarding EX/MEM y un `beq` tomado, ciclo por ciclo (carta de pipeline), y el diagrama alcanza para explicarlo. Esta carta se reutiliza en US-503 AC2.
   - **AC5.** El documento de interfaz está versionado; cualquier cambio posterior requiere avisar a la otra pista y actualizar `docs/interfaces/`.
 - **Entidades/Modelos implicados:** latches, señales de control, estados de la Debug Unit.
 - **Testing Mínimo:** revisión cruzada (cada integrante revisa lo que diseñó el otro).
@@ -580,21 +632,23 @@ treeView-beta
 
 #### US-104 — Especificación del Protocolo de la Debug Unit
 
-- **Esfuerzo:** S (1,5 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** ADR-002, ADR-003, ADR-008, ADR-009, ADR-010, ADR-017, ADR-018
+- **Esfuerzo:** S (1,5 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** ADR-002, ADR-003, ADR-008, ADR-009, ADR-010, ADR-014, ADR-017, ADR-018
 - **Objetivo Funcional:** fijar byte a byte el protocolo PC ↔ FPGA para que la Debug Unit (hardware) y el codec de Python (software) se implementen por separado y funcionen juntos al primer intento.
 - **Narrativa:** Como desarrollador del software de PC, quiero una especificación exacta de cada comando y respuesta, para implementar el codec sin esperar a que el hardware esté listo.
 - **Detalle técnico:**
   - **`docs/protocolo.md`** con: parámetros de UART (19200 bps, 8E1, ADR-002); tabla de comandos (ADR-003, incluido `DUMP_MEM` de ADR-008) con sus estados válidos (R-DU-1); formato de trama de respuesta; códigos de error de `NACK` (comando desconocido, comando inválido para el estado, checksum incorrecto, tamaño excedido, rango inválido de `DUMP_MEM`, timeout de recepción, error de paridad); motivos de terminación del snapshot (`HALTED`, `ILLEGAL`, `ABORTED`); layout completo del snapshot con offsets y bits de cada byte de flags (ADR-017); constantes compartidas (opcode de HALT, tamaños de memoria, dirección de firma); y secuencias de ejemplo con bytes reales en hexadecimal para cada comando.
   - **Diagrama de secuencia** de `LOAD` → `STEP` × 3 → `RUN` → snapshot final.
   - **Timeout de recepción en hardware** (R-DU-6): tiempo exacto (propuesta: 100 ms sin bytes), respuesta `NACK(timeout)` y estado resultante (`IDLE` con la IMEM rellena de HALT si era un `LOAD`; el estado anterior en cualquier otro caso).
-  - **Sincronía de constantes:** `protocol/comandos.py` es la fuente; un script (`tools/scripts/gen_du_defs.py`) genera `hw/rtl/debug/du_defs.vh`, y un test verifica que el `.vh` versionado está al día (sección 13).
+  - **Sincronía de constantes:** `protocol/comandos.py` es la fuente; un script (`tools/scripts/gen_du_defs.py`) genera `hw/rtl/debug/du_defs.vh`, y un test verifica que el `.vh` versionado está al día (sección 13). Del lado del hardware, los tamaños de memoria salen **solo** de `du_defs.vh`: `top.v` (US-401) los pasa como parámetros `IMEM_DEPTH`/`DMEM_DEPTH` a `riscv_core` y a la Debug Unit, en lugar de repetir los valores por defecto.
+  - **Estados de paso** (`LOADING`, `DUMPING`): no figuran en R-DU-1 porque no aceptan comandos nuevos. El documento define qué pasa con un byte que llega en esos estados (en `LOADING` es parte de la carga; en `DUMPING` se descarta sin respuesta) y lo agrega a la tabla de comandos por estado.
+  - **Carpetas nuevas:** `tools/scripts/` queda fuera del paquete, así que se agrega a `files` de mypy en `pyproject.toml` para que el CI también lo revise (ruff ya revisa todo `tools/`). `hw/rtl/debug/du_defs.vh` no se compila solo: se incluye con `` `include ``; si `lint.sh`/`sim.sh` no lo encuentran, se les agrega `-I hw/rtl/debug`.
 - **Criterios de Aceptación:**
   - **AC1.** Cada comando tiene al menos un ejemplo de bytes exactos de ida y de vuelta.
   - **AC2.** El layout del snapshot suma exactamente la cantidad de bytes declarada en el campo `longitud`.
   - **AC3.** Están definidos todos los códigos de error y en qué estado queda la Debug Unit después de cada uno.
   - **AC4.** El documento incluye un número de versión del protocolo, que devuelve el comando `PING`.
 - **Reglas de Negocio:** R-DU-1 a R-DU-6.
-- **Testing Mínimo:** los ejemplos de bytes del documento se convierten en casos de prueba de US-410 y del testbench de US-402; `test_du_defs_sync.py`.
+- **Testing Mínimo:** los ejemplos de bytes del documento se convierten en casos de prueba de US-409 y del testbench de US-403; `test_du_defs_sync.py`.
 - **Archivos a crear:**
 
 ```mermaid
@@ -606,6 +660,7 @@ treeView-beta
                 "secuencia_protocolo.md — (Mermaid)"
         "TP3/"
             "tools/"
+                "pyproject.toml — (mypy también revisa scripts/)"
                 "riscv_toolkit/"
                     "protocol/"
                         "comandos.py"
@@ -624,19 +679,19 @@ treeView-beta
 
 #### US-105 — Tabla ISA Compartida (Fuente Única de Verdad)
 
-- **Esfuerzo:** S (1 día) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** ADR-004, ADR-011
+- **Esfuerzo:** S (1 día) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** ADR-004, ADR-011, ADR-013
 - **Objetivo Funcional:** definir las 33 instrucciones una sola vez en código, con funciones de codificación y decodificación de campos, para que ensamblador, desensamblador y golden model no puedan divergir.
 - **Narrativa:** Como desarrollador, quiero una tabla ISA única, para que un error de codificación se corrija en un solo lugar.
 - **Detalle técnico (`tools/riscv_toolkit/isa/`):**
-  - **`instrucciones.py`:** `@dataclass(frozen=True) InstructionSpec(mnemonico, formato, opcode, funct3, funct7)` y el diccionario `INSTRUCCIONES` con las 33 entradas de la sección 2.2.
-  - **`formatos.py`:** `encode_r(...)`, `encode_i(...)`, `encode_s(...)`, `encode_b(...)`, `encode_u(...)`, `encode_j(...)` y sus inversas `decode_*` que devuelven campos + inmediato extendido en signo; `sign_extend(valor, bits)`.
-  - **`registros.py`:** mapeo `x0..x31` y nombres ABI (`zero`, `ra`, `sp`, `gp`, `tp`, `t0–t6`, `s0/fp–s11`, `a0–a7`).
+  - **`instrucciones.py`:** enum `Formato`, `@dataclass(frozen=True) InstructionSpec(mnemonico, formato, opcode, funct3, funct7)` (`funct3`/`funct7` en `None` si la instrucción no los tiene) y el diccionario `INSTRUCCIONES` con las 33 entradas de la sección 2.2. También `HALT_OPCODE` y `HALT_WORD` (ADR-004): `gen_du_defs.py` los toma de acá.
+  - **`formatos.py`:** un dataclass de campos por formato (`CamposR`, `CamposI`, …), `encode_r(campos) -> int` … `encode_j(campos) -> int` y sus inversas `decode_*(palabra) -> Campos*`; `sign_extend(valor, bits)`. El inmediato siempre es el **valor real**, no el campo crudo: en B y J el offset en bytes (par), en U el valor de 32 bits con los 12 bits bajos en 0 (sin signo), en I/S/B/J extendido en signo. Los shifts (`slli`/`srli`/`srai`) usan `encode_i` con `imm = (funct7 << 5) | shamt`. Cada `encode_*` verifica que todos los campos entren en sus bits y, si no, lanza `ErrorCodificacion(ValueError)`.
+  - **`registros.py`:** mapeo `x0..x31` → 0..31. Sin nombres ABI (`t0`, `sp`, …): el enunciado no los pide (ADR-013).
 - **Criterios de Aceptación:**
   - **AC1.** Las 33 instrucciones están en la tabla con los valores de la sección 2.2.
   - **AC2.** Para cada formato, `decode(encode(campos)) == campos` en todos los casos de prueba, incluyendo inmediatos negativos y extremos (−2048, 2047 en I/S; −4096, 4094 en B; ±1 MiB en J).
   - **AC3.** `encode_b` y `encode_j` rechazan inmediatos impares o fuera de rango con una excepción clara.
   - **AC4.** El módulo no importa nada fuera de la biblioteca estándar.
-- **Testing Mínimo:** _unitarias_ (`tests/isa/test_formatos.py`): ida y vuelta por formato; casos borde de inmediatos; `test_tabla_completa` verifica que existen exactamente 33 mnemónicos.
+- **Testing Mínimo:** _unitarias_: `tests/isa/test_formatos.py` (ida y vuelta por formato, casos borde de inmediatos, una palabra conocida por formato); `tests/isa/test_instrucciones.py` (`test_tabla_completa`: exactamente 33 mnemónicos, y cada fila contra la sección 2.2); `tests/isa/test_registros.py`.
 - **Archivos a crear:**
 
 ```mermaid
@@ -645,13 +700,14 @@ treeView-beta
         "tools/"
             "riscv_toolkit/"
                 "isa/"
-                    "__init__.py"
                     "instrucciones.py"
                     "formatos.py"
                     "registros.py"
             "tests/"
                 "isa/"
                     "test_formatos.py"
+                    "test_instrucciones.py"
+                    "test_registros.py"
 ```
 
 #### US-106 — Ensamblador de Dos Pasadas
@@ -661,27 +717,27 @@ treeView-beta
 - **Narrativa:** Como usuario, quiero escribir mi programa en assembly con etiquetas y comentarios y obtener el código máquina, para no calcular a mano offsets de saltos ni inmediatos partidos.
 - **Detalle técnico (`tools/riscv_toolkit/assembler/`):**
   - **`lexer.py`:** tokens (mnemónico, registro, inmediato decimal/hex/negativo, etiqueta, `(`, `)`, `,`, comentario `#`, directiva).
-  - **`parser.py`:** una línea → `LineaAsm(etiqueta, mnemonico, operandos, nro_linea)`; valida cantidad y tipo de operandos por formato.
-  - **`assembler.py`:** clase `Assembler` con `ensamblar(texto) -> Imagen`:
+  - **`parser.py`:** una línea → `LineaAsm(etiqueta, mnemonico, operandos, nro_linea)`; valida cantidad y tipo de operandos según la tabla `SINTAXIS` de cada mnemónico (el `Formato` no alcanza: `addi` y `lw` son I pero se escriben distinto).
+  - **`assembler.py`:** función `ensamblar(texto) -> Imagen` (no una clase: no hay estado que sobreviva entre llamadas; ver guía del ensamblador §9.6):
     - _Primera pasada:_ asigna direcciones (PC += 4 por instrucción; todas las pseudoinstrucciones se expanden a exactamente una instrucción) y arma la tabla de símbolos.
     - _Segunda pasada:_ resuelve etiquetas como offsets relativos al PC (branches, `jal`) y codifica con `isa/formatos.py`.
     - Agrega HALT final si falta (R-PR-1) con una advertencia.
-  - **Alcance del lenguaje (ADR-013):** etiquetas, comentarios `#`, registros por número y ABI, inmediatos decimales/hex/negativos, sintaxis `offset(rs1)`, directiva `.word`, `halt` nativo. Sin sección `.data` (los datos iniciales se escriben con stores).
+  - **Alcance del lenguaje (ADR-013):** etiquetas, comentarios `#`, registros solo por número (`x0`–`x31`), inmediatos decimales/hex/negativos, sintaxis `offset(rs1)`, directiva `.word`, `halt` nativo. Sin sección `.data` (los datos iniciales se escriben con stores).
   - **Pseudoinstrucciones (ADR-013):** solo `nop`, `mv rd, rs`, `j etiqueta`, `ret`. `li` **no** se soporta.
-  - **`Imagen`** (`imagen.py`): `palabras: list[int]`, `simbolos: dict[str,int]`, `mapa_lineas: dict[int, int]` (dirección → línea de fuente, para que la GUI resalte la línea en ejecución), `advertencias: list[str]`.
+  - **`Imagen`** (`imagen.py`): `palabras: list[int]`, `simbolos: dict[str,int]`, `mapa_lineas: dict[int, int]` (dirección → línea de fuente, para que la GUI resalte la línea en ejecución), `expansiones: dict[int, str]` (dirección → instrucción real de cada pseudo, AC6), `advertencias: list[str]`.
   - **Advertencias de desalineado (ADR-018):** si puede detectarlo estáticamente (por ejemplo, `lw` con offset no múltiplo de 4 y base `x0`), emite una advertencia sin abortar.
 - **Criterios de Aceptación:**
-  - **AC1.** Ensambla las 33 instrucciones con registros por número y por nombre ABI.
+  - **AC1.** Ensambla las 33 instrucciones con registros `x0`–`x31`; un nombre ABI (`t0`) o un registro inexistente (`x32`) da error con número de línea.
   - **AC2.** Las 32 instrucciones estándar producen **exactamente** la misma palabra que `riscv64-unknown-elf-as -march=rv32i` para un archivo de prueba que las contiene todas (ADR-013).
   - **AC3.** Etiquetas hacia adelante y hacia atrás se resuelven correctamente en `beq`, `bne` y `jal`.
   - **AC4.** Errores con número de línea y mensaje claro: mnemónico desconocido (incluido `li`), registro inválido, inmediato fuera de rango, etiqueta inexistente o duplicada, cantidad de operandos incorrecta. El ensamblado se aborta sin generar salida.
   - **AC5.** Un programa de más de 256 palabras, contando el HALT agregado, se rechaza (R-PR-2, ADR-008).
-  - **AC6.** `nop`, `mv`, `j` y `ret` se expanden a su instrucción real y la expansión queda registrada en la `Imagen` (para el listado de US-108).
+  - **AC6.** `nop`, `mv`, `j` y `ret` se expanden a su instrucción real y la expansión queda registrada en la `Imagen` (para el listado de US-107).
 - **Reglas de Negocio:** R-PR-1, R-PR-2; inmediatos de `slli/srli/srai` limitados a 0–31.
 - **Entidades/Modelos implicados:** `LineaAsm`, `Imagen`, `InstructionSpec`.
 - **Testing Mínimo:**
   - _Unitarias:_ `test_lexer.py`, `test_parser.py`, `test_assembler.py` (una prueba por instrucción, por error, por pseudoinstrucción).
-  - _Contraste:_ `test_vs_gnu.py` compara contra un archivo de referencia `.hex` generado una vez con el toolchain GNU y versionado en `tools/tests/fixtures/` (así los tests no requieren tener GNU instalado).
+  - _Contraste:_ `test_vs_gnu.py` compara contra un archivo de referencia `.hex` generado una vez con el toolchain GNU y versionado en `tools/tests/assembler/fixtures/` (así los tests no requieren tener GNU instalado). Se regenera con `make gnu-ref`.
 - **Archivos a crear:**
 
 ```mermaid
@@ -690,7 +746,6 @@ treeView-beta
         "tools/"
             "riscv_toolkit/"
                 "assembler/"
-                    "__init__.py"
                     "lexer.py"
                     "parser.py"
                     "assembler.py"
@@ -706,15 +761,15 @@ treeView-beta
                         "todas_las_instrucciones.{asm,hex}"
 ```
 
-#### US-108 — Desensamblador, Formatos de Salida y CLI `rvasm`
+#### US-107 — Desensamblador, Formatos de Salida y CLI `rvasm`
 
 - **Esfuerzo:** S (2 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-106
 - **Objetivo Funcional:** producir los archivos que consumen la simulación (`.hex`), la carga por UART (`.bin`) y la GUI (`.lst`), y poder convertir cualquier palabra de vuelta a texto (lo usan la GUI y el golden model para mostrar instrucciones).
 - **Narrativa:** Como usuario, quiero ensamblar desde la terminal y obtener el formato que necesito, y ver cualquier palabra de 32 bits como instrucción legible.
 - **Detalle técnico:**
   - **Formatos de salida** (`assembler/salidas.py`): `.hex` (una palabra por línea, para `$readmemh`), `.bin` (little-endian, para UART) y listado `.lst` (dirección, palabra, fuente y expansión de pseudoinstrucciones).
-  - **`disasm/disassembler.py`:** `desensamblar(palabra) -> str` (ej. `0x00A28293` → `addi t0, t0, 10`); `halt` para cualquier palabra con opcode _custom-0_ (ADR-004); para palabras ilegales devuelve `.word 0x...` (ADR-018).
-  - **CLI:** `rvasm programa.asm -o programa.hex --format hex|bin|lst`; imprime advertencias (HALT agregado, desalineados) en stderr.
+  - **`disasm/disassembler.py`:** `desensamblar(palabra) -> str` (ej. `0x00A28293` → `addi x5, x5, 10`); `halt` para cualquier palabra con opcode _custom-0_ (ADR-004); para palabras ilegales devuelve `.word 0x...` (ADR-018).
+  - **CLI:** `rvasm programa.asm -o programa.hex --format hex|bin|lst`; imprime advertencias (HALT agregado, desalineados) en stderr. Es el subcomando `asm` de `python -m riscv_toolkit` (`__main__.py` despacha a `cli/rvasm.py`).
 - **Criterios de Aceptación:**
   - **AC1.** `desensamblar(ensamblar(x))` reproduce la instrucción original para las 33 instrucciones (salvo formato de etiquetas, que se muestran como direcciones).
   - **AC2.** `0x00000000` y otras palabras ilegales se desensamblan como `.word 0x...`.
@@ -732,10 +787,10 @@ treeView-beta
                 "assembler/"
                     "salidas.py"
                 "disasm/"
-                    "__init__.py"
                     "disassembler.py"
                 "cli/"
                     "rvasm.py"
+            "riscv_toolkit/__main__.py — (subcomando asm)"
             "tests/"
                 "assembler/"
                     "test_salidas.py"
@@ -743,7 +798,7 @@ treeView-beta
                     "test_disassembler.py"
 ```
 
-#### US-107 — Simulador de Referencia (Golden Model)
+#### US-108 — Simulador de Referencia (Golden Model)
 
 - **Esfuerzo:** M (3 días) · **Prioridad:** Alta · **Dependencias:** US-105, US-106 (solo para la CLI `rvsim`), ADR-014, ADR-018
 - **Objetivo Funcional:** tener un "resultado esperado" automático para cualquier programa, y la base del modo sin placa de la GUI.
@@ -754,7 +809,7 @@ treeView-beta
   - Semántica según sección 2.2: extensión de signo/cero en loads, enmascarado de `jalr` (`& ~1`), `shamt` de 5 bits, `x0` siempre 0, aritmética en 32 bits con `& 0xFFFFFFFF`.
   - Comportamiento de desalineados e ilegales según ADR-018: los desalineados ignoran los bits bajos y quedan registrados como **advertencia**; una ilegal detiene con `ILLEGAL`.
   - `estado_final() -> EstadoArquitectonico(regs, mem_usada, pc, motivo)` en el mismo formato que la sección de registros/memoria del snapshot.
-  - CLI: `rvsim programa.asm --dump` imprime registros y memoria usada; `rvsim programa.asm --expect salida.expected` escribe el estado final en el formato que leen `tb_core_programs.v` (US-209) y `verify_rtl.py` (US-305).
+  - CLI: `rvsim programa.asm --dump` imprime registros y memoria usada; `rvsim programa.asm --expect salida.expected` escribe el estado final en el formato que leen `tb_core_programs.v` (US-210) y `verify_rtl.py` (US-305). `rvsim` es el subcomando `sim`.
 - **Criterios de Aceptación:**
   - **AC1.** Cada una de las 33 instrucciones tiene un test con valores borde (overflow en `add`, `sra` de negativos, `sltu` con `-1`, `lb` de `0x80`, `lbu` de `0x80`, `jalr` con dirección impar).
   - **AC2.** Un programa con un loop infinito se detiene al llegar a `max_instr` e informa `TIMEOUT`, sin colgarse. Un programa que ejecuta `0x00000000` termina con `ILLEGAL` y el PC correcto.
@@ -762,7 +817,7 @@ treeView-beta
   - **AC4.** La clase `GoldenModel` no depende de `assembler/` (recibe palabras, no texto); solo la CLI `rvsim` ensambla.
   - **AC5.** Un `lw` desalineado da el mismo resultado que el alineado y genera una advertencia.
   - **AC6.** El formato de `--expect` está documentado y tiene un test de ida y vuelta.
-- **Testing Mínimo:** _unitarias_ (`tests/iss/test_golden_model.py`) por instrucción; _integración:_ ensamblar y correr los programas de `asm/tests/` verificando la firma de éxito.
+- **Testing Mínimo:** _unitarias_ (`tests/iss/test_golden_model.py`) por instrucción; _integración:_ ensamblar y correr 3 o 4 programas chicos propios (`tests/iss/fixtures/*.asm`: aritmética, loads/stores, branches, un loop) y comparar el estado final con valores calculados a mano. La suite completa con firma llega en US-304 (`test_asm_suite.py`).
 - **Archivos a crear:**
 
 ```mermaid
@@ -771,13 +826,16 @@ treeView-beta
         "tools/"
             "riscv_toolkit/"
                 "iss/"
-                    "__init__.py"
                     "golden_model.py"
+                    "expected.py — formato .expected (AC6)"
                 "cli/"
                     "rvsim.py"
+            "riscv_toolkit/__main__.py — (subcomando sim)"
             "tests/"
                 "iss/"
                     "test_golden_model.py"
+                    "fixtures/"
+                        "*.asm"
 ```
 
 ---
@@ -805,7 +863,7 @@ treeView-beta
     - Valores por defecto antes del `case` (sin latches), como en el TP1.
   - **`hw/rtl/core/alu_control.v`** — combinacional: a partir de `alu_op` (2 bits del control principal), `funct3` y `funct7_b5` genera `alu_ctrl`:
     - `alu_op = 00` → ADD (loads, stores, `jalr`).
-    - `alu_op = 01` → PASS_B (`lui`: el inmediato ya viene desplazado desde `imm_gen`). Los branches **no** usan la ALU: se comparan en `branch_cmp` (US-207, ADR-019).
+    - `alu_op = 01` → PASS_B (`lui`: el inmediato ya viene desplazado desde `imm_gen`). Los branches **no** usan la ALU: se comparan en `branch_cmp` (US-208, ADR-019).
     - `alu_op = 10` → R-type: `funct3` + `funct7_b5`.
     - `alu_op = 11` → I-type aritmético: `funct3`; `funct7_b5` **solo** se mira si `funct3 = 101` (distingue `srli`/`srai`).
 - **Criterios de Aceptación:**
@@ -843,11 +901,12 @@ treeView-beta
   - **Bypass interno** (ADR-007): si se escribe y se lee la misma dirección (≠ 0) en el mismo ciclo, la lectura devuelve `i_wr_data`.
   - **Tercer puerto de lectura** `i_dbg_addr` → `o_dbg_data`, combinacional, para la Debug Unit.
   - `x0` devuelve siempre 0 en los tres puertos.
+  - **Borrado `i_clear`** (sincrónico e **independiente de `i_enable`**): pone los 32 registros en 0. En `riscv_core` se conecta a `i_reset || i_flush_all`, porque la Debug Unit hace `i_flush_all` con el núcleo congelado (`docs/interfaces/riscv_core.md`).
 - **Criterios de Aceptación:**
   - **AC1.** Escribir `x0` no tiene efecto; leerlo da 0.
   - **AC2.** Lectura y escritura del mismo registro en el mismo ciclo devuelve el valor nuevo (bypass).
   - **AC3.** Con `i_enable = 0` no se escribe ningún registro aunque `i_we = 1`.
-  - **AC4.** Tras `i_reset`, los 32 registros valen 0.
+  - **AC4.** Tras `i_clear`, los 32 registros valen 0, también con `i_enable = 0`.
   - **AC5.** El puerto de depuración lee correctamente mientras los otros dos puertos operan.
 - **Testing Mínimo:** `tb_reg_file.v` con los 5 casos de AC.
 - **Archivos a crear:**
@@ -866,7 +925,7 @@ treeView-beta
 
 #### US-203 — Unidad de Control Principal y Generador de Inmediatos
 
-- **Esfuerzo:** M (3 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-103, ADR-004, ADR-018
+- **Esfuerzo:** M (3 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-103, US-105, US-106, US-107, ADR-004, ADR-018
 - **Objetivo Funcional:** decodificar las 33 instrucciones en las señales de control de la tabla de US-103, detectar las instrucciones ilegales y extraer el inmediato correcto de cada formato.
 - **Narrativa:** Como procesador, necesito traducir cada opcode en señales de control y reconstruir el inmediato partido de cada formato, para que las etapas siguientes sepan qué hacer.
 - **Detalle técnico:**
@@ -941,7 +1000,7 @@ treeView-beta
                     "tb_data_mem.v"
 ```
 
-#### US-210 — Alineación de Stores y Extensión de Loads (Byte y Media Palabra)
+#### US-205 — Alineación de Stores y Extensión de Loads (Byte y Media Palabra)
 
 - **Esfuerzo:** S (2 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-204, ADR-018
 - **Objetivo Funcional:** soportar `lb/lh/lw/lbu/lhu/sb/sh/sw` sobre la DMEM de palabras, con little-endian y el tratamiento de desalineados de ADR-018.
@@ -974,7 +1033,7 @@ treeView-beta
 
 ### Épica H2-E2: Etapas, Latches e Integración del Núcleo
 
-#### US-205 — Etapa IF, Registro PC y Latch IF/ID
+#### US-206 — Etapa IF, Registro PC y Latch IF/ID
 
 - **Esfuerzo:** S (2,5 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-204, ADR-006
 - **Objetivo Funcional:** buscar una instrucción por ciclo, calcular el PC siguiente, aplicar las redirecciones y el flush básico de los saltos, y dejar el lugar preparado para stall y HALT.
@@ -1006,9 +1065,9 @@ treeView-beta
                     "tb_if_stage.v"
 ```
 
-#### US-206 — Etapa ID y Latch ID/EX
+#### US-207 — Etapa ID y Latch ID/EX
 
-- **Esfuerzo:** S (1,5 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-202, US-203, US-205
+- **Esfuerzo:** S (1,5 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-202, US-203, US-206
 - **Objetivo Funcional:** decodificar la instrucción, leer registros, generar el inmediato y empaquetar todo en ID/EX; resolver `jal`; detectar HALT e instrucciones ilegales.
 - **Narrativa:** Como procesador, necesito decodificar la instrucción de IF/ID y pasar a EX todo lo que necesita, incluyendo sus señales de control.
 - **Detalle técnico:**
@@ -1035,9 +1094,9 @@ treeView-beta
                     "tb_id_stage.v"
 ```
 
-#### US-207 — Etapa EX y Latch EX/MEM
+#### US-208 — Etapa EX y Latch EX/MEM
 
-- **Esfuerzo:** S (2,5 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-201, US-206, ADR-006, ADR-019
+- **Esfuerzo:** S (2,5 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-201, US-207, ADR-006, ADR-019
 - **Objetivo Funcional:** ejecutar la operación, evaluar branches con el comparador dedicado, calcular destinos de salto, hacer el flush básico y dejar preparados los multiplexores de forwarding.
 - **Narrativa:** Como procesador, necesito calcular el resultado de la instrucción y decidir si un branch se toma, para actualizar el flujo del programa.
 - **Detalle técnico:**
@@ -1073,9 +1132,9 @@ treeView-beta
                     "tb_branch_cmp.v"
 ```
 
-#### US-208 — Etapas MEM y WB, y Latch MEM/WB
+#### US-209 — Etapas MEM y WB, y Latch MEM/WB
 
-- **Esfuerzo:** S (1,5 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-204, US-207, US-210
+- **Esfuerzo:** S (1,5 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-204, US-208, US-205
 - **Objetivo Funcional:** acceder a la memoria de datos y escribir el resultado final en el banco de registros.
 - **Narrativa:** Como procesador, necesito leer o escribir la memoria de datos y luego elegir qué valor se escribe en el registro destino (ALU, memoria o PC+4).
 - **Detalle técnico:**
@@ -1104,16 +1163,18 @@ treeView-beta
                     "tb_mem_wb.v"
 ```
 
-#### US-209 — Integración del Núcleo, HALT y Drenado del Pipeline
+#### US-210 — Integración del Núcleo, HALT y Drenado del Pipeline
 
-- **Esfuerzo:** M (5 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-205 a US-208, US-210, US-108, US-107
+- **Esfuerzo:** M (5 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-206 a US-209, US-205, US-107, US-108
 - **Objetivo Funcional:** unir todas las etapas en `riscv_core`, con la interfaz de US-103, y demostrar la ejecución correcta de programas sin dependencias de datos cercanas (incluidos saltos tomados, gracias al flush básico), terminando con el pipeline vacío.
 - **Narrativa:** Como equipo, queremos correr un programa ensamblado en la simulación del núcleo completo y ver que el estado final coincide con el golden model, para tener la base funcional antes de agregar riesgos.
 - **Detalle técnico:**
   - **`hw/rtl/core/riscv_core.v`:** instancia etapas, latches, `reg_file`, memorias; expone la interfaz de `docs/interfaces/riscv_core.md` (enable, flush global, puertos de depuración, latches como buses planos, `o_halted`).
   - **Lógica de HALT** (R-EJ-3 a R-EJ-5, R-EJ-4bis): al detectar HALT o ilegal en ID se activa `halt_fetch` (PC congelado, burbujas en IF/ID); cuando `o_halt_retired`, se levantan `o_halted` (y `o_illegal` si correspondía) y el núcleo ignora `i_enable` hasta un reset o `i_flush_all`.
-  - **`i_flush_all`:** pone los 4 latches en `valid = 0`, el PC en 0 y el banco de registros en 0 (usado por la Debug Unit en ADR-009).
-  - **Testbench de sistema `tb_core_programs.v`:** carga un `.hex` con `$readmemh`, corre hasta `o_halted` o un límite de ciclos, y compara los registros, la memoria usada y el motivo de terminación contra un archivo `.expected` generado por `rvsim --expect` (US-107). Corre en xsim y en Icarus (ADR-015).
+  - **`i_flush_all`:** pone los 4 latches en `valid = 0`, el PC en 0 y el banco de registros en 0 (con `i_clear` de `reg_file`, US-202), aunque `i_enable = 0` (usado por la Debug Unit en ADR-009).
+  - **`i_stop_fetch`** (ABORT, ADR-010): reutiliza `halt_fetch` (PC congelado, burbujas en IF/ID) y además descarta la instrucción que está en ID (burbuja en ID/EX), según `docs/interfaces/riscv_core.md`. Lo implementa la pista A porque toca el núcleo; la Debug Unit lo usa en US-407, y la prioridad frente a una redirección de EX se completa en US-303.
+  - **Salidas de riesgo:** existen desde esta historia porque la interfaz está congelada (US-103). `o_flush_if_id`/`o_flush_id_ex` reflejan el flush básico; `o_stall` vale 0 y `o_fwd_a`/`o_fwd_b` valen `00` hasta el Hito 3.
+  - **Testbench de sistema `tb_core_programs.v`:** carga un `.hex` con `$readmemh`, corre hasta `o_halted` o un límite de ciclos, y compara los registros, la memoria usada y el motivo de terminación contra un archivo `.expected` generado por `rvsim --expect` (US-108). Corre en Icarus (ADR-015).
   - **Programas de este hito** (`asm/tests/h2/`): uno por grupo de instrucciones (R, I aritméticas, shifts, loads/stores, `lui`, branches, `jal`/`jalr`), **con 3 NOPs entre instrucciones con dependencia de datos** (porque todavía no hay forwarding). Los saltos no necesitan NOPs: el flush básico descarta las instrucciones buscadas de más.
 - **Criterios de Aceptación:**
   - **AC1.** Todos los programas de `asm/tests/h2/` terminan con registros y memoria idénticos al golden model.
@@ -1122,7 +1183,8 @@ treeView-beta
   - **AC3b.** En `branches.asm` y `jumps.asm`, las instrucciones que siguen a un salto tomado nunca escriben registros ni memoria.
   - **AC3c.** Un programa que ejecuta una palabra ilegal termina con `o_illegal = 1`, pipeline vacío y el mismo estado que el golden model.
   - **AC4.** Con `i_enable` alternando aleatoriamente entre 0 y 1 durante la ejecución, el estado final es el mismo que con `i_enable = 1` fijo (prueba temprana de R-EJ-7).
-  - **AC5.** El núcleo sintetiza e implementa a 100 MHz (primer dato de timing, sin optimizar); WNS/WHS se guardan en `hw/reports/` para seguir su evolución (ADR-016).
+  - **AC5.** El núcleo sintetiza e implementa a 100 MHz en modo _out-of-context_ (`synth_design -mode out_of_context`: sus buses de depuración tienen más bits que pines la Basys 3, y `top.v` recién llega en US-401) (primer dato de timing, sin optimizar); WNS/WHS se guardan en `hw/reports/` para seguir su evolución (ADR-016).
+  - **AC6.** Con `i_stop_fetch = 1` e `i_enable = 1`, el pipeline queda vacío (los 4 `valid` en 0) en como máximo 3 ciclos, y la instrucción que estaba en ID no escribe nada.
 - **Reglas de Negocio:** R-EJ-2 a R-EJ-7.
 - **Testing Mínimo:** `tb_core_programs.v` parametrizado por programa; `make sim-programs` corre toda la carpeta.
 - **Archivos a crear:**
@@ -1137,6 +1199,9 @@ treeView-beta
             "tb/"
                 "core/"
                     "tb_core_programs.v"
+            "reports/"
+                "timing_core_ooc.rpt"
+        "Makefile — (objetivo sim-programs)"
         "asm/"
             "tests/"
                 "h2/"
@@ -1164,7 +1229,7 @@ treeView-beta
 
 #### US-301 — Unidad de Forwarding
 
-- **Esfuerzo:** M (3 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-209, ADR-007
+- **Esfuerzo:** M (3 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-210, ADR-007
 - **Objetivo Funcional:** eliminar los stalls por dependencias de datos entre instrucciones aritméticas consecutivas.
 - **Narrativa:** Como procesador, quiero usar el resultado de una instrucción anterior apenas está calculado, sin esperar a que se escriba en el banco de registros.
 - **Detalle técnico (`hw/rtl/core/forwarding_unit.v`, combinacional):**
@@ -1174,13 +1239,14 @@ treeView-beta
   - Nunca reenvía si `rd == 0` o si la instrucción productora no es válida.
   - El valor reenviado desde MEM/WB es el **resultado final de WB** (incluye dato de load y `pc + 4`).
   - Los operandos forwardeados alimentan la ALU, `store_data` **y** `branch_cmp` (ADR-006, ADR-019).
+  - Conectar `fwd_a`/`fwd_b` a las salidas `o_fwd_a`/`o_fwd_b` de `riscv_core` (en `00` desde US-210) para el volcado (ADR-017).
 - **Criterios de Aceptación:**
   - **AC1.** `add x1,…` seguido de `sub x2,x1,…` → `fwd_a = 10`.
   - **AC2.** Productor a 2 instrucciones de distancia → `fwd = 01`.
   - **AC3.** Doble coincidencia (EX/MEM y MEM/WB escriben el mismo `rd`) → gana EX/MEM.
   - **AC4.** `rd = x0` nunca genera forwarding.
   - **AC5.** Forwarding sobre `rs2` de un store (`add x5,…` seguido de `sw x5, 0(x6)`) guarda el valor nuevo.
-  - **AC6.** Forwarding del resultado de `jal` (`pc + 4`) hacia una instrucción que usa `ra`.
+  - **AC6.** Forwarding del resultado de `jal` (`pc + 4`) hacia una instrucción que usa su `rd` (ej. `jal x1, f` seguido de `addi x2, x1, 0`).
   - **AC7.** `addi x1,…` seguido de `beq x1, x2, …` compara con el valor nuevo de `x1` (forwarding hacia `branch_cmp`).
 - **Testing Mínimo:** `tb_forwarding_unit.v` (vectores de AC1–AC4) + programas de US-304.
 - **Archivos a crear:**
@@ -1192,6 +1258,7 @@ treeView-beta
             "rtl/"
                 "core/"
                     "forwarding_unit.v"
+                    "riscv_core.v — (conexión y salidas o_fwd_a/o_fwd_b)"
             "tb/"
                 "core/"
                     "tb_forwarding_unit.v"
@@ -1236,6 +1303,7 @@ treeView-beta
   - Se mueve la generación de `flush_if_id` y `flush_id_ex` (hecha en el Hito 2 dentro de las etapas) a `hazard_unit.v`, junto con el stall, para tener toda la lógica de prioridad en un solo lugar: branch tomado / `jalr` en EX → flush de IF/ID e ID/EX (penalidad 2); `jal` en ID → flush de IF/ID (penalidad 1).
   - **Prioridades cuando coinciden eventos en el mismo ciclo** (ADR-006): redirección de EX > `jal` en ID > stall de load-use > HALT/ilegal detectado en ID. Una redirección desde EX anula cualquier stall o redirección originada en ID (la instrucción de ID era especulativa).
   - **HALT e ilegal especulativos** (R-EJ-4, R-EJ-4bis): si están en IF/ID o ID/EX cuando EX redirige, se descartan y `halt_fetch` se desactiva.
+  - **`i_stop_fetch`** (ABORT, implementado en US-210) entra en la misma tabla de prioridades: una redirección de EX descarta igual lo especulativo, pero mientras `i_stop_fetch = 1` no se busca el destino, así el drenado termina igual.
   - Exponer `o_flush_if_id` y `o_flush_id_ex` para el volcado (ADR-017).
 - **Criterios de Aceptación:**
   - **AC1.** `beq` tomado: las 2 instrucciones siguientes en memoria nunca escriben registros ni memoria.
@@ -1247,6 +1315,7 @@ treeView-beta
   - **AC7.** Branch tomado mientras hay un stall de load-use en ID: el comportamiento es correcto (gana el flush).
   - **AC8.** `jal` en ID y branch tomado en EX en el mismo ciclo: gana el branch y el `jal` se descarta.
   - **AC9.** Una palabra ilegal ubicada inmediatamente después de un `beq` tomado **no** detiene la ejecución.
+  - **AC10.** Con `i_stop_fetch = 1` y un branch tomado en EX en el mismo ciclo, el pipeline se vacía sin buscar instrucciones del destino.
 - **Testing Mínimo:** programas de US-304 (grupo control).
 - **Archivos a crear:**
 
@@ -1264,21 +1333,21 @@ treeView-beta
 
 #### US-304 — Suite de Programas de Prueba en Assembly
 
-- **Esfuerzo:** M (3 días) · **Prioridad:** Alta · **Dependencias:** US-106, US-107
+- **Esfuerzo:** M (3 días) · **Prioridad:** Alta · **Dependencias:** US-106, US-108
 - **Objetivo Funcional:** cumplir el requisito "el programa debe estar escrito en ensamblador" con un conjunto de programas que cubra todas las instrucciones, todos los riesgos y sirva de demostración.
 - **Narrativa:** Como equipo, queremos programas que se autoverifiquen, para demostrar en la defensa que cada instrucción y cada riesgo funcionan.
 - **Detalle técnico (`asm/`):**
-  - **`asm/tests/instr/`:** un programa por instrucción o familia, con casos borde (los de US-201 y US-204) y firma en memoria (convención en `asm/README.md`, ADR-014).
+  - **`asm/tests/instr/`:** un programa por instrucción o familia, con casos borde (los de US-201 y US-205) y firma en memoria (convención en `asm/README.md`, ADR-014).
   - **`asm/tests/hazards/`:** `fwd_ex_mem.asm`, `fwd_mem_wb.asm`, `fwd_doble.asm`, `fwd_store_data.asm`, `fwd_branch.asm`, `load_use.asm`, `load_use_store.asm`, `x0_no_forward.asm`, `branch_taken.asm`, `branch_not_taken.asm`, `branch_after_load.asm`, `jal_jalr.asm`, `jal_branch_same_cycle.asm`, `halt_after_branch.asm`, `halt_speculative.asm`, `illegal_speculative.asm`.
   - **`asm/tests/instr/`** incluye además `misaligned.asm` (ADR-018: el resultado es el de la dirección alineada).
   - **`asm/demos/`:** programas "lindos" para la defensa: suma de un arreglo, Fibonacci iterativo, copia de cadena byte a byte (`lbu`/`sb`), ordenamiento burbuja de 8 números, subrutina con `jal`/`ret`.
   - **`asm/special/`:** `no_halt.asm` (sin HALT), `infinite_loop.asm` (para ADR-010), `illegal.asm` (termina con `ILLEGAL`, ADR-018).
-  - **Firma (ADR-014):** cada programa de `tests/` escribe en `0x3FC` (última palabra de la DMEM) `0x00000001` si todos sus chequeos pasan, o el número del caso que falló. La convención se documenta en `asm/README.md` y ningún programa usa esa dirección para otra cosa.
+  - **Firma (ADR-014):** cada programa de `tests/instr/` y `tests/hazards/` escribe en `0x3FC` (última palabra de la DMEM) `0x00000001` si todos sus chequeos pasan, o el número del caso que falló. La convención se documenta en `asm/README.md` y ningún programa usa esa dirección para otra cosa.
   - Cada archivo con un encabezado de comentario: qué prueba y valores esperados. La cantidad de ciclos no se escribe a mano: la mide US-305.
 - **Criterios de Aceptación:**
   - **AC1.** Las 33 instrucciones aparecen en al menos un programa de `asm/tests/instr/`.
   - **AC2.** Todos los casos de riesgo de la métrica "Cobertura de riesgos" (sección 1.4) tienen un programa.
-  - **AC3.** Cada programa de `tests/` escribe su firma de éxito/falla en `0x3FC`.
+  - **AC3.** Cada programa de `tests/instr/` y `tests/hazards/` escribe su firma de éxito/falla en `0x3FC`. Los de `tests/h2/` (US-210) no usan firma: se comparan contra el `.expected` del golden model.
   - **AC4.** Todos ensamblan sin errores y pasan en el golden model.
 - **Testing Mínimo:** `tools/tests/test_asm_suite.py` ensambla y corre toda la carpeta en el golden model.
 - **Archivos a crear:**
@@ -1301,13 +1370,13 @@ treeView-beta
 
 #### US-305 — Verificación Cruzada Automática Núcleo vs. Golden Model
 
-- **Esfuerzo:** S (2 días) · **Prioridad:** Alta · **Dependencias:** US-107, US-209, US-301 a US-304
+- **Esfuerzo:** S (2 días) · **Prioridad:** Alta · **Dependencias:** US-108, US-210, US-301 a US-304
 - **Objetivo Funcional:** correr toda la suite en simulación del RTL y comparar automáticamente con el golden model, reportando además la cantidad de ciclos (para calcular CPI en el informe).
 - **Narrativa:** Como equipo, queremos un único comando que nos diga si el procesador pasa todos los programas, para detectar regresiones cada vez que tocamos el hardware.
 - **Detalle técnico:**
-  - **`tools/scripts/verify_rtl.py`:** para cada `.asm` → ensambla, genera `.expected` con el golden model, corre `tb_core_programs` en el simulador elegido (`--sim xsim|icarus`, ADR-015), parsea el volcado final del testbench y compara registros, memoria usada, firma y motivo de terminación; reporta tabla `programa | resultado | ciclos | instrucciones | CPI | stalls | flushes`.
-  - El testbench cuenta stalls y flushes observando las señales expuestas.
-  - Objetivo `make verify` (`SIM=xsim` por defecto); el CI corre `make verify SIM=icarus`.
+  - **`tools/scripts/verify_rtl.py`:** para cada `.asm` → ensambla, genera `.expected` con el golden model, corre `tb_core_programs` con Icarus (ADR-015), parsea el volcado final del testbench y compara registros, memoria usada, firma y motivo de terminación; reporta tabla `programa | resultado | ciclos | instrucciones | CPI | stalls | flushes`.
+  - `tb_core_programs.v` (US-210) se extiende: imprime el volcado final en un formato fijo que parsea el script, y cuenta ciclos, stalls y flushes observando las señales expuestas.
+  - Objetivo `make verify`; el CI también lo corre.
 - **Criterios de Aceptación:**
   - **AC1.** `make verify` corre toda la suite y termina con código ≠ 0 si algún programa falla.
   - **AC2.** Ante una diferencia, muestra qué registro/dirección difiere, con valor esperado y obtenido.
@@ -1319,7 +1388,15 @@ treeView-beta
 ```mermaid
 treeView-beta
     "tps-arqui/"
+        ".github/"
+            "workflows/"
+                "ci.yml — (agrega make verify)"
         "TP3/"
+            "Makefile — (objetivo verify)"
+            "hw/"
+                "tb/"
+                    "core/"
+                        "tb_core_programs.v — (extensión: volcado y contadores)"
             "tools/"
                 "scripts/"
                     "verify_rtl.py"
@@ -1339,7 +1416,7 @@ treeView-beta
 
 **Decisiones previas requeridas:** ADR-002, ADR-003, ADR-008, ADR-009, ADR-010, ADR-011, ADR-014, ADR-017, ADR-018 (aprobadas). US-104 cerrada.
 
-**Nota de paralelismo:** US-401 a US-406 y US-409 se desarrollan contra un **núcleo stub** (US-408). US-410/411 se desarrollan contra `FakeTransport`. Así la pista B no espera al Hito 3.
+**Nota de paralelismo:** la Debug Unit (US-403 a US-408) se desarrolla y se prueba contra el **núcleo stub** de US-402, y el software de control (US-409, US-410) contra `FakeTransport`. Así la pista B no espera a los Hitos 2 y 3: el núcleo real se integra recién en US-411, que antes de ir a la placa repite en simulación los testbenches de la Debug Unit con `riscv_core`.
 
 ### Épica H4-E1: Comunicación y Recepción de Comandos
 
@@ -1353,6 +1430,7 @@ treeView-beta
   - **Validación de paridad en RX** (ADR-002): `uart_rx` expone `o_parity_err` comparando `p_reg` con `^b_reg`; el byte con error no se entrega como dato válido.
   - **Sincronizador:** atributo `(* ASYNC_REG = "TRUE" *)` en `r_rx_meta` y `r_rx_sync`, y `set_false_path -from [get_ports rx]` en el `.xdc` (mejoras señaladas en la sección 4.2.3 del informe del TP2).
   - **`hw/rtl/top.v` nuevo:** parámetros `CLK_FREQ_HZ` (100 MHz por defecto, ADR-016) y `BAUD` (19200); `clock`, `i_reset` (BTNC), `rx`, `tx`, LEDs de estado (ej. LED0 = `READY`, LED1 = `RUN`, LED2 = `HALTED`, LED3 = error de trama/paridad) e instancias de UART, Debug Unit y núcleo (stub o real).
+  - **`pyserial`** se agrega como dependencia en `tools/pyproject.toml`: la usa `uart_echo_test.py` y después `serial_transport.py` (US-409).
 - **Criterios de Aceptación:**
   - **AC1.** Loopback en placa a 19200 bps 8E1: la PC envía 1000 bytes aleatorios a un eco temporal y los recibe sin errores.
   - **AC2.** `COUNT_MAX` resultante produce un error de baud rate < 2 % (verificado en un comentario y en el testbench).
@@ -1373,11 +1451,12 @@ treeView-beta
             "constraints/"
                 "basys3.xdc — (false path + LEDs)"
         "tools/"
+            "pyproject.toml — (agrega pyserial)"
             "scripts/"
                 "uart_echo_test.py"
 ```
 
-#### US-408 — Infraestructura de Pruebas de la Pista B: Núcleo Stub y Modelo de UART de PC
+#### US-402 — Infraestructura de Pruebas de la Pista B: Núcleo Stub y Modelo de UART de PC
 
 - **Esfuerzo:** S (1 día) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-102, US-103
 - **Objetivo Funcional:** poder probar toda la Debug Unit en simulación sin depender del núcleo real ni de la placa.
@@ -1404,29 +1483,29 @@ treeView-beta
                     "uart_host_model.vh"
 ```
 
-#### US-402 — Intérprete de Comandos de la Debug Unit
+#### US-403 — Intérprete de Comandos de la Debug Unit
 
-- **Esfuerzo:** M (2,5 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-104, US-401, US-408
+- **Esfuerzo:** M (2,5 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-104, US-401, US-402
 - **Objetivo Funcional:** recibir bytes de la UART, reconocer comandos, validarlos según el estado actual y despachar la acción al submódulo correspondiente.
 - **Narrativa:** Como usuario de la PC, quiero que la placa entienda mis comandos y me avise si uno no es válido en ese momento, para nunca dejarla en un estado incierto.
 - **Detalle técnico:**
-  - **`hw/rtl/debug/debug_unit.v`:** wrapper que instancia `du_cmd_fsm`, `du_loader`, `du_exec_ctrl`, `du_dumper` y un multiplexor de acceso a `uart_tx` (solo un submódulo transmite a la vez).
+  - **`hw/rtl/debug/debug_unit.v`:** wrapper que en esta historia instancia `du_cmd_fsm` y el multiplexor de acceso a `uart_tx` (solo un submódulo transmite a la vez). Cada submódulo se agrega al wrapper en su historia: `du_loader` (US-404), `du_dumper` (US-405) y `du_exec_ctrl` (US-406). Mientras tanto, la FSM despacha por puertos de pedido/terminado (`o_req_*`/`i_done_*`) que el testbench responde.
   - **`hw/rtl/debug/du_cmd_fsm.v`:** FSM con los estados de US-103 (`IDLE`, `LOADING`, `READY`, `RUN`, `STEPPING`, `DUMPING`, `HALTED`), separada en control/datapath como en el TP2.
     - Tabla de comandos válidos por estado (R-DU-1, incluidos `LOAD`/`RESET` en `STEPPING` y `DUMP_MEM`); comando inválido → `NACK(ERR_ESTADO)`.
     - Comando desconocido → `NACK(ERR_CMD)`.
     - **Error de paridad** (R-DU-5): `o_parity_err` de `uart_rx` aborta el comando en curso y responde `NACK(ERR_PARIDAD)`.
-    - **Timeout de recepción** (R-DU-6): contador que, si se interrumpe una trama con argumentos, responde `NACK(ERR_TIMEOUT)`; si era un `LOAD` delega en `du_loader` el relleno con HALT y vuelve a `IDLE`, y en otro caso vuelve al estado anterior.
+    - **Timeout de recepción** (R-DU-6): contador que, si se interrumpe una trama con argumentos, responde `NACK(ERR_TIMEOUT)`; si era un `LOAD` vuelve a `IDLE` y le pide a `du_loader` que rellene la IMEM con HALT (el relleno se implementa y verifica en US-404); en otro caso vuelve al estado anterior.
     - Durante `RUN`, sigue escuchando la UART para aceptar `ABORT`; cualquier otro comando responde `NACK(ERR_ESTADO)`.
   - **`hw/rtl/debug/du_tx_mux.v`** con handshake `i_tx_done`.
 - **Criterios de Aceptación:**
   - **AC1.** `PING` responde `ACK` + versión en cualquier estado.
   - **AC2.** `STEP` en `IDLE` (sin programa cargado) responde `NACK(ERR_ESTADO)` y el estado no cambia.
   - **AC3.** Un byte desconocido responde `NACK(ERR_CMD)`.
-  - **AC4.** Un `LOAD` interrumpido a la mitad responde `NACK(ERR_TIMEOUT)`, deja la IMEM rellena con HALT, vuelve a `IDLE` y el siguiente `PING` funciona.
-  - **AC5.** Los ejemplos de bytes de `docs/protocolo.md` se reproducen exactamente en el testbench.
+  - **AC4.** Un `LOAD` interrumpido a la mitad responde `NACK(ERR_TIMEOUT)`, vuelve a `IDLE` y el siguiente `PING` funciona (que la IMEM quede rellena con HALT se verifica en US-404 AC7).
+  - **AC5.** Los ejemplos de bytes de `docs/protocolo.md` de `PING` y de cada `NACK` se reproducen exactamente en el testbench (los de los demás comandos, en la historia de su submódulo).
   - **AC6.** Un byte con paridad errónea en medio de un comando responde `NACK(ERR_PARIDAD)` y la Debug Unit sigue respondiendo.
 - **Reglas de Negocio:** R-DU-1, R-DU-2, R-DU-5, R-DU-6.
-- **Testing Mínimo:** `tb_du_cmd_fsm.v` con `uart_host_model.vh` y `core_stub` (US-408).
+- **Testing Mínimo:** `tb_du_cmd_fsm.v` con `uart_host_model.vh` y `core_stub` (US-402).
 - **Archivos a crear:**
 
 ```mermaid
@@ -1443,11 +1522,11 @@ treeView-beta
                     "tb_du_cmd_fsm.v"
 ```
 
-### Épica H4-E2: Carga y Ejecución
+### Épica H4-E2: Carga y Volcado de Estado
 
-#### US-403 — Carga y Reprogramación Dinámica del Programa
+#### US-404 — Carga y Reprogramación Dinámica del Programa
 
-- **Esfuerzo:** M (3 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-402, US-204, ADR-009
+- **Esfuerzo:** M (3 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-402, US-403, ADR-009
 - **Objetivo Funcional:** cumplir "la carga del programa debe llevarse a cabo a través de UART y sin resintetizar" y "permitir la reprogramación de manera dinámica", con la política de limpieza de ADR-009.
 - **Narrativa:** Como usuario, quiero cargar un programa nuevo cuantas veces quiera sin tocar Vivado, y que cada ejecución arranque desde un estado limpio.
 - **Detalle técnico (`hw/rtl/debug/du_loader.v`):**
@@ -1455,7 +1534,7 @@ treeView-beta
   - Arma palabras de 4 bytes little-endian y las escribe en la IMEM por el puerto de la Debug Unit; acumula el checksum XOR (ADR-003).
   - Al final: si el checksum no coincide → `NACK(ERR_CHECKSUM)`, **toda** la IMEM queda rellena con HALT y vuelve a `IDLE` (R-DU-4). Lo mismo ante un timeout (R-DU-6). Si coincide:
     1. rellena las posiciones `N..IMEM_WORDS-1` con HALT (ADR-009 d) y, en paralelo, escribe ceros en toda la DMEM por el puerto de depuración y activa `i_clear_used` (bitmap y contador);
-    2. activa `i_flush_all` del núcleo (pipeline vacío, PC = 0, registros en 0) y pone el contador de ciclos en 0;
+    2. activa `i_flush_all` del núcleo (pipeline vacío, PC = 0, registros en 0) y genera un pulso `o_load_done` (con él `du_exec_ctrl` pone en 0 el contador de ciclos, US-406);
     3. responde `ACK` y pasa a `READY`.
   - `RESET` ejecuta la limpieza de DMEM y el paso 2 sin tocar la IMEM, y pasa a `READY` (o se queda en `IDLE` si no hay programa cargado). Tanto `LOAD` como `RESET` son válidos también desde `STEPPING` (ADR-010).
 - **Criterios de Aceptación:**
@@ -1465,8 +1544,9 @@ treeView-beta
   - **AC4.** `RESET` + `RUN` del mismo programa da exactamente el mismo resultado que la primera ejecución.
   - **AC5.** Cinco cargas consecutivas de programas distintos, todas correctas (métrica de la sección 1.4).
   - **AC6.** `LOAD` en medio de una ejecución paso a paso (`STEPPING`) deja el sistema igual que una carga desde `IDLE`.
+  - **AC7.** Un `LOAD` cortado por timeout (US-403 AC4) o con checksum incorrecto deja **toda** la IMEM rellena con HALT.
 - **Reglas de Negocio:** R-RP-1, R-PR-3, R-DU-4, R-DU-6.
-- **Testing Mínimo:** `tb_du_loader.v` (AC1–AC4 en simulación con el núcleo real cuando esté disponible).
+- **Testing Mínimo:** `tb_du_loader.v` con `core_stub` (US-402), verificando lo que la Debug Unit escribe en la IMEM y la DMEM y las señales que activa. AC1, AC2 y AC4 necesitan ejecutar el programa: se verifican con el núcleo real en US-411.
 - **Archivos a crear:**
 
 ```mermaid
@@ -1476,100 +1556,34 @@ treeView-beta
             "rtl/"
                 "debug/"
                     "du_loader.v"
+                    "debug_unit.v — (instancia du_loader)"
             "tb/"
                 "debug/"
                     "tb_du_loader.v"
 ```
 
-#### US-404 — Modos de Ejecución Continuo y Paso a Paso
-
-- **Esfuerzo:** M (3 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-402, US-209, ADR-001
-- **Objetivo Funcional:** cumplir los dos modos de operación del enunciado controlando el núcleo exclusivamente con `i_enable`.
-- **Narrativa:** Como usuario, quiero ejecutar el programa completo con un comando o avanzar de a un ciclo de clock, viendo el estado en cada paso.
-- **Detalle técnico (`hw/rtl/debug/du_exec_ctrl.v`):**
-  - **`RUN`:** responde `ACK`, mantiene `i_enable = 1` hasta `o_halted` del núcleo (o `ABORT`, US-406); luego dispara el volcado (US-405) con el motivo de terminación (`HALTED` o `ILLEGAL` según `o_illegal`) y pasa a `HALTED`.
-  - **`STEP`:** pulso de `i_enable` de **exactamente 1 ciclo** (R-EJ-2), luego volcado, y queda en `STEPPING`; si ese paso completó el HALT (o la ilegal), pasa a `HALTED`.
-  - Contador de ciclos ejecutados (32 bits) incluido en el snapshot.
-  - `i_enable` sale de un flip-flop (no de lógica combinacional), para facilitar el timing (ADR-001).
-- **Criterios de Aceptación:**
-  - **AC1.** Cada `STEP` avanza el contador de ciclos en exactamente 1 y el PC/latches cambian lo que corresponde a un ciclo.
-  - **AC2.** El mismo programa ejecutado con `RUN` y con `STEP` repetido hasta `HALTED` termina con idéntico estado (R-EJ-7).
-  - **AC3.** Al terminar en ambos modos, el snapshot final muestra los 4 latches con `valid = 0`.
-  - **AC4.** El reloj no aparece en ninguna expresión lógica (verificado por revisión de código y por `report_clock_networks`: un único reloj, sin compuertas).
-  - **AC5.** `STEP` en `HALTED` responde `NACK(ERR_ESTADO)`.
-  - **AC6.** Un programa que termina en una instrucción ilegal envía el snapshot final con motivo `ILLEGAL` en ambos modos.
-- **Reglas de Negocio:** R-EJ-1, R-EJ-2, R-EJ-4bis, R-EJ-5, R-EJ-7.
-- **Testing Mínimo:** `tb_du_exec_ctrl.v` con el núcleo real y un programa de la suite, comparando `RUN` vs. `STEP`.
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "TP3/"
-        "hw/"
-            "rtl/"
-                "debug/"
-                    "du_exec_ctrl.v"
-            "tb/"
-                "debug/"
-                    "tb_du_exec_ctrl.v"
-```
-
-#### US-406 — Programas sin Instrucción de Parada y Comando ABORT
-
-- **Esfuerzo:** S (1 día) · **Prioridad:** Alta · **Dependencias:** US-404, ADR-010, ADR-018
-- **Objetivo Funcional:** responder en la práctica la pregunta "¿qué sucede si en mi memoria no se encuentra una instrucción de parada?" y garantizar que la placa nunca quede fuera de control.
-- **Narrativa:** Como usuario, quiero poder detener un programa que quedó en un loop infinito y ver en qué estado quedó, sin reiniciar la placa.
-- **Detalle técnico:**
-  - **`ABORT`** en `du_exec_ctrl.v` (ADR-010): activa en el núcleo la entrada `i_stop_fetch`, que reutiliza la lógica del HALT (PC congelado, burbujas en IF/ID, se descarta la instrucción que estaba en IF/ID); el núcleo sigue habilitado hasta que los 4 latches quedan con `valid = 0` (como máximo 3 ciclos). Después se envía el snapshot con motivo `ABORTED` y la Debug Unit pasa a `HALTED`.
-  - **Sin watchdog:** ADR-010 lo descartó; queda en el roadmap (sección 15).
-  - **Experimento para el informe** (pregunta "¿qué pasa sin HALT?"), en simulación con un parámetro que desactiva el relleno con HALT del `du_loader`:
-    1. cargar primero un programa largo y después `no_halt.asm` (más corto) sin relleno: el PC sigue de largo y el procesador **re-ejecuta el final del programa anterior**;
-    2. con la IMEM en cero después del final del programa: la ejecución termina con motivo `ILLEGAL` al encontrar `0x00000000` (ADR-018), en vez de dar la vuelta.
-- **Criterios de Aceptación:**
-  - **AC1.** `infinite_loop.asm` en `RUN` + `ABORT` → snapshot con estado `ABORTED` y latches vacíos.
-  - **AC2.** `no_halt.asm` cargado normalmente termina solo gracias al relleno con HALT.
-  - **AC3.** La simulación sin relleno muestra los dos casos del experimento (re-ejecución de memoria vieja y terminación `ILLEGAL` con memoria en cero), con capturas o logs para el informe.
-- **Testing Mínimo:** `tb_du_abort.v`; prueba manual en placa.
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "TP3/"
-        "hw/"
-            "rtl/"
-                "debug/"
-                    "du_exec_ctrl.v — (extensión)"
-                "core/"
-                    "riscv_core.v — (i_stop_fetch)"
-            "tb/"
-                "debug/"
-                    "tb_du_abort.v"
-```
-
-### Épica H4-E3: Volcado de Estado y Validación en Placa
-
 #### US-405 — Volcado de Registros, Latches y Memoria Usada
 
-- **Esfuerzo:** M (5 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-402, US-103, ADR-008, ADR-017
+- **Esfuerzo:** M (5 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-403, US-103, ADR-008, ADR-017
 - **Objetivo Funcional:** cumplir "se deben enviar a la PC: el contenido de los 32 registros, de los latches intermedios y de la memoria de datos usada".
 - **Narrativa:** Como usuario, quiero recibir en la PC una foto completa del procesador en el ciclo actual, para visualizarla e interpretarla.
 - **Detalle técnico (`hw/rtl/debug/du_dumper.v`):**
   - FSM serializadora que arma la trama `[0xA5][tipo][longitud][payload][checksum]` con el layout de ADR-017:
-    1. Cabecera: estado/motivo de la Debug Unit, contador de ciclos, PC; luego el byte de señales de riesgo del ciclo (`stall`, `flush_if_id`, `flush_id_ex`, `fwd_a`, `fwd_b`).
+    1. Cabecera: estado/motivo de la Debug Unit, contador de ciclos (entrada del módulo: lo genera `du_exec_ctrl` en US-406 y, hasta entonces, lo maneja el testbench), PC; luego el byte de señales de riesgo del ciclo (`stall`, `flush_if_id`, `flush_id_ex`, `fwd_a`, `fwd_b`).
     2. 32 registros: recorre `i_dbg_reg_addr` de 0 a 31 y envía 4 bytes little-endian de cada uno.
     3. Latches: toma una **copia** de los buses `o_if_id`, `o_id_ex`, `o_ex_mem`, `o_mem_wb` al empezar (el núcleo está congelado, pero la copia hace explícito que todo es del mismo ciclo, R-DU-3) y los envía byte a byte en el orden de ADR-017.
     4. Memoria usada: envía la cantidad de palabras `K` (2 bytes) y luego recorre el bitmap; por cada palabra marcada envía `dirección (2 bytes) + dato (4 bytes)`, en orden creciente.
   - La longitud total se conoce antes de transmitir gracias al contador de palabras usadas del núcleo (`o_dbg_used_count`, ADR-008): `longitud = tamaño fijo + 2 + 6·K`.
-  - El serializador de tramas (cabecera, longitud, checksum al vuelo) es genérico y lo reutiliza `DUMP_MEM` (US-409).
+  - El serializador de tramas (cabecera, longitud, checksum al vuelo) es genérico y lo reutiliza `DUMP_MEM` (US-408).
   - Handshake con `uart_tx` vía `du_tx_mux`.
 - **Criterios de Aceptación:**
   - **AC1.** El snapshot contiene exactamente los campos de `docs/protocolo.md` en el orden definido, con el checksum correcto.
   - **AC2.** Los valores de registros y memoria coinciden con los del núcleo en simulación, en al menos 3 momentos distintos de un programa.
   - **AC3.** Un programa que no escribe memoria envía 0 palabras en la sección de memoria.
   - **AC4.** El núcleo no avanza durante el volcado.
-  - **AC5.** Tiempo de volcado medido en simulación consistente con la sección 3.5.
+  - **AC5.** Tiempo de volcado medido en simulación consistente con la sección 3.4.
 - **Reglas de Negocio:** R-DU-3, R-DU-4.
-- **Testing Mínimo:** `tb_du_dumper.v` con decodificador del snapshot en el testbench; en Python, `test_snapshot.py` (US-410) decodifica una captura real de la simulación.
+- **Testing Mínimo:** `tb_du_dumper.v` con decodificador del snapshot en el testbench; en Python, `test_snapshot.py` (US-409) decodifica una captura real de la simulación.
 - **Archivos a crear:**
 
 ```mermaid
@@ -1579,6 +1593,7 @@ treeView-beta
             "rtl/"
                 "debug/"
                     "du_dumper.v"
+                    "debug_unit.v — (instancia du_dumper)"
             "tb/"
                 "debug/"
                     "tb_du_dumper.v"
@@ -1588,9 +1603,75 @@ treeView-beta
                     "snapshot_sim.bin"
 ```
 
-#### US-409 — Comando `DUMP_MEM` (Lectura de un Rango de la DMEM)
+### Épica H4-E3: Ejecución y Lectura de Memoria
 
-- **Esfuerzo:** S (1 día) · **Prioridad:** Media · **Dependencias:** US-402, US-405, ADR-008
+#### US-406 — Modos de Ejecución Continuo y Paso a Paso
+
+- **Esfuerzo:** M (3 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-402, US-403, US-404, US-405, ADR-001
+- **Objetivo Funcional:** cumplir los dos modos de operación del enunciado controlando el núcleo exclusivamente con `i_enable`.
+- **Narrativa:** Como usuario, quiero ejecutar el programa completo con un comando o avanzar de a un ciclo de clock, viendo el estado en cada paso.
+- **Detalle técnico (`hw/rtl/debug/du_exec_ctrl.v`):**
+  - **`RUN`:** responde `ACK`, mantiene `i_enable = 1` hasta `o_halted` del núcleo (o `ABORT`, US-407); luego dispara el volcado (US-405) con el motivo de terminación (`HALTED` o `ILLEGAL` según `o_illegal`) y pasa a `HALTED`.
+  - **`STEP`:** pulso de `i_enable` de **exactamente 1 ciclo** (R-EJ-2), luego volcado, y queda en `STEPPING`; si ese paso completó el HALT (o la ilegal), pasa a `HALTED`.
+  - Contador de ciclos ejecutados (32 bits) incluido en el snapshot. Se pone en 0 con el pulso `o_load_done` de `du_loader` (US-404).
+  - `i_enable` sale de un flip-flop (no de lógica combinacional), para facilitar el timing (ADR-001).
+- **Criterios de Aceptación:**
+  - **AC1.** Cada `STEP` avanza el contador de ciclos en exactamente 1 y el PC/latches cambian lo que corresponde a un ciclo.
+  - **AC2.** El mismo programa ejecutado con `RUN` y con `STEP` repetido hasta `HALTED` termina con idéntico estado (R-EJ-7).
+  - **AC3.** Al terminar en ambos modos, el snapshot final muestra los 4 latches con `valid = 0`.
+  - **AC4.** El reloj no aparece en ninguna expresión lógica (verificado por revisión de código y por `report_clock_networks`: un único reloj, sin compuertas).
+  - **AC5.** `STEP` en `HALTED` responde `NACK(ERR_ESTADO)`.
+  - **AC6.** Un programa que termina en una instrucción ilegal envía el snapshot final con motivo `ILLEGAL` en ambos modos.
+- **Reglas de Negocio:** R-EJ-1, R-EJ-2, R-EJ-4bis, R-EJ-5, R-EJ-7.
+- **Testing Mínimo:** `tb_du_exec_ctrl.v` con `core_stub` (US-402), comparando `RUN` contra `STEP` repetido. La misma comparación con el núcleo real y programas de la suite se hace en US-411.
+- **Archivos a crear:**
+
+```mermaid
+treeView-beta
+    "TP3/"
+        "hw/"
+            "rtl/"
+                "debug/"
+                    "du_exec_ctrl.v"
+                    "debug_unit.v — (instancia du_exec_ctrl)"
+            "tb/"
+                "debug/"
+                    "tb_du_exec_ctrl.v"
+```
+
+#### US-407 — Programas sin Instrucción de Parada y Comando ABORT
+
+- **Esfuerzo:** S (1 día) · **Prioridad:** Alta · **Dependencias:** US-406, US-210 (solo para el experimento), ADR-010, ADR-018
+- **Objetivo Funcional:** responder en la práctica la pregunta "¿qué sucede si en mi memoria no se encuentra una instrucción de parada?" y garantizar que la placa nunca quede fuera de control.
+- **Narrativa:** Como usuario, quiero poder detener un programa que quedó en un loop infinito y ver en qué estado quedó, sin reiniciar la placa.
+- **Detalle técnico:**
+  - **`ABORT`** en `du_exec_ctrl.v` (ADR-010): activa la entrada `i_stop_fetch` del núcleo (implementada en US-210 y emulada por `core_stub`), que reutiliza la lógica del HALT (PC congelado, burbujas en IF/ID, se descarta la instrucción que estaba en IF/ID); el núcleo sigue habilitado hasta que los 4 latches quedan con `valid = 0` (como máximo 3 ciclos). Después se envía el snapshot con motivo `ABORTED` y la Debug Unit pasa a `HALTED`.
+  - **Sin watchdog:** ADR-010 lo descartó; queda en el roadmap (sección 15).
+  - **Experimento para el informe** (pregunta "¿qué pasa sin HALT?"), en simulación con el núcleo real y un parámetro que desactiva el relleno con HALT del `du_loader`:
+    1. cargar primero un programa largo y después `no_halt.asm` (más corto) sin relleno: el PC sigue de largo y el procesador **re-ejecuta el final del programa anterior**;
+    2. con la IMEM en cero después del final del programa: la ejecución termina con motivo `ILLEGAL` al encontrar `0x00000000` (ADR-018), en vez de dar la vuelta.
+- **Criterios de Aceptación:**
+  - **AC1.** Un programa que nunca termina (el stub sin `o_halted`; con el núcleo real, `infinite_loop.asm`) en `RUN` + `ABORT` → snapshot con estado `ABORTED` y latches vacíos.
+  - **AC2.** Con el núcleo real, `no_halt.asm` cargado normalmente termina solo gracias al relleno con HALT.
+  - **AC3.** La simulación sin relleno muestra los dos casos del experimento (re-ejecución de memoria vieja y terminación `ILLEGAL` con memoria en cero), con capturas o logs para el informe.
+- **Testing Mínimo:** `tb_du_abort.v` con `core_stub`; prueba manual en placa en US-411.
+- **Archivos a crear:**
+
+```mermaid
+treeView-beta
+    "TP3/"
+        "hw/"
+            "rtl/"
+                "debug/"
+                    "du_exec_ctrl.v — (extensión)"
+            "tb/"
+                "debug/"
+                    "tb_du_abort.v"
+```
+
+#### US-408 — Comando `DUMP_MEM` (Lectura de un Rango de la DMEM)
+
+- **Esfuerzo:** S (1 día) · **Prioridad:** Media · **Dependencias:** US-403, US-405, ADR-008
 - **Objetivo Funcional:** poder ver datos de la DMEM que el programa lee pero no escribe (y que por eso no aparecen en la "memoria usada" del snapshot).
 - **Narrativa:** Como usuario, quiero pedir un rango cualquiera de la memoria de datos, para inspeccionar zonas que el programa no marcó como usadas.
 - **Detalle técnico:**
@@ -1618,42 +1699,11 @@ treeView-beta
                     "tb_du_dump_mem.v"
 ```
 
-#### US-407 — Validación de Extremo a Extremo en Placa
+### Épica H4-E4: Software de Control en la PC y Validación en Placa
 
-- **Esfuerzo:** M (3 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-403 a US-406, US-409, US-305, US-411
-- **Objetivo Funcional:** demostrar en la Basys 3 que todo el flujo funciona: ensamblar → cargar → ejecutar → volcar → comparar, para toda la suite.
-- **Narrativa:** Como equipo, queremos correr toda la suite de programas en la placa real con un comando, para medir la North Star y tener evidencia para el informe.
-- **Detalle técnico:**
-  - Integración del núcleo real (Hito 3) en `top.v` en lugar del stub.
-  - **`tools/scripts/verify_board.py`:** usa `DebugSession` (US-411) para, por cada programa: `LOAD` → `RUN` → comparar el snapshot final contra el golden model. Modo `--step` que ejecuta todo con `STEP` y compara el resultado con el de `RUN`.
-  - Prueba de reprogramación: cargar y ejecutar 5 programas distintos seguidos sin reset.
-  - Reporte en `docs/informe/datos/resultados_placa.md`.
-- **Criterios de Aceptación:**
-  - **AC1.** 100 % de la suite pasa en placa en modo `RUN` (North Star).
-  - **AC2.** Modo `--step` da el mismo resultado que `RUN` en toda la suite.
-  - **AC3.** 5 reprogramaciones consecutivas correctas.
-  - **AC4.** El bitstream usado se guarda con su hash de commit para poder reproducir la prueba.
-- **Testing Mínimo:** el propio script.
-- **Archivos a crear:**
+#### US-409 — Codec del Protocolo y Transportes (Serie y Simulado)
 
-```mermaid
-treeView-beta
-    "tps-arqui/"
-        "TP3/"
-            "tools/"
-                "scripts/"
-                    "verify_board.py"
-        "docs/"
-            "informe/"
-                "datos/"
-                    "resultados_placa.md"
-```
-
-### Épica H4-E4: Software de Control en la PC
-
-#### US-410 — Codec del Protocolo y Transportes (Serie y Simulado)
-
-- **Esfuerzo:** S (2 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-104, US-107, ADR-003, ADR-017
+- **Esfuerzo:** S (2 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-104, US-108, US-405, ADR-003, ADR-017
 - **Objetivo Funcional:** traducir comandos a bytes y bytes a objetos `Snapshot`, independizando al resto del software del puerto serie.
 - **Narrativa:** Como desarrollador de la GUI, quiero trabajar con objetos `Snapshot` con campos con nombre y poder usar un transporte simulado, para desarrollar la interfaz antes de que la placa esté lista.
 - **Detalle técnico (`tools/riscv_toolkit/protocol/`):**
@@ -1661,7 +1711,7 @@ treeView-beta
   - **`codec.py`:** `encode_load(palabras)`, `encode_cmd(cmd)`, `encode_dump_mem(addr, n)`, `FrameReader` que acumula bytes y devuelve tramas completas validando cabecera (`0xA5`), longitud y checksum XOR (que incluye tipo y longitud, ADR-003).
   - **`snapshot.py`:** `@dataclass(frozen=True)` `Snapshot` (con `motivo`: `HALTED`/`ILLEGAL`/`ABORTED` o `None` si sigue en ejecución), `LatchIFID`, `LatchIDEX`, `LatchEXMEM`, `LatchMEMWB` (con flags `valid`, `halt`, `illegal`), `RiesgosCiclo`; `Snapshot.from_bytes(payload)` según el layout de ADR-017; `MemRange.from_bytes` para la respuesta de `DUMP_MEM`.
   - **`transport.py`:** interfaz `Transport` con `write(bytes)`, `read(n, timeout)`, `close()`.
-  - **`serial_transport.py`:** `pyserial`; detección automática del puerto de la Basys 3 (VID/PID del conversor FTDI) con opción de elegirlo manualmente.
+  - **`serial_transport.py`:** `pyserial` (dependencia agregada en US-401); detección automática del puerto de la Basys 3 (VID/PID del conversor FTDI) con opción de elegirlo manualmente.
   - **`fake_transport.py`:** implementa el protocolo respaldado por `GoldenModel`: `LOAD`/`RUN`/`STEP`/`DUMP`/`DUMP_MEM`/`RESET`/`ABORT` operan sobre el ISS y respetan R-DU-1 (responde los mismos `NACK`); los latches se completan con las instrucciones más recientes (aproximación sin riesgos) y el snapshot se marca `simulado = True`.
 - **Criterios de Aceptación:**
   - **AC1.** Los ejemplos de bytes de `docs/protocolo.md` se codifican/decodifican exactamente (tests de tabla).
@@ -1691,16 +1741,16 @@ treeView-beta
                     "test_fake_transport.py"
 ```
 
-#### US-411 — Sesión de Depuración y CLI
+#### US-410 — Sesión de Depuración y CLI
 
-- **Esfuerzo:** S (2 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-410, US-106, US-108
+- **Esfuerzo:** S (2 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-409, US-106, US-107
 - **Objetivo Funcional:** ofrecer los casos de uso (cargar, correr, paso, volcar, leer memoria, abortar) como API reutilizable y como línea de comandos, base de la GUI y de las pruebas automáticas en placa.
 - **Narrativa:** Como usuario, quiero manejar la placa desde la terminal con comandos simples, y como desarrollador, quiero que la GUI y los scripts usen exactamente la misma lógica.
 - **Detalle técnico:**
   - **`session/debug_session.py`:** clase `DebugSession(transport)` con `ping()`, `load(imagen)`, `run()`, `step()`, `dump()`, `dump_mem(addr, n)`, `reset()`, `abort()`; manejo de `ACK`/`NACK` como excepciones con el código de error; timeouts configurables (durante `RUN` espera el snapshot final sin timeout corto, ADR-003); reintento de `PING` al conectar.
   - **`session/history.py`:** `SnapshotHistory` (lista de snapshots de la sesión, con índice actual).
   - **`session/diff.py`:** `diff(a, b) -> CambiosEstado` (registros y palabras de memoria que cambiaron).
-  - **`cli/main.py`** (comando `rvdbg`): subcomandos `ping`, `load <archivo.asm>`, `run`, `step [N]`, `dump`, `dump-mem <addr> <n>`, `reset`, `abort`, y `shell` (modo interactivo); opciones `--port`, `--fake`, `--json` (salida en JSON para scripts). `run` permite cortar con Ctrl+C, que envía `ABORT`.
+  - **`cli/main.py`** (comando `rvdbg`): subcomandos `ping`, `load <archivo.asm>`, `run`, `step [N]`, `dump`, `dump-mem <addr> <n>`, `reset`, `abort`, y `shell` (modo interactivo); opciones `--port`, `--fake`, `--json` (salida en JSON para scripts). `run` permite cortar con Ctrl+C, que envía `ABORT`. `rvdbg` es el subcomando `dbg`.
 - **Criterios de Aceptación:**
   - **AC1.** `rvdbg --fake load demos/fibonacci.asm && rvdbg --fake run` muestra registros y memoria finales.
   - **AC2.** Un `NACK` se muestra con un mensaje legible (ej. "No se puede ejecutar STEP: el procesador está detenido (HALTED). Cargá o reseteá el programa.").
@@ -1721,6 +1771,7 @@ treeView-beta
                     "diff.py"
                 "cli/"
                     "main.py"
+            "riscv_toolkit/__main__.py — (subcomando dbg)"
             "tests/"
                 "session/"
                     "test_debug_session.py"
@@ -1728,28 +1779,61 @@ treeView-beta
                     "test_diff.py"
 ```
 
+#### US-411 — Validación de Extremo a Extremo en Placa
+
+- **Esfuerzo:** M (3 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-404 a US-408, US-305, US-410
+- **Objetivo Funcional:** demostrar en la Basys 3 que todo el flujo funciona: ensamblar → cargar → ejecutar → volcar → comparar, para toda la suite.
+- **Narrativa:** Como equipo, queremos correr toda la suite de programas en la placa real con un comando, para medir la North Star y tener evidencia para el informe.
+- **Detalle técnico:**
+  - Integración del núcleo real (Hito 3) en `top.v` en lugar del stub.
+  - **Antes de la placa:** se repiten en simulación los testbenches de US-404 a US-407 con `riscv_core` en lugar de `core_stub`, incluidos los AC que necesitan ejecutar programas (US-404 AC1, AC2 y AC4; US-406 AC2 con programas de la suite).
+  - **`tools/scripts/verify_board.py`:** usa `DebugSession` (US-410) para, por cada programa: `LOAD` → `RUN` → comparar el snapshot final contra el golden model. Modo `--step` que ejecuta todo con `STEP` y compara el resultado con el de `RUN`.
+  - Prueba de reprogramación: cargar y ejecutar 5 programas distintos seguidos sin reset.
+  - Reporte en `docs/informe/datos/resultados_placa.md`.
+- **Criterios de Aceptación:**
+  - **AC1.** 100 % de la suite pasa en placa en modo `RUN` (North Star).
+  - **AC2.** Modo `--step` da el mismo resultado que `RUN` en toda la suite.
+  - **AC3.** 5 reprogramaciones consecutivas correctas.
+  - **AC4.** El bitstream usado se guarda con su hash de commit para poder reproducir la prueba.
+  - **AC5.** Los testbenches de US-404 a US-407 pasan en simulación con el núcleo real.
+- **Testing Mínimo:** el propio script.
+- **Archivos a crear:**
+
+```mermaid
+treeView-beta
+    "tps-arqui/"
+        "TP3/"
+            "tools/"
+                "scripts/"
+                    "verify_board.py"
+        "docs/"
+            "informe/"
+                "datos/"
+                    "resultados_placa.md"
+```
+
 ---
 
 ### Hito 5 — Interfaz Gráfica en PC (v0.5)
 
-**Objetivo del hito:** una GUI prolija en Flet que permita escribir o abrir un programa, ensamblarlo, cargarlo, ejecutarlo en ambos modos y **entender** qué pasa en el pipeline en cada ciclo. La sesión, el codec y la CLI ya existen desde el Hito 4 (US-410/411).
+**Objetivo del hito:** una GUI prolija en Flet que permita escribir o abrir un programa, ensamblarlo, cargarlo, ejecutarlo en ambos modos y **entender** qué pasa en el pipeline en cada ciclo. La sesión, el codec y la CLI ya existen desde el Hito 4 (US-409 y US-410).
 
 **Épicas:** 2 · **Historias:** 5 · **Esfuerzo total estimado:** ~13 días·persona
 
-**Decisiones previas requeridas:** ADR-012 (aprobada). US-411 cerrada.
+**Decisiones previas requeridas:** ADR-012 (aprobada). US-410 cerrada.
 
-**Mínimo viable si falta tiempo:** US-503 y US-504. US-505 puede reducirse a tablas sin resaltado; US-507 y US-506 son las primeras candidatas a recortar, en ese orden.
+**Mínimo viable si falta tiempo:** US-501 y US-502. US-504 puede reducirse a tablas sin resaltado; US-503 y US-505 son las primeras candidatas a recortar, en ese orden.
 
 ### Épica H5-E1: Interfaz Base y Visualización del Pipeline
 
-#### US-503 — Estructura de la Interfaz: Conexión, Programa y Controles
+#### US-501 — Estructura de la Interfaz: Conexión, Programa y Controles
 
-- **Esfuerzo:** M (3 días) · **Prioridad:** Alta · **Dependencias:** US-411, ADR-012
+- **Esfuerzo:** M (3 días) · **Prioridad:** Alta · **Dependencias:** US-410, ADR-012
 - **Objetivo Funcional:** la pantalla principal desde la que se hace todo el flujo sin tocar la terminal.
 - **Narrativa:** Como usuario en la defensa, quiero abrir un programa, ensamblarlo, cargarlo y ejecutarlo desde una sola pantalla con botones o atajos claros.
 - **Detalle técnico (`tools/riscv_toolkit/ui/`, Flet según ADR-012; versión de Flet fijada en `pyproject.toml`):**
   - **Barra de conexión:** puerto serie (lista detectada), botón conectar, indicador de estado (desconectado / conectado / simulado), versión de hardware (de `PING`).
-  - **Panel de programa:** abrir `.asm`, editar (campo de texto multilínea de Flet con numeración de líneas; Flet no trae resaltado de sintaxis, así que el resaltado se limita al listado ensamblado, ADR-012), botón **Ensamblar** con lista de errores y advertencias clickeable (lleva a la línea), vista del listado `.lst` (dirección / hex / instrucción, US-108).
+  - **Panel de programa:** abrir `.asm`, editar (campo de texto multilínea de Flet con numeración de líneas; Flet no trae resaltado de sintaxis, así que el resaltado se limita al listado ensamblado, ADR-012), botón **Ensamblar** con lista de errores y advertencias clickeable (lleva a la línea), vista del listado `.lst` (dirección / hex / instrucción, US-107).
   - **Controles de ejecución:** Cargar, Correr, Paso, Paso ×N, Abortar, Reset; habilitados/deshabilitados según el estado de la Debug Unit (espejo de R-DU-1; por ejemplo, Cargar y Reset también en `STEPPING`).
   - **Barra de estado:** estado de la Debug Unit, motivo de terminación (`HALTED`/`ILLEGAL`/`ABORTED`), ciclo actual, PC, cantidad de stalls/flushes acumulados.
   - Atajos de teclado (ej. `F5` correr, `F10` paso, `Ctrl+L` cargar).
@@ -1782,9 +1866,9 @@ treeView-beta
                 "checklist_ui.md"
 ```
 
-#### US-504 — Vista del Pipeline y Detalle de Latches
+#### US-502 — Vista del Pipeline y Detalle de Latches
 
-- **Esfuerzo:** M (3 días) · **Prioridad:** Alta · **Dependencias:** US-503, US-108
+- **Esfuerzo:** M (3 días) · **Prioridad:** Alta · **Dependencias:** US-501, US-107
 - **Objetivo Funcional:** la pieza "creativa" central: ver de un vistazo qué instrucción está en cada etapa y qué mecanismos de riesgo actuaron en el ciclo.
 - **Narrativa:** Como usuario, quiero ver las 5 etapas con la instrucción desensamblada en cada una y señalados los stalls, flushes y forwardings, para entender el funcionamiento del pipeline paso a paso.
 - **Detalle técnico (`ui/views/pipeline_view.py`, `latch_detail_view.py`):**
@@ -1800,7 +1884,7 @@ treeView-beta
 
     Este mapeo se documenta en el código y en el manual, porque es fácil confundirlo.
 
-  - **5 columnas** IF / ID / EX / MEM / WB con: instrucción desensamblada (US-108), PC, y marca visual de **burbuja** si `valid = 0`; las instrucciones con `halt` o `illegal` se marcan distinto.
+  - **5 columnas** IF / ID / EX / MEM / WB con: instrucción desensamblada (US-107), PC, y marca visual de **burbuja** si `valid = 0`; las instrucciones con `halt` o `illegal` se marcan distinto.
   - **Indicadores del ciclo** (de `RiesgosCiclo`): stall (IF e ID congelados, burbuja en EX), flush (instrucciones anuladas tachadas, según `flush_if_id`/`flush_id_ex`), forwarding (flecha o etiqueta "A ← EX/MEM", "B ← MEM/WB" sobre EX).
   - **Detalle de latch:** al seleccionar un latch se muestran todos sus campos con nombre (tabla campo / valor hex / valor decimal).
 
@@ -1824,13 +1908,13 @@ treeView-beta
                         "latch_detail_view.py"
 ```
 
-#### US-507 — Carta de Pipeline (Instrucciones × Ciclos)
+#### US-503 — Carta de Pipeline (Instrucciones × Ciclos)
 
-- **Esfuerzo:** S (2 días) · **Prioridad:** Media · **Dependencias:** US-504, US-411 (`history.py`)
+- **Esfuerzo:** S (2 días) · **Prioridad:** Media · **Dependencias:** US-502, US-410 (`history.py`)
 - **Objetivo Funcional:** reproducir en la GUI la figura clásica de "Segmentado" del enunciado (instrucciones en filas, ciclos en columnas), construida a partir del historial de la sesión.
 - **Narrativa:** Como usuario, quiero ver toda la ejecución como una carta de pipeline, para explicar en la defensa dónde hubo stalls y flushes sin ir ciclo por ciclo.
 - **Detalle técnico (`ui/views/pipeline_chart_view.py`):**
-  - Recorre `SnapshotHistory` y, para cada ciclo, ubica cada instrucción (identificada por su PC y la vuelta en que se ejecutó) en la etapa que ocupaba, con el mismo mapeo de columnas de US-504.
+  - Recorre `SnapshotHistory` y, para cada ciclo, ubica cada instrucción (identificada por su PC y la vuelta en que se ejecutó) en la etapa que ocupaba, con el mismo mapeo de columnas de US-502.
   - Marca burbujas, stalls y flushes con los mismos colores que la vista del pipeline.
   - Funciona solo con historial paso a paso (en `RUN` solo hay snapshot final); la UI lo aclara.
 - **Criterios de Aceptación:**
@@ -1855,19 +1939,19 @@ treeView-beta
 
 ### Épica H5-E2: Estado Arquitectónico e Historial
 
-#### US-505 — Vistas de Registros y Memoria con Resaltado de Cambios
+#### US-504 — Vistas de Registros y Memoria con Resaltado de Cambios
 
-- **Esfuerzo:** S (2 días) · **Prioridad:** Alta · **Dependencias:** US-503
+- **Esfuerzo:** S (2 días) · **Prioridad:** Alta · **Dependencias:** US-501
 - **Objetivo Funcional:** mostrar los 32 registros y la memoria usada de forma legible, destacando qué cambió en el último paso.
-- **Narrativa:** Como usuario, quiero ver los registros con su nombre ABI y la memoria usada, y que se resalte lo que acaba de cambiar, para seguir la ejecución sin comparar números a ojo.
+- **Narrativa:** Como usuario, quiero ver los registros y la memoria usada, y que se resalte lo que acaba de cambiar, para seguir la ejecución sin comparar números a ojo.
 - **Detalle técnico:**
-  - **`registers_view.py`:** tabla 32 filas: `xN`, nombre ABI, valor en hex, decimal con signo y sin signo (formato conmutable); fila resaltada si cambió respecto del snapshot anterior (usa `session/diff.py`).
-  - **`memory_view.py`:** tabla de palabras usadas: dirección, hex, 4 bytes individuales, ASCII (útil para el demo de cadenas); resaltado de cambios; opción de pedir un rango con `DUMP_MEM` (`DebugSession.dump_mem`, US-411).
+  - **`registers_view.py`:** tabla 32 filas: `xN`, valor en hex, decimal con signo y sin signo (formato conmutable); fila resaltada si cambió respecto del snapshot anterior (usa `session/diff.py`).
+  - **`memory_view.py`:** tabla de palabras usadas: dirección, hex, 4 bytes individuales, ASCII (útil para el demo de cadenas); resaltado de cambios; opción de pedir un rango con `DUMP_MEM` (`DebugSession.dump_mem`, US-410).
 - **Criterios de Aceptación:**
-  - **AC1.** Tras un `addi x5,x0,-1`, `x5 (t0)` se muestra como `0xFFFFFFFF`, `-1` y `4294967295`, y resaltado.
+  - **AC1.** Tras un `addi x5,x0,-1`, `x5` se muestra como `0xFFFFFFFF`, `-1` y `4294967295`, y resaltado.
   - **AC2.** Un `sb` resalta la palabra afectada y el byte cambiado.
   - **AC3.** La vista de memoria muestra solo la memoria usada por defecto, y un rango pedido con `DUMP_MEM` se muestra aparte, marcado como "leído a pedido".
-- **Testing Mínimo:** manual (el test de `diff.py` ya existe desde US-411).
+- **Testing Mínimo:** manual (el test de `diff.py` ya existe desde US-410).
 - **Archivos a crear:**
 
 ```mermaid
@@ -1881,9 +1965,9 @@ treeView-beta
                         "memory_view.py"
 ```
 
-#### US-506 — Historial de Pasos, Exportación y Verificación contra Golden Model
+#### US-505 — Historial de Pasos, Exportación y Verificación contra Golden Model
 
-- **Esfuerzo:** M (3 días) · **Prioridad:** Media · **Dependencias:** US-504, US-505, US-107, US-411
+- **Esfuerzo:** M (3 días) · **Prioridad:** Media · **Dependencias:** US-502, US-504, US-108, US-410
 - **Objetivo Funcional:** permitir "volver atrás" para revisar ciclos anteriores (del lado de la PC) y verificar con un clic si el resultado de la placa es el esperado.
 - **Narrativa:** Como usuario, quiero revisar el estado de ciclos anteriores sin re-ejecutar, y comprobar automáticamente que el resultado de la placa coincide con el esperado.
 - **Detalle técnico:**
@@ -1894,7 +1978,7 @@ treeView-beta
   - **AC1.** Navegar hacia atrás muestra exactamente el estado de ese ciclo en todas las vistas.
   - **AC2.** Una sesión exportada se reabre y se navega igual que en vivo.
   - **AC3.** Verificar sobre un programa correcto indica coincidencia; alterando a mano un valor en un snapshot de prueba, muestra la diferencia.
-- **Testing Mínimo:** `test_export_import.py` (la navegación del historial ya se prueba en `test_history.py`, US-411); manual para la vista.
+- **Testing Mínimo:** `test_export_import.py` (la navegación del historial ya se prueba en `test_history.py`, US-410); manual para la vista.
 - **Archivos a crear:**
 
 ```mermaid
@@ -1927,7 +2011,7 @@ treeView-beta
 
 #### US-601 — Análisis del Camino Crítico y del Skew
 
-- **Esfuerzo:** S (2 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-407
+- **Esfuerzo:** S (2 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-411
 - **Objetivo Funcional:** responder "¿cuál es el camino crítico de mi sistema?" y "¿genera skew? ¿qué consecuencias tiene?" con evidencia de los reportes.
 - **Narrativa:** Como equipo, queremos identificar el camino más lento del sistema integrado y entender si hay problemas de skew, para decidir la frecuencia con fundamentos.
 - **Detalle técnico:**
@@ -1955,7 +2039,7 @@ treeView-beta
 
 #### US-602 — Frecuencia Óptima y Clock Wizard
 
-- **Esfuerzo:** M (3 días) · **Prioridad:** Alta · **Dependencias:** US-601, US-407, ADR-016
+- **Esfuerzo:** M (3 días) · **Prioridad:** Alta · **Dependencias:** US-601, US-411, ADR-016
 - **Objetivo Funcional:** "encontrar la frecuencia de funcionamiento óptima" y "aplicarla en el sistema", con el criterio fijado en ADR-016, y cerrar ese ADR.
 - **Narrativa:** Como equipo, queremos que el procesador corra a la mayor frecuencia que cumpla timing con margen, usando el Clock Wizard solo si hace falta.
 - **Detalle técnico:**
@@ -2036,7 +2120,7 @@ treeView-beta
   4. Debug Unit: estados, protocolo, carga, modos.
   5. Software de PC: ensamblador, golden model, interfaz (capturas).
   6. Verificación: estrategia, suite, resultados en simulación y en placa.
-  7. **Respuestas a las preguntas del enunciado:** ¿vaciar memoria? ¿registros? ¿pipeline? ¿memoria de programa? (ADR-009); ¿qué pasa sin HALT? (ADR-010 + experimento de US-406); camino crítico, skew y frecuencia (US-601/602).
+  7. **Respuestas a las preguntas del enunciado:** ¿vaciar memoria? ¿registros? ¿pipeline? ¿memoria de programa? (ADR-009); ¿qué pasa sin HALT? (ADR-010 + experimento de US-407); camino crítico, skew y frecuencia (US-601/602).
   8. Síntesis e implementación: métricas (US-603).
   9. Decisiones de diseño: resumen de todos los ADR.
   10. Manual de usuario (instalación del software, uso de la GUI y la CLI).
@@ -2063,12 +2147,12 @@ treeView-beta
 
 #### US-605 — Preparación de la Demostración y la Defensa
 
-- **Esfuerzo:** S (1 día) · **Prioridad:** Alta · **Dependencias:** US-604, US-503 a US-506
+- **Esfuerzo:** S (1 día) · **Prioridad:** Alta · **Dependencias:** US-604, US-501, US-502, US-504, US-505
 - **Objetivo Funcional:** llegar a la defensa con un guion probado y un plan B.
 - **Narrativa:** Como equipo, queremos un guion de demostración ensayado, para mostrar todo en pocos minutos y sin sorpresas.
 - **Detalle técnico:**
   - Guion: carga de un demo → paso a paso mostrando un load-use y un branch tomado en la vista del pipeline → `RUN` de otro demo → reprogramación → `ABORT` de un loop infinito → verificación contra golden model.
-  - **Plan B:** sesiones exportadas (US-506) de todos los casos, para mostrar sin placa si algo falla; bitstream del release `v1.0` descargable (sección 15).
+  - **Plan B:** sesiones exportadas (US-505) de todos los casos, para mostrar sin placa si algo falla; bitstream del release `v1.0` descargable (sección 15).
   - Checklist de hardware: cable, drivers, puerto, versión del bitstream.
 - **Criterios de Aceptación:**
   - **AC1.** El guion se ensayó completo al menos una vez en una máquina distinta a la de desarrollo.
@@ -2092,11 +2176,11 @@ treeView-beta
 Una historia de usuario se considera **Hecha** cuando cumple **todos** los puntos que le apliquen:
 
 1. **Código integrado:** merge a `develop` por Pull Request revisado por el otro integrante, con el **CI en verde** (ADR-015); commits con formato `tipo(alcance): descripción` (sección 15).
-2. **Hardware — testbench:** cada módulo nuevo o modificado tiene su testbench autoverificable y `make sim-all` pasa completo en xsim y en Icarus (salvo los marcados como solo-xsim).
+2. **Hardware — testbench:** cada módulo nuevo o modificado tiene su testbench autoverificable y `make lint` no da advertencias y `make sim-all` pasa completo.
 3. **Hardware — regresión:** si la historia toca el núcleo o la Debug Unit, `make verify` (US-305) pasa al 100 %.
 4. **Hardware — síntesis limpia:** sintetiza sin _critical warnings_, sin latches inferidos y sin nuevas advertencias de _multi-driven nets_; implementa cumpliendo timing a la frecuencia vigente (a partir del Hito 2).
 5. **Reloj intacto:** ninguna expresión usa `clock` fuera de `@(posedge clock)` (revisión en el PR).
-6. **Software:** `pytest` pasa, `ruff` sin errores, cobertura según NFR-10.
+6. **Software:** `pytest` pasa, `ruff` y `mypy` sin errores, `pip-audit` sin vulnerabilidades, cobertura según NFR-10.
 7. **Contratos actualizados:** si cambió la interfaz del núcleo, el protocolo o el contenido de un latch, están actualizados `docs/interfaces/`, `docs/protocolo.md`, `du_dumper.v` y `protocol/snapshot.py` **en el mismo PR**.
 8. **ADR:** si la historia requirió una decisión, el ADR está aprobado y en `docs/adr/`; si contradice un ADR existente, se escribe uno nuevo que lo reemplace (no se edita la decisión en silencio).
 9. **Estilo:** respeta la sección 5.1 (Verilog) y la sección 13 (convenciones).
@@ -2128,14 +2212,14 @@ Un módulo es **crítico** si cumple al menos uno: decide qué instrucción se e
 | `control_unit.v`                                         | Crítico    | Decide qué es HALT y qué es ilegal (ADR-004, ADR-018)   | 33 instrucciones + casos ilegales    |
 | `data_mem.v` (bitmap y contador)                         | Crítico    | Define la "memoria usada" que se vuelca (ADR-008)       | AC de US-204                         |
 | `store_align.v`, `load_extend.v`                         | Crítico    | 16 combinaciones tamaño × offset × signo                | 100 % de combinaciones               |
-| `du_exec_ctrl.v`                                         | Crítico    | Garantiza R-EJ-2 (un paso = un ciclo)                   | AC de US-404                         |
-| `du_loader.v`                                            | Crítico    | Reprogramación y política de limpieza                   | AC de US-403                         |
-| `du_cmd_fsm.v`                                           | Crítico    | Nunca debe quedar colgada (NFR-6)                       | AC de US-402 (timeout y paridad)     |
+| `du_exec_ctrl.v`                                         | Crítico    | Garantiza R-EJ-2 (un paso = un ciclo)                   | AC de US-406                         |
+| `du_loader.v`                                            | Crítico    | Reprogramación y política de limpieza                   | AC de US-404                         |
+| `du_cmd_fsm.v`                                           | Crítico    | Nunca debe quedar colgada (NFR-6)                       | AC de US-403 (timeout y paridad)     |
 | `isa/`, `assembler/`                                     | Crítico    | Un error de codificación invalida todas las pruebas     | ≥ 95 % + contraste con GNU           |
 | `protocol/codec.py`, `du_dumper.v`                       | Crítico    | Contrato de observabilidad                              | ≥ 95 % + captura real                |
 | `ui/`                                                    | No crítico | Solo presentación                                       | Checklist manual                     |
 
-**Ubicación del catálogo vivo:** `docs/catalogo-criticidad.md` (se inicializa en US-101 y se revisa al cierre de cada hito).
+El catálogo se mantiene en esta sección y se revisa al cierre de cada hito.
 
 ---
 
@@ -2148,10 +2232,10 @@ treeView-beta
     "tps-arqui/"
         ".github/"
             "workflows/"
-                "ci.yml — ruff + pytest + Icarus (ADR-015)"
+                "ci.yml — lint y simulación HDL + verificaciones de Python (ADR-015)"
         "TP3/"
-            "Makefile — sim, sim-all, verify, test-py"
-            "README.md — versiones de herramientas y cómo empezar"
+            "Makefile — setup, lint, sim, sim-all, verify, test-py, check-py, check"
+            "README.md — informe del TP3"
             "CHANGELOG.md"
             "hw/"
                 "rtl/"
@@ -2168,11 +2252,11 @@ treeView-beta
                 "constraints/"
                     "basys3.xdc"
                 "ip/ — .xci del Clock Wizard, solo si ADR-016 lo requiere"
-                "scripts/ — sim.tcl (xsim/icarus), freq_sweep.tcl"
+                "scripts/ — sim.sh, lint.sh, freq_sweep.tcl"
                 "reports/ — reportes exportados desde Vivado (timing, utilización, potencia)"
             "asm/"
                 "README.md — convención de firma de resultado"
-                "tests/ — h2/, instr/, hazards/ (firma en 0x3FC)"
+                "tests/ — h2/ (sin firma), instr/ y hazards/ (firma en 0x3FC)"
                 "demos/ — programas para la defensa"
                 "special/ — no_halt, infinite_loop, illegal"
             "tools/ — software de PC (Python)"
@@ -2186,7 +2270,7 @@ treeView-beta
             "interfaces/ — riscv_core.md, tabla_control.md"
             "protocolo.md"
             "diagramas/"
-            "catalogo-criticidad.md"
+            "guia-herramientas.md — lint, simulación y proyecto de Vivado"
             "informe/"
             "manual/"
             "defensa/"
@@ -2198,10 +2282,10 @@ treeView-beta
 
 - **Idioma:** documentación, comentarios e informe en español; nombres de módulos, señales, clases y funciones siguiendo el estilo del TP2 (identificadores en inglés técnico con prefijos `i_`/`o_`/`r_`/`w_`). _Si el equipo prefiere nombres en español en Python, se fija acá y se aplica a todo `tools/`._
 - **Un módulo Verilog por archivo**, con el mismo nombre que el archivo.
-- **Constantes compartidas hardware/software** (comandos, códigos de error, motivos de terminación, opcode de HALT, tamaños de memoria, dirección de firma): se definen en `docs/protocolo.md`; la fuente en código es `tools/riscv_toolkit/protocol/comandos.py` y `tools/scripts/gen_du_defs.py` genera `hw/rtl/debug/du_defs.vh`. Un test verifica que el `.vh` versionado está al día (US-104).
+- **Constantes compartidas hardware/software** (comandos, códigos de error, motivos de terminación, opcode de HALT, tamaños de memoria, dirección de firma): se definen en `docs/protocolo.md`; la fuente en código es `tools/riscv_toolkit/protocol/comandos.py` (el opcode y la palabra de HALT, `tools/riscv_toolkit/isa/instrucciones.py`) y `tools/scripts/gen_du_defs.py` genera `hw/rtl/debug/du_defs.vh`. Un test verifica que el `.vh` versionado está al día (US-104).
 - **Identificadores en Python** (ADR-011): nombres de dominio en español (`instrucciones.py`, `ensamblar()`, `Imagen`, `LineaAsm`) y términos técnicos sin traducción natural en inglés (`Transport`, `Snapshot`, `encode_r`). Comentarios y docstrings en español.
 - **Direcciones y valores en hexadecimal** en logs, GUI e informe (`0x0000_0010`), con separador cada 4 dígitos en la GUI.
-- **Registros** se muestran como `xN (abi)` en la GUI, ej. `x5 (t0)`.
+- **Registros** se escriben y se muestran solo como `xN` (ej. `x5`), en el assembly y en la GUI (ADR-013).
 - **Programas de prueba:** un archivo por caso, nombre en minúsculas con guion bajo, encabezado con qué prueba y resultado esperado.
 - **Nada de números mágicos** en Verilog: todo tamaño es un parámetro o `localparam`.
 - **Reportes de Vivado** que respalden números del informe se guardan en `hw/reports/` con la versión del release.
@@ -2210,37 +2294,38 @@ treeView-beta
 
 ## 14. Incoherencias y Errores de la Presentación del TP
 
-Revisión de la presentación `TRABAJO_FINAL_2026.pdf` contra la especificación oficial de RISC-V. Se documenta para: (1) no implementar algo mal por seguir la diapositiva; (2) dejar asentado en el informe cada interpretación que tomó el equipo; (3) llevar preguntas concretas a la cátedra.
+Revisión de la presentación `enunciados/TRABAJO FINAL 2026.pdf` contra la especificación oficial de RISC-V. Se documenta para: (1) no implementar algo mal por seguir la diapositiva; (2) dejar asentado en el informe cada interpretación que tomó el equipo; (3) llevar preguntas concretas a la cátedra.
 
 ### 14.1 Errores técnicos
 
-| #   | Diapositiva    | Qué dice                                                                            | Qué es correcto (especificación RV32I)                                                                                                                                                                                                                                                                                                                                                                      | Impacto en el proyecto                                                                                           |
-| --- | -------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| E1  | Tipo J (`jal`) | "La dirección a la que se salta es la almacenada en el registro rd"                 | `rd` **recibe** la dirección de retorno (`PC + 4`). El destino del salto es `PC + imm`, con el inmediato de 21 bits codificado en la instrucción. El salto a una dirección contenida en un registro es `jalr` (tipo I, destino `(rs1 + imm) & ~1`).                                                                                                                                                         | Se implementa según la especificación (US-207, US-303).                                                          |
-| E2  | B-Type (`beq`) | La figura de codificación rotula como `rs1` tanto los bits [24:20] como los [19:15] | Los bits [24:20] son **`rs2`** y los [19:15] son `rs1`. `beq` compara dos registros distintos.                                                                                                                                                                                                                                                                                                              | Se usa la tabla de la sección 2.2.                                                                               |
-| E3  | Tipo I         | La tabla de ejemplo incluye `ld` (_load doubleword_, funct3 `011`)                  | `ld` pertenece a **RV64I** (registros de 64 bits), no a RV32I. Tampoco figura en la lista de instrucciones a implementar, que pide `lb/lh/lw/lbu/lhu`.                                                                                                                                                                                                                                                      | No se implementa `ld`. Se toma RV32I como base (ver A1).                                                         |
-| E4  | Clock          | "¿Este camino crítico genera skew en mi sistema?"                                   | Conceptualmente, el camino crítico (retardo de **datos** entre registros) no genera skew. El skew es la diferencia de llegada del **reloj** a distintos flip-flops y lo causan la red de distribución del reloj y cualquier lógica que se le intercale (por eso se prohíbe intervenir el clock). Lo que sí ocurre es que el skew **afecta** al margen del camino crítico (puede sumarle o restarle tiempo). | En el informe (US-601) se responde la pregunta aclarando la distinción, con el valor de skew que reporta Vivado. |
-| E5  | Clock          | "De encontrarse skew: encontrar la frecuencia óptima…"                              | En un diseño real **siempre** hay algo de skew; la condición relevante es si el diseño cumple timing (WNS/WHS ≥ 0) a la frecuencia deseada.                                                                                                                                                                                                                                                                 | Se interpreta como "si el análisis muestra problemas de timing o margen insuficiente" (ADR-016).                 |
+| Diapositiva    | Qué dice                                                                            | Qué es correcto (especificación RV32I)                                                                                                                                                                                                                                                                                                                                                                      | Impacto en el proyecto                                                                                           |
+| -------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Tipo J (`jal`) | "La dirección a la que se salta es la almacenada en el registro rd"                 | `rd` **recibe** la dirección de retorno (`PC + 4`). El destino del salto es `PC + imm`, con el inmediato de 21 bits codificado en la instrucción. El salto a una dirección contenida en un registro es `jalr` (tipo I, destino `(rs1 + imm) & ~1`).                                                                                                                                                         | Se implementa según la especificación (US-208, US-303).                                                          |
+| B-Type (`beq`) | La figura de codificación rotula como `rs1` tanto los bits [24:20] como los [19:15] | Los bits [24:20] son **`rs2`** y los [19:15] son `rs1`. `beq` compara dos registros distintos.                                                                                                                                                                                                                                                                                                              | Se usa la tabla de la sección 2.2.                                                                               |
+| Tipo I         | La tabla de ejemplo incluye `ld` (_load doubleword_, funct3 `011`)                  | `ld` pertenece a **RV64I** (registros de 64 bits), no a RV32I. Tampoco figura en la lista de instrucciones a implementar, que pide `lb/lh/lw/lbu/lhu`.                                                                                                                                                                                                                                                      | No se implementa `ld`. Se toma RV32I como base (ver A1).                                                         |
+| Clock          | "¿Este camino crítico genera skew en mi sistema?"                                   | Conceptualmente, el camino crítico (retardo de **datos** entre registros) no genera skew. El skew es la diferencia de llegada del **reloj** a distintos flip-flops y lo causan la red de distribución del reloj y cualquier lógica que se le intercale (por eso se prohíbe intervenir el clock). Lo que sí ocurre es que el skew **afecta** al margen del camino crítico (puede sumarle o restarle tiempo). | En el informe (US-601) se responde la pregunta aclarando la distinción, con el valor de skew que reporta Vivado. |
+| Clock          | "De encontrarse skew: encontrar la frecuencia óptima…"                              | En un diseño real **siempre** hay algo de skew; la condición relevante es si el diseño cumple timing (WNS/WHS ≥ 0) a la frecuencia deseada.                                                                                                                                                                                                                                                                 | Se interpreta como "si el análisis muestra problemas de timing o margen insuficiente" (ADR-016).                 |
 
 ### 14.2 Cosas que el enunciado no define
 
-| #   | Tema                                           | Qué falta definir                                                                                                                                                                                                         | Interpretación / decisión del equipo                                                                    |
-| --- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| A1  | Variante de la ISA                             | Dice "RISC-V" sin aclarar RV32 o RV64. El ejemplo de `ld` y el libro de referencia (edición RISC-V de Patterson & Hennessy usa RV64) sugieren 64 bits; la lista de instrucciones sugiere 32 (hay `lw`, no hay `ld`/`sd`). | **RV32I** (registros de 32 bits).                                                                       |
-| A2  | Instrucción HALT                               | Se exige "contar con una instrucción HALT o de stop", pero no existe en RV32I y no se da una codificación.                                                                                                                | ADR-004: opcode _custom-0_, palabra `0x0000000B`.                                                       |
-| A3  | "Memoria de datos usada"                       | No se define "usada": ¿escrita?, ¿leída?, ¿un rango?, ¿toda?                                                                                                                                                              | ADR-008: palabras escritas por el programa desde la última carga, más el comando `DUMP_MEM`.            |
-| A4  | Contenido de los latches                       | "El contenido de los latches intermedios" no especifica qué campos deben enviarse (¿solo datos o también señales de control?).                                                                                            | Sección 4.2 y ADR-017: datos + control + `valid` + instrucción.                                         |
-| A5  | Protocolo de comunicación                      | No se define formato de comandos, respuestas, ni detección de errores.                                                                                                                                                    | ADR-003: comando ASCII de 1 byte + tramas con XOR.                                                      |
-| A6  | Baud rate y trama                              | No se indica si se mantienen los parámetros del TP2 (19200 bps).                                                                                                                                                          | ADR-002: se mantienen 19200 bps 8E1, con paridad validada.                                              |
-| A7  | Tamaños de memoria                             | No se indica tamaño de memoria de programa ni de datos.                                                                                                                                                                   | ADR-008: 256 + 256 palabras (1 KiB + 1 KiB), parametrizable.                                            |
-| A8  | Manejo de riesgos                              | Se enumeran los tipos de riesgo pero no se exige una solución concreta (forwarding, stalls, NOPs por software).                                                                                                           | ADR-007 (forwarding + stall load-use) y ADR-006 (predict not-taken + flush; `jal` en ID).               |
-| A9  | Accesos desalineados e instrucciones inválidas | No se menciona qué debe pasar.                                                                                                                                                                                            | ADR-018: desalineado = se ignoran los bits bajos; ilegal = se detiene con estado `ILLEGAL`.             |
-| A10 | Endianness                                     | No se menciona. RISC-V es little-endian por especificación.                                                                                                                                                               | Little-endian.                                                                                          |
-| A11 | Qué significa "terminar" en modo paso a paso   | Se exige pipeline vacío "al momento de terminar la ejecución" en ambos modos, pero en paso a paso el usuario podría dejar de avanzar en cualquier momento.                                                                | "Terminar" = el HALT llegó a WB (R-EJ-5), en cualquier modo. Además, `ABORT` también drena el pipeline. |
-| A12 | Datos iniciales en memoria                     | No se indica si el programa puede traer datos precargados en la memoria de datos.                                                                                                                                         | No: los datos iniciales se escriben con stores (ADR-013); `.data` queda en el roadmap.                  |
-| A13 | Pseudoinstrucciones                            | No se indica si el ensamblador debe soportar `li`, `mv`, `j`, `ret`, `nop`.                                                                                                                                               | ADR-013: `nop`, `mv`, `j`, `ret`; `li` no.                                                              |
-| A14 | Formato del informe y de la defensa            | No se especifica formato de entrega, extensión, ni duración de la defensa.                                                                                                                                                | A confirmar con la cátedra; se asume Markdown como en el TP2.                                           |
-| A15 | Bibliografía                                   | "Pipeline: Libro" no identifica el libro ni la edición.                                                                                                                                                                   | A confirmar (probablemente Patterson & Hennessy, _Computer Organization and Design — RISC-V Edition_).  |
+| Tema                                           | Qué falta definir                                                                                                                                                                                                         | Interpretación / decisión del equipo                                                                    |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Variante de la ISA                             | Dice "RISC-V" sin aclarar RV32 o RV64. El ejemplo de `ld` y el libro de referencia (edición RISC-V de Patterson & Hennessy usa RV64) sugieren 64 bits; la lista de instrucciones sugiere 32 (hay `lw`, no hay `ld`/`sd`). | **RV32I** (registros de 32 bits).                                                                       |
+| Instrucción HALT                               | Se exige "contar con una instrucción HALT o de stop", pero no existe en RV32I y no se da una codificación.                                                                                                                | ADR-004: opcode _custom-0_, palabra `0x0000000B`.                                                       |
+| "Memoria de datos usada"                       | No se define "usada": ¿escrita?, ¿leída?, ¿un rango?, ¿toda?                                                                                                                                                              | ADR-008: palabras escritas por el programa desde la última carga, más el comando `DUMP_MEM`.            |
+| Contenido de los latches                       | "El contenido de los latches intermedios" no especifica qué campos deben enviarse (¿solo datos o también señales de control?).                                                                                            | Sección 3.2 y ADR-017: datos + control + `valid` + instrucción.                                         |
+| Protocolo de comunicación                      | No se define formato de comandos, respuestas, ni detección de errores.                                                                                                                                                    | ADR-003: comando ASCII de 1 byte + tramas con XOR.                                                      |
+| Baud rate y trama                              | No se indica si se mantienen los parámetros del TP2 (19200 bps).                                                                                                                                                          | ADR-002: se mantienen 19200 bps 8E1, con paridad validada.                                              |
+| Tamaños de memoria                             | No se indica tamaño de memoria de programa ni de datos.                                                                                                                                                                   | ADR-008: 256 + 256 palabras (1 KiB + 1 KiB), parametrizable.                                            |
+| Manejo de riesgos                              | Se enumeran los tipos de riesgo pero no se exige una solución concreta (forwarding, stalls, NOPs por software).                                                                                                           | ADR-007 (forwarding + stall load-use) y ADR-006 (predict not-taken + flush; `jal` en ID).               |
+| Accesos desalineados e instrucciones inválidas | No se menciona qué debe pasar.                                                                                                                                                                                            | ADR-018: desalineado = se ignoran los bits bajos; ilegal = se detiene con estado `ILLEGAL`.             |
+| Endianness                                     | No se menciona. RISC-V es little-endian por especificación.                                                                                                                                                               | Little-endian.                                                                                          |
+| Qué significa "terminar" en modo paso a paso   | Se exige pipeline vacío "al momento de terminar la ejecución" en ambos modos, pero en paso a paso el usuario podría dejar de avanzar en cualquier momento.                                                                | "Terminar" = el HALT llegó a WB (R-EJ-5), en cualquier modo. Además, `ABORT` también drena el pipeline. |
+| Datos iniciales en memoria                     | No se indica si el programa puede traer datos precargados en la memoria de datos.                                                                                                                                         | No: los datos iniciales se escriben con stores (ADR-013); `.data` queda en el roadmap.                  |
+| Pseudoinstrucciones                            | No se indica si el ensamblador debe soportar `li`, `mv`, `j`, `ret`, `nop`.                                                                                                                                               | ADR-013: `nop`, `mv`, `j`, `ret`; `li` no.                                                              |
+| Nombres de registros                           | No se indica si el assembly usa `x5` o los nombres ABI (`t0`, `sp`, …).                                                                                                                                                   | ADR-013: solo `x0`–`x31`; los nombres ABI quedan en el roadmap.                                         |
+| Formato del informe y de la defensa            | No se especifica formato de entrega, extensión, ni duración de la defensa.                                                                                                                                                | A confirmar con la cátedra; se asume Markdown como en el TP2.                                           |
+| Bibliografía                                   | "Pipeline: Libro" no identifica el libro ni la edición.                                                                                                                                                                   | A confirmar (probablemente Patterson & Hennessy, _Computer Organization and Design — RISC-V Edition_).  |
 
 ### 14.3 Aparentes contradicciones
 
@@ -2273,7 +2358,7 @@ Revisión de la presentación `TRABAJO_FINAL_2026.pdf` contra la especificación
 | v0.5    | Cierra el Hito 5    | GUI                                                                                        |
 | v1.0    | Cierra el Hito 6    | Bitstream final a la frecuencia elegida, informe, manual, sesiones de plan B               |
 
-- A partir de v0.4, cada release de GitHub adjunta el **bitstream** (`.bit`) generado desde ese commit, los reportes de `hw/reports/` y el hash del commit (US-407 AC4).
+- A partir de v0.4, cada release de GitHub adjunta el **bitstream** (`.bit`) generado desde ese commit, los reportes de `hw/reports/` y el hash del commit (US-411 AC4).
 - `CHANGELOG.md` sigue el formato _Keep a Changelog_: cada historia agrega su entrada en `[Unreleased]`, y al etiquetar se mueve a la versión.
 - La versión del protocolo/formato del snapshot (`PING`, ADR-003/017) es independiente de la versión del proyecto y solo sube cuando cambia el layout.
 
@@ -2290,3 +2375,4 @@ Mejoras identificadas durante el diseño y descartadas para v1.0 por costo o pla
 | 5   | Memorias en BRAM                                           | ADR-005 | Libera LUTs y escala a memorias grandes; obliga a realinear IF y MEM con la lectura sincrónica     |
 | 6   | Testbenches con cocotb reutilizando el golden model        | ADR-015 | Verificación más expresiva en Python                                                               |
 | 7   | Detección de accesos desalineados en hardware              | ADR-018 | Estado `MISALIGNED` en lugar de ignorar los bits bajos                                             |
+| 8   | Nombres ABI de registros (`t0`, `sp`, `ra`, …)             | ADR-013 | El ensamblador los acepta y la GUI muestra `x5 (t0)`; solo cambian `isa/registros.py` y la vista   |

@@ -3,7 +3,7 @@
 - **Estado:** Aprobado
 - **Fecha:** 2026-10-04
 - **Autores:** Krede, Julián · Piñera, Nicolás
-- **Bloquea:** US-106, US-108
+- **Bloquea:** US-106, US-107
 - **Relacionados:** ADR-004 (HALT), ADR-008 (tamaño de IMEM), ADR-010 (HALT automático), ADR-011 (Python), ADR-014 (golden model)
 
 ## Contexto
@@ -21,12 +21,12 @@ El enunciado exige "contar con un mecanismo para traducir instrucciones a lengua
 
 - **Primera pasada:** asigna direcciones (PC += 4 por instrucción, ya con las pseudoinstrucciones expandidas) y arma la tabla de símbolos.
 - **Segunda pasada:** resuelve las etiquetas y codifica usando `isa/formatos.py`, la misma tabla que usan el desensamblador y el golden model.
-- El toolchain GNU (`riscv64-unknown-elf-as -march=rv32i`) se usa **solo para validar**: se genera una vez un `.hex` de referencia con las 32 instrucciones estándar, se versiona en `tools/tests/fixtures/` y el test compara contra ese archivo (US-106, AC2). Los tests no necesitan GNU instalado.
+- El toolchain GNU (`riscv64-unknown-elf-as -march=rv32i`) se usa **solo para validar**: se genera una vez un `.hex` de referencia con las 32 instrucciones estándar, se versiona en `tools/tests/assembler/fixtures/` (lo regenera `make gnu-ref`) y el test compara contra ese archivo (US-106, AC2). Los tests no necesitan GNU instalado.
 
 ### Alcance del lenguaje
 
 - Etiquetas (`loop:`), comentarios con `#`.
-- Registros por número (`x5`) y por nombre ABI (`t0`).
+- Registros **solo por número** (`x0`–`x31`). Los nombres ABI (`t0`, `sp`, `ra`, …) no se aceptan: el enunciado no los pide y son una convención de software, no de la ISA. Quedan en el roadmap (PRD §15.3).
 - Inmediatos decimales, hexadecimales (`0x…`) y negativos.
 - Sintaxis `offset(rs1)` para loads, stores y `jalr`.
 - Directiva `.word` para insertar palabras crudas.
@@ -50,7 +50,7 @@ Todas se expanden a **exactamente una** instrucción, así que la primera pasada
 
 | Opción                                     | Ventajas                                                                                                    | Desventajas                                                                                                       |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| **(a) Ensamblador propio de dos pasadas** (elegida) | Son solo 33 instrucciones; reutiliza la tabla ISA; HALT nativo; mensajes de error propios; genera el mapa dirección → línea para la GUI; responde al "sean únicos" | ~6 días·persona de desarrollo (US-106 y US-108)                                                                            |
+| **(a) Ensamblador propio de dos pasadas** (elegida) | Son solo 33 instrucciones; reutiliza la tabla ISA; HALT nativo; mensajes de error propios; genera el mapa dirección → línea para la GUI; responde al "sean únicos" | ~6 días·persona de desarrollo (US-106 y US-107)                                                                            |
 | (b) `riscv64-unknown-elf-as` + `objcopy`   | No hay que escribir el ensamblador; codificación garantizada                                                | HALT solo como `.word 0x0000000B`; hay que instalar el toolchain en ambas máquinas y en Windows; no da el mapa de líneas |
 | (c) Exportar desde RARS / Venus            | Simuladores educativos conocidos                                                                            | Paso manual en otra herramienta; difícil de automatizar; HALT tampoco existe                                      |
 
@@ -62,6 +62,13 @@ Todas se expanden a **exactamente una** instrucción, así que la primera pasada
 | + `li`                                | Cómodo para cargar constantes                    | Se expande a 1 o 2 instrucciones según el valor: la primera pasada tiene que calcular tamaños variables |
 | + `beqz`, `bnez`                      | Comparaciones contra cero más legibles           | Poco valor agregado; se pueden escribir como `beq rs, x0, …`                                      |
 | Ninguna                               | Mínimo trabajo                                   | Programas de prueba menos legibles                                                                |
+
+**Nombres de registros**
+
+| Opción                                     | Ventajas                                                               | Desventajas                                                                                |
+| ------------------------------------------ | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| **Solo `x0`–`x31`** (elegida)              | Una sola forma de escribir cada registro; `registros.py` trivial       | Los ejemplos de libros e internet que usan `t0`, `sp`, … hay que traducirlos a mano        |
+| `x0`–`x31` + nombres ABI                   | Se pueden copiar ejemplos tal cual; la GUI podría mostrar `x5 (t0)`    | El enunciado no lo pide; más casos que probar (65 nombres, alias `fp`/`s0`)                |
 
 ## Consecuencias
 
@@ -76,13 +83,14 @@ Todas se expanden a **exactamente una** instrucción, así que la primera pasada
 
 - Es código propio que hay que mantener y probar (cobertura ≥ 95 %, NFR-10).
 - Sin `li` ni `.data`, los programas que necesitan constantes grandes o datos iniciales son más largos.
+- Sin nombres ABI, un programa copiado de otro lado (`addi t0, t0, 1`) da error hasta traducirlo a `x5`.
 
 **Restricciones que impone**
 
 - El ensamblador rechaza programas de más de 256 palabras (ADR-008), contando el HALT agregado.
-- Los inmediatos de `slli`/`srli`/`srai` se limitan a 0–31; los de B y J tienen que ser pares y estar en rango (US-105, AC3).
-- El listado `.lst` muestra la expansión de cada pseudoinstrucción (US-108, AC4).
+- Los inmediatos de `slli`/`srli`/`srai` se limitan a 0–31 (lo valida el ensamblador, US-106); los de B y J tienen que ser pares y estar en rango (lo valida `isa/formatos.py`, US-105 AC3).
+- El listado `.lst` muestra la expansión de cada pseudoinstrucción (US-107, AC4).
 
 ## Referencias
 
-- PRD §2.2 (codificación), §6 (R-PR-1, R-PR-2), §8 (ADR-013), §14 (A12, A13); US-105, US-106, US-108.
+- PRD §2.2 (codificación), §6 (R-PR-1, R-PR-2), §8 (ADR-013), §14 (A12, A13); US-105, US-106, US-107.

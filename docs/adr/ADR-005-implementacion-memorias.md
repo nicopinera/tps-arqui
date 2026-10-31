@@ -3,7 +3,7 @@
 - **Estado:** Aprobado
 - **Fecha:** 2026-10-04
 - **Autores:** Krede, Julián · Piñera, Nicolás
-- **Bloquea:** US-204, US-210
+- **Bloquea:** US-204, US-205
 - **Relacionados:** ADR-001 (clock enable), ADR-008 (tamaños), ADR-009 (limpieza de DMEM), ADR-016 (frecuencia)
 
 ## Contexto
@@ -51,7 +51,7 @@ Se elige (a) porque baja el riesgo en la parte más difícil del proyecto, el pi
 
 - IF, MEM y la hazard unit se diseñan como en el libro: menos casos especiales y menos fuentes de bugs.
 - Un stall congela el PC y el latch IF/ID con `i_enable` / `stall`, y la instrucción leída no cambia porque depende solo del PC. La restricción de ADR-001 sobre el enable del puerto de lectura de BRAM **no aplica**.
-- La simulación no depende de modelos de IP: los testbenches corren igual en xsim y en Icarus (ADR-015).
+- La simulación no depende de modelos de IP: los testbenches corren en Icarus (ADR-015).
 - El volcado de la DMEM por la Debug Unit es combinacional: se pone una dirección y el dato está listo en el mismo ciclo.
 
 **Negativas:**

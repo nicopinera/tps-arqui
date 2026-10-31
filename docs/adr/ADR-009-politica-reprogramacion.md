@@ -3,7 +3,7 @@
 - **Estado:** Aprobado
 - **Fecha:** 2026-10-04
 - **Autores:** Krede, Julián · Piñera, Nicolás
-- **Bloquea:** US-403
+- **Bloquea:** US-404
 - **Relacionados:** ADR-003 (`LOAD`, `RESET`, checksum), ADR-004 (HALT), ADR-005 (memoria distribuida), ADR-008 (bitmap), ADR-010 (programa sin HALT)
 
 ## Contexto
@@ -84,4 +84,4 @@ Secuencia en el `du_loader` / `du_exec_ctrl` (estado `LOADING`):
 
 ## Referencias
 
-- PRD §3.3 (reglas de integridad), §6 (R-RP-1, R-DU-4, R-DU-6), §8 (ADR-009); US-403.
+- PRD §3.3 (reglas de integridad), §6 (R-RP-1, R-DU-4, R-DU-6), §8 (ADR-009); US-404.

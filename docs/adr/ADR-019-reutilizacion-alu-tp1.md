@@ -89,5 +89,5 @@ Además, el datapath necesita resolver en EX la comparación de `beq`/`bne` (ADR
 
 ## Referencias
 
-- PRD §1.1 (problema 2), §3.2, §8 (ADR-019); US-201, US-206, US-207.
+- PRD §1.1 (problema 2), §3.2, §8 (ADR-019); US-201, US-207, US-208.
 - TP1: `alu.v` y su informe.
