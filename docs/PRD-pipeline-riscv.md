@@ -827,6 +827,7 @@ treeView-beta
             "riscv_toolkit/"
                 "iss/"
                     "golden_model.py"
+                    "expected.py — formato .expected (AC6)"
                 "cli/"
                     "rvsim.py"
             "riscv_toolkit/__main__.py — (subcomando sim)"
