@@ -42,6 +42,10 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - CLI `rvsim` como subcomando `sim` de `python -m riscv_toolkit` (`tools/riscv_toolkit/cli/rvsim.py`): `sim programa.asm [--dump] [--expect salida.expected] [--max-instr N]`, código de salida 1 ante errores o `TIMEOUT` (US-108).
 - `tools/tests/iss/`: tests por instrucción con valores borde, casos de terminación, ida y vuelta del `.expected` y programas de integración en `fixtures/` (US-108).
 - `docs/guias/guia-golden-model.md`: cómo funciona el golden model, algoritmo de cada grupo de instrucciones y formato `.expected` (US-108).
+- `hw/rtl/top.v`: top del TP3 con parámetros `CLK_FREQ_HZ` y `BAUD`, sincronizador de `rx` con `ASYNC_REG`, eco temporal RX → TX y LED3 de error de paridad (LED0–2 quedan para la Debug Unit) (US-401).
+- `uart_rx` valida la paridad par: un byte con paridad errónea no levanta `o_rx_done` y levanta `o_parity_err` (ADR-002) (US-401).
+- `hw/tb/uart/tb_top_echo.v` y casos nuevos en `tb_uart_loopback.v`: tramas con paridad errónea, período real del tick y error de baud < 2 % (US-401).
+- `tools/scripts/uart_echo_test.py`: prueba de eco en placa con bytes aleatorios a 19200 bps 8E1; dependencia `pyserial` (US-401).
 
 ### Changed
 
@@ -49,6 +53,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `identificar(palabra)` pasa del desensamblador a `isa/instrucciones.py` para que el golden model reconozca las mismas instrucciones legales (US-108).
 - Módulos UART: correcciones para dejar el lint en cero, sin cambio de comportamiento (constantes con el ancho de los contadores, `default` en las máquinas de estado, señal sin usar eliminada en `baudrate_gen`) (US-102).
 - `mypy` también revisa `tools/scripts/` (US-104).
+- `baudrate_gen`: el ancho del contador se deriva de `COUNT_MAX` con `$clog2` (se quita el parámetro `BITS`); el top calcula `COUNT_MAX` redondeando `CLK_FREQ_HZ / (16·BAUD)` (ADR-002) (US-401).
+- `hw/constraints/basys3.xdc` pasa a los puertos de `top.v` (`o_led[3:0]`) y declara `set_false_path -from [get_ports rx]` (US-401).
 - `HALT_OPCODE` y `HALT_WORD` pasan de `protocol/comandos.py` a `isa/instrucciones.py`; `gen_du_defs.py` los toma de ahí y `du_defs.vh` no cambia (US-105).
 - ADR-013: los registros se escriben solo como `x0`–`x31`; los nombres ABI pasan al roadmap. Actualizados PRD (US-105, US-106, US-303, US-504, §13, §14, §15), ADR-012 y guía del datapath (US-105).
 - `make setup` también instala `binutils-riscv64-unknown-elf` (solo para `make gnu-ref`) (US-106).
