@@ -42,6 +42,10 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - CLI `rvsim` como subcomando `sim` de `python -m riscv_toolkit` (`tools/riscv_toolkit/cli/rvsim.py`): `sim programa.asm [--dump] [--expect salida.expected] [--max-instr N]`, código de salida 1 ante errores o `TIMEOUT` (US-108).
 - `tools/tests/iss/`: tests por instrucción con valores borde, casos de terminación, ida y vuelta del `.expected` y programas de integración en `fixtures/` (US-108).
 - `docs/guias/guia-golden-model.md`: cómo funciona el golden model, algoritmo de cada grupo de instrucciones y formato `.expected` (US-108).
+- `hw/rtl/core/alu.v`: ALU combinacional de 32 bits (`NBIT`) con las 11 operaciones de ADR-019 seleccionadas por `alu_ctrl[3:0]`, sin overflow y con `o_zero` (no decide branches) (US-201).
+- `hw/rtl/core/alu_control.v`: genera `alu_ctrl` a partir de `alu_op`, `funct3` y `funct7_b5` según `tabla_control.md` §4; en I-type el bit 30 solo distingue `srli`/`srai` (US-201).
+- `hw/rtl/core/alu_defs.vh`: `localparam` compartidos `ALU_*` (codificados como `{funct7_b5, funct3}`, `PASS_B` = `1111`), `ALU_OP_*` y `F3_*` (US-201).
+- `hw/tb/core/tb_alu.v` (55 vectores con los casos borde de AC1, verifica `o_result` y `o_zero`) y `hw/tb/core/tb_alu_control.v` (las 64 combinaciones de entrada más palabras reales de `addi`, `sub`, `srli`, `srai`) (US-201).
 
 ### Changed
 
