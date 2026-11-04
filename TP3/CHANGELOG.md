@@ -47,6 +47,9 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `hw/rtl/core/alu_defs.vh`: `localparam` compartidos `ALU_*` (codificados como `{funct7_b5, funct3}`, `PASS_B` = `1111`), `ALU_OP_*` y `F3_*` (US-201).
 - `hw/tb/core/tb_alu.v` (55 vectores con los casos borde de AC1, verifica `o_result` y `o_zero`) y `hw/tb/core/tb_alu_control.v` (las 64 combinaciones de entrada más palabras reales de `addi`, `sub`, `srli`, `srai`) (US-201).
 
+- `hw/rtl/core/reg_file.v`: banco de 32 × 32 bits con flip-flops, dos lecturas combinacionales con bypass interno WB→ID (ADR-007), escritura con `i_enable`, puerto de lectura para la Debug Unit (sin bypass), `x0` en 0 y borrado `i_clear` independiente de `i_enable` y con prioridad sobre la escritura (US-202).
+- `hw/tb/core/tb_reg_file.v`: los 5 AC más la escritura y lectura de los 31 registros por los tres puertos (297 chequeos) (US-202).
+
 ### Changed
 
 - `python -m riscv_toolkit` usa argparse y despacha subcomandos; sin subcomando sigue mostrando la versión, y se agregó `--version` (US-107).
