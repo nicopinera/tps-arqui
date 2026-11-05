@@ -42,6 +42,25 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - CLI `rvsim` como subcomando `sim` de `python -m riscv_toolkit` (`tools/riscv_toolkit/cli/rvsim.py`): `sim programa.asm [--dump] [--expect salida.expected] [--max-instr N]`, código de salida 1 ante errores o `TIMEOUT` (US-108).
 - `tools/tests/iss/`: tests por instrucción con valores borde, casos de terminación, ida y vuelta del `.expected` y programas de integración en `fixtures/` (US-108).
 - `docs/guias/guia-golden-model.md`: cómo funciona el golden model, algoritmo de cada grupo de instrucciones y formato `.expected` (US-108).
+- `hw/rtl/core/alu.v`: ALU combinacional de 32 bits (`NBIT`) con las 11 operaciones de ADR-019 seleccionadas por `alu_ctrl[3:0]`, sin overflow y con `o_zero` (no decide branches) (US-201).
+- `hw/rtl/core/alu_control.v`: genera `alu_ctrl` a partir de `alu_op`, `funct3` y `funct7_b5` según `tabla_control.md` §4; en I-type el bit 30 solo distingue `srli`/`srai` (US-201).
+- `hw/rtl/core/alu_defs.vh`: `localparam` compartidos `ALU_*` (codificados como `{funct7_b5, funct3}`, `PASS_B` = `1111`), `ALU_OP_*` y `F3_*` (US-201).
+- `hw/tb/core/tb_alu.v` (55 vectores con los casos borde de AC1, verifica `o_result` y `o_zero`) y `hw/tb/core/tb_alu_control.v` (las 64 combinaciones de entrada más palabras reales de `addi`, `sub`, `srli`, `srai`) (US-201).
+
+- `hw/rtl/core/reg_file.v`: banco de 32 × 32 bits con flip-flops, dos lecturas combinacionales con bypass interno WB→ID (ADR-007), escritura con `i_enable`, puerto de lectura para la Debug Unit (sin bypass), `x0` en 0 y borrado `i_clear` independiente de `i_enable` y con prioridad sobre la escritura (US-202).
+- `hw/tb/core/tb_reg_file.v`: los 5 AC más la escritura y lectura de los 31 registros por los tres puertos (297 chequeos) (US-202).
+- `hw/rtl/core/control_unit.v`: decodifica `opcode`/`funct3`/`funct7` en las señales de `tabla_control.md` §2, con un bloque de legalidad aparte según §3. HALT (cualquier palabra custom-0) da `halt = 1`; las ilegales dan `halt = illegal = 1` sin escrituras ni lecturas de registros (ADR-004, ADR-018) (US-203).
+- `hw/rtl/core/imm_gen.v`: inmediato de 32 bits extendido en signo de los formatos I, S, B, U y J según `formatos.md` (US-203).
+- `hw/rtl/core/control_defs.vh`: `localparam` de opcodes (`OP_HALT` sale de `du_defs.vh`), `funct7`, `funct3` de loads/stores/branches/`jalr`, `result_src` e `imm_type` (US-203).
+- `tools/scripts/gen_imm_vectors.py` y `hw/tb/core/vectores/imm_gen{,_esperado}.hex` (generados y versionados): 68 instrucciones ensambladas con inmediatos positivos, negativos y extremos, y su inmediato esperado según `isa/formatos.py`; `test_imm_vectors_sync.py` verifica que estén al día (US-203).
+- `hw/tb/core/tb_control_unit.v` (las 33 filas de la tabla, HALT custom-0, 24 palabras ilegales y barrido de los 128 opcodes) y `hw/tb/core/tb_imm_gen.v` (vectores cruzados con Python) (US-203).
+- `hw/rtl/core/instr_mem.v`: IMEM de 256 palabras en memoria distribuida (LUTRAM) inferida, lectura combinacional por PC (los bits bajos y altos se ignoran), escritura sincrónica por el puerto de la Debug Unit y precarga opcional con `INIT_FILE` (ADR-005, ADR-008) (US-204).
+- `hw/rtl/core/data_mem.v`: DMEM de 256 palabras en LUTRAM con escritura por byte (`i_be`), lectura combinacional para el núcleo y para la Debug Unit, un único puerto de escritura con mux (store del núcleo con `we && valid && enable` o limpieza en cero de la Debug Unit, que no marca), y bitmap de memoria usada con contador de 9 bits que se borra con `i_clear_used` (ADR-005, ADR-008) (US-204).
+- `hw/tb/core/tb_instr_mem.v` (escritura y lectura de las 256 palabras, PC fuera de rango, escritura sincrónica, precarga) y `hw/tb/core/tb_data_mem.v` (AC2–AC5 contra un modelo de referencia de las 256 palabras, bitmap y contador) (US-204).
+- `hw/rtl/core/store_align.v`: a partir de `funct3` y `addr[1:0]` genera los byte enables de `data_mem` y replica el dato de `sb`/`sh` en todos los bytes; `sh` ignora `addr[0]` y `sw` ignora `addr[1:0]` (ADR-018) (US-205).
+- `hw/rtl/core/load_extend.v`: selecciona el byte o la media palabra de la palabra leída (little-endian) y la extiende con signo (`lb`, `lh`) o con ceros (`lbu`, `lhu`); los desalineados ignoran los bits bajos (ADR-018) (US-205).
+- `hw/tb/core/tb_load_store_align.v`: `store_align` → `data_mem` → `load_extend` contra un modelo de referencia por byte; AC1–AC4 y las combinaciones tipo × offset de loads y stores (US-205).
+- `make synth-ooc` (`hw/scripts/synth_ooc.tcl`): síntesis fuera de contexto de cada módulo de `hw/rtl/core/` con Vivado en modo batch; deja en `build/synth/` el reporte de utilización de cada módulo y una tabla con LUTs, LUTRAM, FF, latches, BRAM y *critical warnings*, y falla si algún módulo infiere latches (H2-E1).
 
 ### Changed
 
