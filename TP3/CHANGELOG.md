@@ -57,6 +57,9 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `hw/rtl/core/instr_mem.v`: IMEM de 256 palabras en memoria distribuida (LUTRAM) inferida, lectura combinacional por PC (los bits bajos y altos se ignoran), escritura sincrónica por el puerto de la Debug Unit y precarga opcional con `INIT_FILE` (ADR-005, ADR-008) (US-204).
 - `hw/rtl/core/data_mem.v`: DMEM de 256 palabras en LUTRAM con escritura por byte (`i_be`), lectura combinacional para el núcleo y para la Debug Unit, un único puerto de escritura con mux (store del núcleo con `we && valid && enable` o limpieza en cero de la Debug Unit, que no marca), y bitmap de memoria usada con contador de 9 bits que se borra con `i_clear_used` (ADR-005, ADR-008) (US-204).
 - `hw/tb/core/tb_instr_mem.v` (escritura y lectura de las 256 palabras, PC fuera de rango, escritura sincrónica, precarga) y `hw/tb/core/tb_data_mem.v` (AC2–AC5 contra un modelo de referencia de las 256 palabras, bitmap y contador) (US-204).
+- `hw/rtl/core/store_align.v`: a partir de `funct3` y `addr[1:0]` genera los byte enables de `data_mem` y replica el dato de `sb`/`sh` en todos los bytes; `sh` ignora `addr[0]` y `sw` ignora `addr[1:0]` (ADR-018) (US-205).
+- `hw/rtl/core/load_extend.v`: selecciona el byte o la media palabra de la palabra leída (little-endian) y la extiende con signo (`lb`, `lh`) o con ceros (`lbu`, `lhu`); los desalineados ignoran los bits bajos (ADR-018) (US-205).
+- `hw/tb/core/tb_load_store_align.v`: `store_align` → `data_mem` → `load_extend` contra un modelo de referencia por byte; AC1–AC4 y las combinaciones tipo × offset de loads y stores (US-205).
 
 ### Changed
 
