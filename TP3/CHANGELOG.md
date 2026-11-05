@@ -54,6 +54,9 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `hw/rtl/core/control_defs.vh`: `localparam` de opcodes (`OP_HALT` sale de `du_defs.vh`), `funct7`, `funct3` de loads/stores/branches/`jalr`, `result_src` e `imm_type` (US-203).
 - `tools/scripts/gen_imm_vectors.py` y `hw/tb/core/vectores/imm_gen{,_esperado}.hex` (generados y versionados): 68 instrucciones ensambladas con inmediatos positivos, negativos y extremos, y su inmediato esperado según `isa/formatos.py`; `test_imm_vectors_sync.py` verifica que estén al día (US-203).
 - `hw/tb/core/tb_control_unit.v` (las 33 filas de la tabla, HALT custom-0, 24 palabras ilegales y barrido de los 128 opcodes) y `hw/tb/core/tb_imm_gen.v` (vectores cruzados con Python) (US-203).
+- `hw/rtl/core/instr_mem.v`: IMEM de 256 palabras en memoria distribuida (LUTRAM) inferida, lectura combinacional por PC (los bits bajos y altos se ignoran), escritura sincrónica por el puerto de la Debug Unit y precarga opcional con `INIT_FILE` (ADR-005, ADR-008) (US-204).
+- `hw/rtl/core/data_mem.v`: DMEM de 256 palabras en LUTRAM con escritura por byte (`i_be`), lectura combinacional para el núcleo y para la Debug Unit, un único puerto de escritura con mux (store del núcleo con `we && valid && enable` o limpieza en cero de la Debug Unit, que no marca), y bitmap de memoria usada con contador de 9 bits que se borra con `i_clear_used` (ADR-005, ADR-008) (US-204).
+- `hw/tb/core/tb_instr_mem.v` (escritura y lectura de las 256 palabras, PC fuera de rango, escritura sincrónica, precarga) y `hw/tb/core/tb_data_mem.v` (AC2–AC5 contra un modelo de referencia de las 256 palabras, bitmap y contador) (US-204).
 
 ### Changed
 
