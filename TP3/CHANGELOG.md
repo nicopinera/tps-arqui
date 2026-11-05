@@ -60,6 +60,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `hw/rtl/core/store_align.v`: a partir de `funct3` y `addr[1:0]` genera los byte enables de `data_mem` y replica el dato de `sb`/`sh` en todos los bytes; `sh` ignora `addr[0]` y `sw` ignora `addr[1:0]` (ADR-018) (US-205).
 - `hw/rtl/core/load_extend.v`: selecciona el byte o la media palabra de la palabra leída (little-endian) y la extiende con signo (`lb`, `lh`) o con ceros (`lbu`, `lhu`); los desalineados ignoran los bits bajos (ADR-018) (US-205).
 - `hw/tb/core/tb_load_store_align.v`: `store_align` → `data_mem` → `load_extend` contra un modelo de referencia por byte; AC1–AC4 y las combinaciones tipo × offset de loads y stores (US-205).
+- `make synth-ooc` (`hw/scripts/synth_ooc.tcl`): síntesis fuera de contexto de cada módulo de `hw/rtl/core/` con Vivado en modo batch; deja en `build/synth/` el reporte de utilización de cada módulo y una tabla con LUTs, LUTRAM, FF, latches, BRAM y *critical warnings*, y falla si algún módulo infiere latches (H2-E1).
 
 ### Changed
 
