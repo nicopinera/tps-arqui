@@ -49,6 +49,11 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `hw/tb/debug/core_stub.v`: núcleo falso sintetizable con los mismos puertos que `riscv_core` (v0.1): contador de ciclos con enable, IMEM escribible, DMEM con bitmap y contador, drenado con `i_stop_fetch`, `i_flush_all` y terminación programable (`HALT_AFTER`, `ILLEGAL`) (US-402).
 - `hw/tb/common/uart_host_model.vh`: modelo de la PC para testbenches (`send_byte`, `send_byte_paridad`, `recv_byte`, `send_cmd` con paridad mala o trama truncada, `recv_frame` con validación de checksum) (US-402).
 - `tb_uart_host_model.v` y `tb_core_stub.v` (US-402).
+- `hw/rtl/debug/du_cmd_fsm.v`: intérprete de comandos de la Debug Unit con la tabla de comandos por estado (R-DU-1), las transiciones de `docs/protocolo.md` §5, `NACK(ERR_DESCONOCIDO)`/`NACK(ERR_ESTADO)`, error de paridad (R-DU-5), timeout de recepción parametrizable (R-DU-6) y drenado antes de responder errores en medio de los argumentos (§7.2). Despacha a los submódulos por pulsos `o_req_*` y respuestas `i_*_done` (US-403).
+- `hw/rtl/debug/du_resp_tx.v`: serializador de las respuestas cortas `ACK`, `NACK(código)` y `PING_INFO` con checksum (US-403).
+- `hw/rtl/debug/du_tx_mux.v`: multiplexor de `uart_tx` entre las respuestas cortas y el futuro `du_dumper`, con el `o_tx_done` dirigido solo al canal elegido (US-403).
+- `hw/rtl/debug/debug_unit.v`: wrapper que conecta los tres módulos y expone los puertos de `du_loader`, `du_exec_ctrl` y `du_dumper` hasta sus historias (US-403).
+- `tb_du_tx_mux.v`, `tb_du_resp_tx.v` (las 9 tramas fijas de §8.1) y `tb_du_cmd_fsm.v` (la Debug Unit por la UART con submódulos emulados; AC1 a AC6) (US-403).
 
 ### Changed
 
