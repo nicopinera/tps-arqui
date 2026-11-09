@@ -42,6 +42,18 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - CLI `rvsim` como subcomando `sim` de `python -m riscv_toolkit` (`tools/riscv_toolkit/cli/rvsim.py`): `sim programa.asm [--dump] [--expect salida.expected] [--max-instr N]`, código de salida 1 ante errores o `TIMEOUT` (US-108).
 - `tools/tests/iss/`: tests por instrucción con valores borde, casos de terminación, ida y vuelta del `.expected` y programas de integración en `fixtures/` (US-108).
 - `docs/guias/guia-golden-model.md`: cómo funciona el golden model, algoritmo de cada grupo de instrucciones y formato `.expected` (US-108).
+- `hw/rtl/top.v`: top del TP3 con parámetros `CLK_FREQ_HZ` y `BAUD`, sincronizador de `rx` con `ASYNC_REG`, eco temporal RX → TX y LED3 de error de paridad (LED0–2 quedan para la Debug Unit) (US-401).
+- `uart_rx` valida la paridad par: un byte con paridad errónea no levanta `o_rx_done` y levanta `o_parity_err` (ADR-002) (US-401).
+- `hw/tb/uart/tb_top_echo.v` y casos nuevos en `tb_uart_loopback.v`: tramas con paridad errónea, período real del tick y error de baud < 2 % (US-401).
+- `tools/scripts/uart_echo_test.py`: prueba de eco en placa con bytes aleatorios a 19200 bps 8E1; dependencia `pyserial` (US-401).
+- `hw/tb/debug/core_stub.v`: núcleo falso sintetizable con los mismos puertos que `riscv_core` (v0.1): contador de ciclos con enable, IMEM escribible, DMEM con bitmap y contador, drenado con `i_stop_fetch`, `i_flush_all` y terminación programable (`HALT_AFTER`, `ILLEGAL`) (US-402).
+- `hw/tb/common/uart_host_model.vh`: modelo de la PC para testbenches (`send_byte`, `send_byte_paridad`, `recv_byte`, `send_cmd` con paridad mala o trama truncada, `recv_frame` con validación de checksum) (US-402).
+- `tb_uart_host_model.v` y `tb_core_stub.v` (US-402).
+- `hw/rtl/debug/du_cmd_fsm.v`: intérprete de comandos de la Debug Unit con la tabla de comandos por estado (R-DU-1), las transiciones de `docs/protocolo.md` §5, `NACK(ERR_DESCONOCIDO)`/`NACK(ERR_ESTADO)`, error de paridad (R-DU-5), timeout de recepción parametrizable (R-DU-6) y drenado antes de responder errores en medio de los argumentos (§7.2). Despacha a los submódulos por pulsos `o_req_*` y respuestas `i_*_done` (US-403).
+- `hw/rtl/debug/du_resp_tx.v`: serializador de las respuestas cortas `ACK`, `NACK(código)` y `PING_INFO` con checksum (US-403).
+- `hw/rtl/debug/du_tx_mux.v`: multiplexor de `uart_tx` entre las respuestas cortas y el futuro `du_dumper`, con el `o_tx_done` dirigido solo al canal elegido (US-403).
+- `hw/rtl/debug/debug_unit.v`: wrapper que conecta los tres módulos y expone los puertos de `du_loader`, `du_exec_ctrl` y `du_dumper` hasta sus historias (US-403).
+- `tb_du_tx_mux.v`, `tb_du_resp_tx.v` (las 9 tramas fijas de §8.1) y `tb_du_cmd_fsm.v` (la Debug Unit por la UART con submódulos emulados; AC1 a AC6) (US-403).
 
 ### Changed
 
@@ -49,6 +61,10 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `identificar(palabra)` pasa del desensamblador a `isa/instrucciones.py` para que el golden model reconozca las mismas instrucciones legales (US-108).
 - Módulos UART: correcciones para dejar el lint en cero, sin cambio de comportamiento (constantes con el ancho de los contadores, `default` en las máquinas de estado, señal sin usar eliminada en `baudrate_gen`) (US-102).
 - `mypy` también revisa `tools/scripts/` (US-104).
+- `baudrate_gen`: el ancho del contador se deriva de `COUNT_MAX` con `$clog2` (se quita el parámetro `BITS`); el top calcula `COUNT_MAX` redondeando `CLK_FREQ_HZ / (16·BAUD)` (ADR-002) (US-401).
+- `hw/constraints/basys3.xdc` pasa a los puertos de `top.v` (`o_led[3:0]`) y declara `set_false_path -from [get_ports rx]` (US-401).
+- `tb_top_echo.v` usa `uart_host_model.vh` en lugar de sus propias tareas de envío y recepción (US-402).
+- `make lint` también revisa `hw/tb/debug/core_stub.v`, que tiene que seguir siendo sintetizable (US-402).
 - `HALT_OPCODE` y `HALT_WORD` pasan de `protocol/comandos.py` a `isa/instrucciones.py`; `gen_du_defs.py` los toma de ahí y `du_defs.vh` no cambia (US-105).
 - ADR-013: los registros se escriben solo como `x0`–`x31`; los nombres ABI pasan al roadmap. Actualizados PRD (US-105, US-106, US-303, US-504, §13, §14, §15), ADR-012 y guía del datapath (US-105).
 - `make setup` también instala `binutils-riscv64-unknown-elf` (solo para `make gnu-ref`) (US-106).

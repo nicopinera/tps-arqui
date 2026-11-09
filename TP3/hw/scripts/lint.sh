@@ -5,10 +5,12 @@
 #
 # Revisa cada archivo de hw/rtl (salvo legacy/) como modulo raiz; los modulos que instancia
 # se buscan en las carpetas de hw/rtl. Falla si hay alguna advertencia.
+# Tambien revisa core_stub.v (US-402): vive en hw/tb pero tiene que ser sintetizable.
 
 set -u
 
 mapfile -t RTL_SRCS < <(find hw/rtl -type f -name '*.v' -not -path 'hw/rtl/legacy/*' | sort)
+RTL_SRCS+=(hw/tb/debug/core_stub.v)
 
 SEARCH=()
 while IFS= read -r dir; do
