@@ -2,9 +2,8 @@
 
 // Prueba de la Debug Unit de US-403 a traves de la UART, como en la placa:
 //   host model -> uart_rx -> debug_unit -> uart_tx -> host model
+// du_loader (US-404) es el real, adentro de debug_unit, y escribe en un core_stub.
 // Los submodulos que todavia no existen los emula el testbench:
-//   loader falso   cuenta los bytes de LOAD (N, palabras, checksum) y responde ok,
-//                  ERR_CHECKSUM o ERR_TAMANO como lo haria du_loader
 //   exec falso     STEP termina a los 3 ciclos; RUN termina cuando el test levanta
 //                  r_fin_tb, o 4 ciclos despues de un ABORT
 //   dumper falso   otra instancia de du_resp_tx en el canal 1 del mux: manda una trama
@@ -33,8 +32,9 @@ module tb_du_cmd_fsm;
   wire [7:0] w_rx_data, w_tx_data;
   wire [3:0] w_estado;
 
-  wire        w_req_load, w_load_byte, w_load_cancel, w_req_reset;
-  wire [7:0]  w_load_data;
+  wire        w_imem_we, w_dmem_we, w_clear_used, w_flush_all, w_load_done;
+  wire [7:0]  w_imem_addr, w_dmem_addr;
+  wire [31:0] w_imem_wdata;
   wire        w_req_run, w_req_step, w_req_abort;
   wire        w_req_dump, w_req_dump_mem;
   wire [15:0] w_dm_addr, w_dm_n;
@@ -42,9 +42,6 @@ module tb_du_cmd_fsm;
   wire        w_dump_tx_start, w_dump_tx_done;
   wire [7:0]  w_dump_tx_data;
 
-  reg        r_load_done = 1'b0;
-  reg  [7:0] r_load_err = 8'h00;
-  reg        r_reset_done = 1'b0;
   reg        r_step_done = 1'b0;
   reg        r_fin_abort = 1'b0;    // el exec falso termino el drenado de ABORT
   reg        r_fin_tb = 1'b0;       // el test dice "el programa llego al HALT"
@@ -67,9 +64,9 @@ module tb_du_cmd_fsm;
     .clock(clock), .i_reset(i_reset),
     .i_rx_done(w_rx_done), .i_rx_data(w_rx_data), .i_parity_err(w_parity_err),
     .o_tx_start(w_tx_start), .o_tx_data(w_tx_data), .i_tx_done(w_tx_done),
-    .o_req_load(w_req_load), .o_load_byte(w_load_byte), .o_load_data(w_load_data),
-    .o_load_cancel(w_load_cancel), .i_load_done(r_load_done), .i_load_err(r_load_err),
-    .o_req_reset(w_req_reset), .i_reset_done(r_reset_done),
+    .o_imem_we(w_imem_we), .o_imem_addr(w_imem_addr), .o_imem_wdata(w_imem_wdata),
+    .o_dmem_we(w_dmem_we), .o_dmem_addr(w_dmem_addr),
+    .o_clear_used(w_clear_used), .o_flush_all(w_flush_all), .o_load_done(w_load_done),
     .o_req_run(w_req_run), .o_req_step(w_req_step), .o_req_abort(w_req_abort),
     .i_step_done(r_step_done), .i_run_fin(r_fin_abort || r_fin_tb),
     .i_halted(cfg_halted), .i_illegal(cfg_illegal),
@@ -88,79 +85,36 @@ module tb_du_cmd_fsm;
 
   always #5 clock = ~clock;
 
-  // --- Loader falso (du_loader, US-404) ----------------------------------------------------
-  reg [7:0] ld_buf [0:15];
-  reg [7:0] ld_xor;
-  reg       ld_activo = 1'b0;
-  integer   ld_count, ld_n, ld_total;
-  integer   n_req_load = 0, n_cancel = 0, n_huerfanos = 0;
+  // --- Nucleo falso: lo que escribe du_loader queda en su IMEM -----------------------------
+  core_stub u_core (
+    .clock(clock), .i_reset(i_reset), .i_enable(1'b0),
+    .i_flush_all(w_flush_all), .i_stop_fetch(1'b0),
+    .o_halted(), .o_illegal(), .o_pc(),
+    .i_imem_we(w_imem_we), .i_imem_addr(w_imem_addr), .i_imem_wdata(w_imem_wdata),
+    .i_dbg_dmem_we(w_dmem_we), .i_dbg_dmem_addr(w_dmem_addr), .i_clear_used(w_clear_used),
+    .i_dbg_reg_addr(5'd0), .o_dbg_reg_data(),
+    .i_dbg_mem_addr(8'd0), .o_dbg_mem_data(), .o_dbg_mem_used(), .o_dbg_used_count(),
+    .o_stall(), .o_flush_if_id(), .o_flush_id_ex(), .o_fwd_a(), .o_fwd_b(),
+    .o_if_id(), .o_id_ex(), .o_ex_mem(), .o_mem_wb()
+  );
 
+  // --- Lo que pasa entre du_cmd_fsm y du_loader (senales internas de debug_unit) -----------
+  // Huerfano: la FSM reenvia un byte cuando el loader no esta recibiendo (IDLE, LIMPIAR, FIN)
+  integer n_cancel = 0, n_huerfanos = 0, n_req_reset = 0;
   always @(posedge clock)
   begin
-    r_load_done <= 1'b0;
-    if (w_req_load)
-    begin
-      ld_activo = 1'b1;
-      ld_count  = 0;
-      ld_total  = 1000;
-      ld_xor    = 8'h00;
-      n_req_load = n_req_load + 1;
-    end
-    if (w_load_cancel)
-    begin
-      ld_activo = 1'b0;
-      n_cancel  = n_cancel + 1;
-    end
-    if (w_load_byte)
-    begin
-      if (!ld_activo)
-        n_huerfanos = n_huerfanos + 1;   // la FSM no deberia reenviar bytes al terminar
-      else
-      begin
-        if (ld_count < 16)
-          ld_buf[ld_count] = w_load_data;
-        if (ld_count == ld_total - 1)
-        begin
-          ld_activo   = 1'b0;            // ultimo byte: el checksum
-          r_load_done <= 1'b1;
-          r_load_err  <= (ld_xor == w_load_data) ? 8'h00 : `DU_ERR_CHECKSUM;
-        end
-        else
-          ld_xor = ld_xor ^ w_load_data;
-        if (ld_count == 1)
-        begin
-          ld_n     = {w_load_data, ld_buf[0]};
-          ld_total = 2 + 4 * ld_n + 1;
-          if (ld_n == 0 || ld_n > `DU_IMEM_DEPTH)
-          begin
-            ld_activo   = 1'b0;          // error antes de que termine la carga
-            r_load_done <= 1'b1;
-            r_load_err  <= `DU_ERR_TAMANO;
-          end
-        end
-        ld_count = ld_count + 1;
-      end
-    end
+    if (u_du.w_load_cancel) n_cancel = n_cancel + 1;
+    if (u_du.w_req_reset)   n_req_reset = n_req_reset + 1;
+    if (u_du.w_load_byte && (u_du.u_loader.r_state == 3'd0 || u_du.u_loader.r_state >= 3'd5))
+      n_huerfanos = n_huerfanos + 1;
   end
 
-  // --- RESET y exec falsos (du_loader y du_exec_ctrl) ----------------------------------------
-  integer rst_cnt = 0, step_cnt = 0, abort_cnt = 0;
-  integer n_req_run = 0, n_req_reset = 0;
+  // --- Exec falso (du_exec_ctrl) -------------------------------------------------------------
+  integer step_cnt = 0, abort_cnt = 0;
+  integer n_req_run = 0;
   always @(posedge clock)
   begin
-    r_reset_done <= 1'b0;
     r_step_done  <= 1'b0;
-    if (w_req_reset)
-    begin
-      rst_cnt = 5;
-      n_req_reset = n_req_reset + 1;
-    end
-    else if (rst_cnt > 0)
-    begin
-      rst_cnt = rst_cnt - 1;
-      if (rst_cnt == 0)
-        r_reset_done <= 1'b1;
-    end
     if (w_req_step)
       step_cnt = 3;
     else if (step_cnt > 0)
@@ -389,6 +343,7 @@ module tb_du_cmd_fsm;
     enviar(`DU_CMD_LOAD, 4);
     verificar("LOAD cortado: timeout", `DU_TIPO_NACK, 1, `DU_ERR_TIMEOUT, `DU_ESTADO_IDLE);
     check_eq("LOAD cortado: cancela la carga", n_cancel, 1);
+    check_eq("LOAD cortado: IMEM con HALT", u_core.r_imem[0], `DU_HALT_WORD);   // US-404 AC7
     ping(`DU_ESTADO_IDLE);
 
     // Checksum incorrecto: lo detecta el loader, NACK(ERR_CHECKSUM) y a IDLE
@@ -420,8 +375,8 @@ module tb_du_cmd_fsm;
 
     // === LOAD correcto -> READY ==========================================================
     cargar;
-    check_eq("loader recibio la palabra", {ld_buf[5], ld_buf[4], ld_buf[3], ld_buf[2]},
-             32'h00500093);
+    check_eq("LOAD: palabra en IMEM[0]", u_core.r_imem[0], 32'h00500093);
+    check_eq("LOAD: HALT en IMEM[1]", u_core.r_imem[1], `DU_HALT_WORD);
     ping(`DU_ESTADO_READY);
     nack_estado(`DU_CMD_ABORT, `DU_ESTADO_READY);
     dump(8'h02, `DU_ESTADO_READY);
