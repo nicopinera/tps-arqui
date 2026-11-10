@@ -4,6 +4,7 @@ Guía para entender **en qué estado está la Debug Unit (DU), qué hace en cada
 
 - La **Parte 1** (secciones 1 a 6) explica la FSM **del protocolo**: lo que ve la PC.
 - La **Parte 2** (secciones 7 a 17) explica **cómo está implementada en Verilog** (US-403): los módulos, cada señal y cada registro, y los pasos internos que da la FSM ante cada comando.
+- La **Parte 3** (secciones 18 a 28) explica `du_loader` (US-404): cómo se carga el programa y cómo se limpia todo antes de ejecutar.
 
 ![FSM de la Debug Unit](../diagramas/debug_unit_fsm.svg)
 
@@ -213,8 +214,8 @@ Como en una mesa de entradas: llega alguien con un trámite (el comando).
 ```text
  PC ──(cable rx)──► uart_rx ──► ┌────────────────────── debug_unit ───────────────────────┐
                                 │                                                         │
-                                │  du_cmd_fsm ──pedidos o_req_*──► [loader] [exec] [dumper]│  ← todavía no existen
-                                │  (el cerebro) ◄──"listo" i_*_done──                      │    (US-404 a US-406):
+                                │  du_cmd_fsm ─pedidos o_req_*─► du_loader [exec] [dumper]│  ← exec y dumper
+                                │  (el cerebro) ◄──"listo" i_*_done──                      │    (US-405, US-406):
                                 │      │                                   │               │    los emula el testbench
                                 │      ▼                                   │               │
                                 │  du_resp_tx                              │               │
@@ -722,11 +723,12 @@ always @(posedge clock)
 
 Conecta `du_cmd_fsm` → `du_resp_tx` → canal 0 de `du_tx_mux` → `uart_tx`. La UART **no** está adentro: la Debug Unit recibe `rx_done`/`rx_data`/`parity_err` y entrega `tx_start`/`tx_data`, y el top las conecta.
 
-Los puertos de los submódulos que todavía no existen (`o_req_*`, `i_*_done`, el canal 1 del mux) salen **afuera**, marcados con `TODO(US-404/405/406)`, para que el testbench los conteste. Cuando cada submódulo exista, entra a la caja y esos puertos desaparecen.
+Los puertos de los submódulos que todavía no existen (`o_req_*`, `i_*_done`, el canal 1 del mux) salen **afuera**, marcados con `TODO(US-405/406)`, para que el testbench los conteste. Cuando cada submódulo exista, entra a la caja y esos puertos desaparecen.
 
-| Submódulo futuro | Puertos que hoy están afuera                                                                                                                               |
+`du_loader` ya entró (US-404): sus pedidos y respuestas quedaron como cables internos (`w_req_load`, `w_load_byte`, `w_load_cancel`, `w_load_done`, `w_load_err`, `w_req_reset`, `w_reset_done`), y en su lugar salen los puertos hacia el núcleo: `o_imem_we`/`o_imem_addr`/`o_imem_wdata`, `o_dmem_we`/`o_dmem_addr`, `o_clear_used`, `o_flush_all` y `o_load_done` (este último irá a `du_exec_ctrl` en US-406).
+
+| Submódulo        | Puertos que hoy están afuera                                                                                                                               |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `du_loader`      | `o_req_load`, `o_load_byte`, `o_load_data`, `o_load_cancel`, `i_load_done`, `i_load_err`, `o_req_reset`, `i_reset_done`                                    |
 | `du_exec_ctrl`   | `o_req_run`, `o_req_step`, `o_req_abort`, `i_step_done`, `i_run_fin`, `i_halted`, `i_illegal`                                                              |
 | `du_dumper`      | `o_req_dump`, `o_req_dump_mem`, `o_dm_addr`, `o_dm_n`, `o_snap_estado`, `i_dump_done`, `i_dump_err`, `i_dump_tx_start`, `i_dump_tx_data`, `o_dump_tx_done` |
 
@@ -740,7 +742,7 @@ Los puertos de los submódulos que todavía no existen (`o_req_*`, `i_*_done`, e
 
 En `tb_du_cmd_fsm` los submódulos que faltan **se emulan**:
 
-- **loader falso:** cuenta los bytes del `LOAD`, lee `N`, verifica el checksum y responde ok, `ERR_CHECKSUM` o `ERR_TAMANO`;
+- **loader:** desde US-404 es el `du_loader` real, adentro de `debug_unit`, escribiendo en un `core_stub`. El testbench mira sus señales internas (`u_du.w_load_cancel`, `u_du.u_loader.r_state`) para contar cancelaciones y bytes reenviados de más, y la IMEM del `core_stub` para ver la palabra cargada y el HALT;
 - **exec falso:** el `STEP` termina a los 3 ciclos y el drenado del `ABORT` a los 4. El fin del `RUN` lo dispara el test con `r_fin_tb`;
 - **dumper falso:** otra copia de `du_resp_tx` conectada al canal 1. Manda una trama corta de tipo `SNAPSHOT` con `o_snap_estado` como dato, así se verifica el momento del cambio de canal y el motivo.
 
@@ -772,7 +774,7 @@ Recorre `IDLE` → errores de `LOAD` → `READY` → `STEPPING` → `HALTED` →
 
 ## 16. Pendientes y riesgos
 
-1. **`o_load_cancel` no espera confirmación.** Se asume que rellenar la IMEM con HALT (256 ciclos, unos 2,5 µs) termina antes de que salga el NACK (unos 3 ms). Está marcado con `shortcut:` en el código. Si en US-404 el loader tarda más, hay que agregar un "cancelación terminada".
+1. **`o_load_cancel` no espera confirmación.** Se asume que rellenar la IMEM con HALT (256 ciclos, unos 2,5 µs) termina antes de que salga el NACK (unos 3 ms). Está marcado con `shortcut:` en el código. Con el loader de US-404 se cumple: `LIMPIAR` + `FIN` tardan 257 ciclos (§24). Si algún día tarda más, hay que agregar un "cancelación terminada".
 2. **Los errores del loader también drenan.** Con checksum incorrecto, el `NACK` sale 100 ms después. Es inofensivo, pero el protocolo solo lo exige para errores en medio de los argumentos.
 3. **Los bytes que llegan en `RESPONDIENDO`, `ESPERA_SUB` o `VOLCANDO` se ignoran**, también los de paridad mala: la PC no debe mandar nada en ese momento ([protocolo §7.4](../protocolo.md)).
 4. **Si un byte y el fin del `RUN` llegan en el mismo ciclo**, gana el fin y el byte se pierde. La ventana es de 10 ns y la PC reintenta por timeout.
@@ -785,3 +787,177 @@ Recorre `IDLE` → errores de `LOAD` → `READY` → `STEPPING` → `HALTED` →
 3. ¿Por qué `o_snap_estado` usa `r_estado_sig` y no `r_estado`? ¿Qué valor tendría el byte 0 del snapshot de un `STEP` si usara `r_estado`?
 4. ¿Por qué `r_estado` y `r_ctrl` son registros distintos? ¿Qué se rompería si `RESPONDIENDO` fuera un valor más de `r_estado`?
 5. ¿Por qué `du_resp_tx` necesita el estado `START` en lugar de pedir el siguiente byte en el mismo ciclo del `i_tx_done`?
+
+---
+
+## Parte 3: `du_loader`, el que carga el programa (US-404)
+
+Archivo: [`du_loader.v`](../../TP3/hw/rtl/debug/du_loader.v). Testbench: [`tb_du_loader.v`](../../TP3/hw/tb/debug/tb_du_loader.v).
+
+## 18. Qué es y qué problema resuelve
+
+`du_cmd_fsm` sabe **que** llegó un `LOAD`, pero no sabe cuántos bytes trae ni qué hacer con ellos. `du_loader` es el **cargador**: recibe los bytes del programa uno por uno, los junta en instrucciones de 32 bits, los escribe en la IMEM del núcleo y, al final, deja todo el sistema limpio para arrancar (ADR-009).
+
+Analogía: la FSM es el recepcionista que recibe una caja con papeles. El loader es el empleado que la abre, revisa que estén todas las hojas, las archiva en orden y tira lo que quedó del trámite anterior.
+
+Hace tres trabajos:
+
+| Pedido de la FSM | Qué hace el loader                                                                              | Cómo avisa que terminó        |
+| ---------------- | ----------------------------------------------------------------------------------------------- | ----------------------------- |
+| `LOAD`           | recibe N, N palabras y el checksum; escribe la IMEM; rellena con HALT lo que sobra; limpia todo | `o_done` + `o_err` (0 = bien) |
+| `RESET`          | la misma limpieza, pero **sin tocar la IMEM**                                                   | `o_reset_done`                |
+| cancelación      | la carga se cortó (timeout o paridad): rellena **toda** la IMEM con HALT y limpia               | no avisa: la FSM ya respondió |
+
+**¿Por qué rellenar con HALT?** Si el programa nuevo es más corto que el anterior, las instrucciones viejas siguen en la IMEM después del final. Si el programa nuevo no termina con HALT (o la carga falla), el núcleo las ejecutaría. Con HALT (`0x0000000B`) en todo lo que sobra, lo peor que puede pasar es que el núcleo se detenga.
+
+## 19. Conceptos que usa
+
+- **Little-endian (LE):** el byte **menos** significativo viaja **primero**. La palabra `0x00500013` llega como `13 00 50 00`. N (2 bytes) también: `N = 300 = 0x012C` llega como `2C 01`.
+- **Checksum XOR:** la PC hace el XOR de todos los bytes que siguen al `4C` (N y las palabras) y lo manda al final. El loader hace lo mismo con lo que recibe: si coincide, ningún bit cambió en el camino.
+- **Puerto de depuración:** las memorias del núcleo tienen una entrada de escritura extra (`i_imem_we`, `i_dbg_dmem_we`) que usa solo la Debug Unit, sin importar lo que esté haciendo el pipeline.
+- **`flush_all`:** pulso que deja el núcleo como recién encendido: pipeline vacío (`valid = 0`), PC = 0 y registros en 0.
+- **`clear_used`:** pulso que borra el bitmap de memoria usada y su contador (ADR-008).
+
+## 20. Puertos
+
+| Puerto                                     | Dir.    | Hacia / desde  | Qué significa                                                               |
+| ------------------------------------------ | ------- | -------------- | --------------------------------------------------------------------------- |
+| `i_req_load`                               | entrada | FSM            | pulso: "empieza un `LOAD`"                                                  |
+| `i_load_byte`, `i_load_data`               | entrada | FSM            | pulso "llegó un byte de la carga" y el byte                                 |
+| `i_load_cancel`                            | entrada | FSM            | pulso: "la carga se cortó" (timeout o paridad)                              |
+| `o_done`, `o_err`                          | salida  | FSM            | pulso "terminó el `LOAD`" y el resultado (0, `ERR_TAMANO` o `ERR_CHECKSUM`) |
+| `i_req_reset`, `o_reset_done`              | ambos   | FSM            | pedido y fin del `RESET`                                                    |
+| `o_imem_we`, `o_imem_addr`, `o_imem_wdata` | salida  | núcleo         | escribir una palabra en la IMEM                                             |
+| `o_dmem_we`, `o_dmem_addr`                 | salida  | núcleo         | escribir **0** en una dirección de la DMEM                                  |
+| `o_clear_used`, `o_flush_all`              | salida  | núcleo         | pulsos de limpieza (ver §19)                                                |
+| `o_load_done`                              | salida  | `du_exec_ctrl` | pulso: "se limpió todo"; con él se pone en 0 el contador de ciclos (US-406) |
+
+Todas las salidas son **registros** (Moore). Los pulsos valen 0 por defecto en cada ciclo, y la rama del estado los pone en 1 durante un solo ciclo.
+
+## 21. Registros
+
+| Registro     | Bits | Qué guarda                                                                                               |
+| ------------ | ---: | -------------------------------------------------------------------------------------------------------- |
+| `r_state`    |    3 | el estado (§22)                                                                                          |
+| `r_origen`   |    2 | **quién pidió la limpieza**: `LOAD`, `RESET` o cancelación (§23)                                         |
+| `r_n`        |    9 | N ya validado (1..256): 256 no entra en 8 bits                                                           |
+| `r_word`     |   24 | los 3 bytes ya llegados de la palabra en curso                                                           |
+| `r_byte_idx` |    2 | qué byte de la palabra está llegando (0..3); después de 3 vuelve solo a 0                                |
+| `r_word_idx` |    9 | cuántas palabras se escribieron (0..256), que es la dirección de la próxima                              |
+| `r_xor`      |    8 | XOR acumulado de N y las palabras                                                                        |
+| `r_addr`     |    9 | dirección que se está limpiando en `LIMPIAR` (0..255)                                                    |
+| `r_inicio`   |    9 | primera dirección de la IMEM que se rellena con HALT (0 = toda, N = después del programa, 256 = ninguna) |
+
+Y dos cables (`w_`), que existen por el mismo motivo:
+
+- `w_n = {i_load_data, r_n[7:0]}`: N completo **en el ciclo en que llega el byte alto**. `r_n` recién tendría ese byte un ciclo después, y la validación se hace en ese mismo ciclo.
+- `w_word = {i_load_data, r_word}`: la palabra completa **en el ciclo en que llega el 4.º byte**. Cada byte entra por arriba y empuja a los anteriores hacia abajo. Después de 4 bytes, el primero que llegó queda en `[7:0]`, y así sale el little-endian sin multiplexores.
+
+## 22. Los estados
+
+```mermaid
+stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> LEN_LO : i_req_load
+    IDLE --> LIMPIAR : i_req_reset (origen RESET)
+    LEN_LO --> LEN_HI : byte (N bajo)
+    LEN_HI --> PALABRAS : byte (N alto), 1 ≤ N ≤ 256
+    LEN_HI --> LIMPIAR : N = 0 o N > 256 (ERR_TAMANO, todo HALT)
+    PALABRAS --> PALABRAS : byte (cada 4, escribe la IMEM)
+    PALABRAS --> CHECKSUM : se escribió la palabra N
+    CHECKSUM --> LIMPIAR : byte (bien, HALT desde N; mal, ERR_CHECKSUM y todo HALT)
+    LIMPIAR --> LIMPIAR : r_addr < 255
+    LIMPIAR --> FIN : r_addr = 255
+    FIN --> IDLE : pulsos de fin
+    note right of LIMPIAR : i_load_cancel en cualquier estado lleva a LIMPIAR (origen CANCEL, todo HALT)
+```
+
+| Estado     | Qué hace                                                          | Qué lo hace salir                              | A dónde va                     |
+| ---------- | ----------------------------------------------------------------- | ---------------------------------------------- | ------------------------------ |
+| `IDLE`     | nada: espera un pedido                                            | `i_req_load` / `i_req_reset`                   | `LEN_LO` / `LIMPIAR`           |
+| `LEN_LO`   | guarda el byte bajo de N                                          | `i_load_byte`                                  | `LEN_HI`                       |
+| `LEN_HI`   | arma N con `w_n` y lo valida                                      | `i_load_byte`                                  | `PALABRAS` o `LIMPIAR` (error) |
+| `PALABRAS` | junta bytes; cada 4 escribe una palabra en la IMEM                | `i_load_byte` que completa la palabra N        | `CHECKSUM`                     |
+| `CHECKSUM` | compara `r_xor` con el byte recibido y decide desde dónde va HALT | `i_load_byte`                                  | `LIMPIAR`                      |
+| `LIMPIAR`  | una dirección por ciclo: 0 en la DMEM y, si toca, HALT en la IMEM | **nada externo**: termina solo al llegar a 255 | `FIN`                          |
+| `FIN`      | `flush_all`, `clear_used`, `load_done` y el aviso según el origen | nada: dura un ciclo                            | `IDLE`                         |
+
+Además, `i_load_cancel` le gana a **todo**: en cualquier estado lleva a `LIMPIAR` con origen `CANCEL` y `r_inicio = 0`.
+
+**Detalle de `CHECKSUM`:** `r_xor` tiene el XOR de N y las palabras, **sin** el checksum. Si los datos llegaron bien, ese valor es exactamente el byte que mandó la PC, así que se compara `r_xor == i_load_data`.
+
+## 23. `r_origen`: una sola limpieza para tres casos
+
+`LIMPIAR` y `FIN` son los mismos para `LOAD`, `RESET` y cancelación. Lo único que cambia está en dos registros que se cargan **antes** de entrar:
+
+| Origen        | Lo carga                    | `r_inicio` | IMEM en `LIMPIAR`  | Aviso en `FIN`        |
+| ------------- | --------------------------- | ---------- | ------------------ | --------------------- |
+| `ORIG_LOAD`   | `CHECKSUM` (bien)           | N          | HALT en `[N, 255]` | `o_done`, `o_err = 0` |
+| `ORIG_LOAD`   | `CHECKSUM` (mal) o `LEN_HI` | 0          | HALT en toda       | `o_done`, `o_err ≠ 0` |
+| `ORIG_RESET`  | `IDLE` con `i_req_reset`    | no importa | **no se toca**     | `o_reset_done`        |
+| `ORIG_CANCEL` | `i_load_cancel`             | 0          | HALT en toda       | ninguno               |
+
+La DMEM se pone en 0 y salen `flush_all`, `clear_used` y `load_done` **en los cuatro casos**. Aunque la carga falle, el núcleo queda limpio y no se puede ejecutar nada a medio cargar (R-DU-4).
+
+**¿Por qué con error se rellena toda la IMEM y no solo desde N?** Porque no se sabe **qué** byte llegó mal: pudo ser una instrucción del medio. Lo único seguro es que no quede nada ejecutable.
+
+## 24. Ejemplo: `LOAD` de una instrucción
+
+La PC manda `4C 01 00 13 00 50 00 42`: `LOAD`, N = 1, la palabra `0x00500013` (`addi x0, x0, 5`) y el checksum `01^00^13^00^50^00 = 0x42`. El `4C` lo consume la FSM; al loader le llega el resto.
+
+```text
+byte que llega   :  (req)   01      00      13      00      50      00      42
+r_state después  :  LEN_LO  LEN_HI  PALAB   PALAB   PALAB   PALAB   CHECK   LIMPIAR
+r_byte_idx desp. :  0       0       0       1       2       3       0       0
+r_xor después    :  00      01      01      12      12      42      42      42
+escritura IMEM   :                                                  addr 0 = 00500013
+
+LIMPIAR (256 ciclos): addr 0    -> DMEM = 0 (la IMEM no: 0 < r_inicio = 1)
+                      addr 1..255 -> DMEM = 0 y IMEM = HALT
+FIN (1 ciclo):        flush_all, clear_used, load_done, o_done con o_err = 0
+```
+
+Entre byte y byte pasan unos 1000 ciclos (la UART es lenta) y el loader se queda en el mismo estado hasta el próximo `i_load_byte`. `LIMPIAR` + `FIN` tardan 257 ciclos (≈ 2,6 µs a 100 MHz). Después la FSM responde el `ACK`.
+
+## 25. Detalles técnicos
+
+- **La cancelación va antes del `case`.** Puede llegar en cualquier estado de la carga, incluso en `LIMPIAR`. Si llega un byte extra con la paridad mal mientras se limpia, la FSM cancela y la limpieza **vuelve a empezar** como `CANCEL`: toda la IMEM queda en HALT y no sale `o_done`. La FSM ya está en `DRENANDO` y va a responder `NACK(ERR_PARIDAD)`, así que lo que ve la PC es coherente con lo que quedó en la placa.
+- **`ERR_TAMANO` con bytes que siguen llegando.** La FSM los sigue reenviando hasta recibir `o_done`. `LIMPIAR` y `FIN` no miran `i_load_byte`, e `IDLE` solo mira `i_req_load`, así que se ignoran solos. Después la FSM drena el resto ([protocolo §7.2](../protocolo.md)).
+- **Contadores de 9 bits.** N, `r_word_idx` y `r_inicio` llegan a 256, que no entra en 8 bits. Con 8 bits, N = 256 se leería como 0.
+- **`r_word_idx + 1 == r_n`** se compara en el ciclo en que se escribe la última palabra, porque `r_word_idx` todavía vale el índice de esa palabra.
+- **Una dirección por ciclo, sin handshake.** El puerto de depuración de las memorias escribe en un ciclo, así que no hay que esperar a nadie. IMEM y DMEM se recorren juntas con el mismo `r_addr`.
+- **`RESET` también pulsa `o_load_done`**, porque ADR-009 pide el contador de ciclos en 0 también después de un `RESET`.
+- **La FSM no espera al loader en la cancelación.** Responde el `NACK` unos 3 ms después y el loader termina en 2,6 µs (ver §16, punto 1).
+
+## 26. Errores comunes
+
+- **Validar con `r_n` en `LEN_HI`.** En ese ciclo `r_n` todavía tiene solo el byte bajo: N = 300 (`2C 01`) se validaría como 44 y pasaría. Por eso existe `w_n`.
+- **Armar la palabra al revés.** Si cada byte entrara por abajo (`{r_word, i_load_data}`), `13 00 50 00` daría `0x13005000`. Se detecta enseguida usando bytes distintos entre sí, que es lo que hace el testbench.
+- **Olvidar el borde N = 256.** `r_inicio = 256` significa "no rellenar nada": `r_addr >= 256` nunca se cumple en `LIMPIAR`.
+- **Avisar con `o_done` en una cancelación.** La FSM ya respondió el `NACK`; un `o_done` de más le llegaría cuando está en otro paso.
+- **Aceptar N = 0.** El protocolo pide `1 ≤ N ≤ IMEM_DEPTH` ([§4](../protocolo.md)). Un `LOAD` vacío dejaría la IMEM toda en HALT respondiendo `ACK`.
+
+## 27. Cómo se probó
+
+[`tb_du_loader.v`](../../TP3/hw/tb/debug/tb_du_loader.v) conecta `du_loader` con `core_stub` (US-402). El testbench hace de FSM (manda los pulsos) y después lee directamente la IMEM y la DMEM del núcleo falso. Antes de cada carga hace correr el núcleo unos ciclos para **ensuciar** la DMEM, el bitmap y el PC, así se comprueba que la limpieza los borra de verdad.
+
+| Caso                                        | Qué verifica                                                                                    | AC          |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------- | ----------- |
+| carga válida (N = 5)                        | programa en `[0, 4]`, HALT en el resto, DMEM y contador en 0, PC = 0, un solo pulso de cada uno | —           |
+| N = 256                                     | no queda ningún HALT                                                                            | —           |
+| checksum incorrecto                         | `ERR_CHECKSUM` y toda la IMEM en HALT                                                           | AC3, AC7    |
+| cancelación a mitad de la carga             | sin `o_done`, toda la IMEM en HALT, un `flush_all`                                              | AC7         |
+| cancelación durante `LIMPIAR`               | igual que la anterior                                                                           | AC7         |
+| N = 300 con bytes que siguen llegando       | `ERR_TAMANO`, un solo `o_done`, toda la IMEM en HALT                                            | —           |
+| N = 0                                       | `ERR_TAMANO`, toda la IMEM en HALT                                                              | —           |
+| `RESET`                                     | IMEM intacta, DMEM en 0, `o_reset_done` y no `o_done`                                           | AC4 (parte) |
+| cinco cargas seguidas (N = 20, 3, 1, 64, 2) | cada una deja solo su programa                                                                  | AC5         |
+
+AC1, AC2 y AC4 completos necesitan **ejecutar** el programa, así que se verifican con el núcleo real en US-411.
+
+## 28. Preguntas para repasar
+
+1. Llega `LOAD` con N = 256 (`00 01`). ¿Qué vale `w_n` en el ciclo del segundo byte? ¿Y `r_n` en ese mismo ciclo? ¿Qué pasaría si se validara con `r_n`?
+2. ¿Por qué con checksum incorrecto se rellena toda la IMEM y con checksum correcto solo desde N?
+3. Un byte con paridad mala llega mientras el loader está en `LIMPIAR` después de un checksum correcto. ¿Qué responde la placa, qué queda en la IMEM y por qué es coherente?
+4. ¿Qué cambiaría si `r_word_idx` fuera de 8 bits?

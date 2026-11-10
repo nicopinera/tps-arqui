@@ -54,6 +54,9 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `hw/rtl/debug/du_tx_mux.v`: multiplexor de `uart_tx` entre las respuestas cortas y el futuro `du_dumper`, con el `o_tx_done` dirigido solo al canal elegido (US-403).
 - `hw/rtl/debug/debug_unit.v`: wrapper que conecta los tres módulos y expone los puertos de `du_loader`, `du_exec_ctrl` y `du_dumper` hasta sus historias (US-403).
 - `tb_du_tx_mux.v`, `tb_du_resp_tx.v` (las 9 tramas fijas de §8.1) y `tb_du_cmd_fsm.v` (la Debug Unit por la UART con submódulos emulados; AC1 a AC6) (US-403).
+- `hw/rtl/debug/du_loader.v`: recibe `N` y las palabras de `LOAD` (little-endian), las escribe en la IMEM y verifica el checksum XOR. Al terminar recorre las 256 direcciones: HALT en la IMEM desde `N` (o en toda, con error o cancelación) y 0 en la DMEM; después pulsa `flush_all`, `clear_used` y `load_done`. `RESET` hace la misma limpieza sin tocar la IMEM (ADR-009, R-DU-4) (US-404).
+- `hw/tb/debug/tb_du_loader.v`: carga válida, `N = 256`, checksum incorrecto, cancelación en medio de la carga y durante la limpieza, `ERR_TAMANO` con `N = 0` y `N > 256`, `RESET` y cinco cargas seguidas, contra `core_stub` (AC3, AC5, AC7) (US-404).
+- `docs/guias/guia-estudio-debug-unit.md`: Parte 3 sobre `du_loader` (estados, registros, ejemplo ciclo a ciclo, errores comunes) (US-404).
 
 ### Changed
 
@@ -68,4 +71,6 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `HALT_OPCODE` y `HALT_WORD` pasan de `protocol/comandos.py` a `isa/instrucciones.py`; `gen_du_defs.py` los toma de ahí y `du_defs.vh` no cambia (US-105).
 - ADR-013: los registros se escriben solo como `x0`–`x31`; los nombres ABI pasan al roadmap. Actualizados PRD (US-105, US-106, US-303, US-504, §13, §14, §15), ADR-012 y guía del datapath (US-105).
 - `make setup` también instala `binutils-riscv64-unknown-elf` (solo para `make gnu-ref`) (US-106).
+- `debug_unit` instancia `du_loader`: se quitan los puertos `o_req_load`/`o_load_*`/`i_load_*`/`o_req_reset`/`i_reset_done` y se agregan los del núcleo (`o_imem_*`, `o_dmem_*`, `o_clear_used`, `o_flush_all`) y `o_load_done`, más los parámetros `IMEM_ADDR_BITS`/`DMEM_ADDR_BITS` (US-404).
+- `tb_du_cmd_fsm.v` usa el `du_loader` real con un `core_stub` en lugar del loader falso; además verifica la palabra cargada en la IMEM y el HALT después de un `LOAD` cortado (US-404).
 - PRD US-106: `ensamblar` es una función en vez de la clase `Assembler`, la `Imagen` suma `expansiones` y el fixture de GNU pasa a `tools/tests/assembler/fixtures/` (también en ADR-013) (US-106).
