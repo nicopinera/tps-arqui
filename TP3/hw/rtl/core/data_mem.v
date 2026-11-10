@@ -40,14 +40,13 @@ module data_mem #(
     output wire [  $clog2(DEPTH):0] o_used_count    //! Palabras usadas (0 a DEPTH)
 );
 
-    reg [31:0] r_mem[0:DEPTH-1];
     localparam ADDR_BITS = $clog2(DEPTH);  // bits para direccionamiento
     localparam NBYTES = 4;  // bytes por palabra
     localparam BYTE_OFFSET_BITS = 2;  // bits bajos de la direccion: byte dentro de la palabra
     localparam [NBYTES-1:0] BE_TODOS = {NBYTES{1'b1}};
     localparam [NBYTES-1:0] BE_NINGUNO = {NBYTES{1'b0}};
 
-    reg  [         31:0] r_mem                                                                                                  [0:DEPTH-1];
+    reg  [         31:0] r_mem         [0:DEPTH-1];
     //bitmap:
     reg  [    DEPTH-1:0] r_used;
     reg  [  ADDR_BITS:0] r_used_count;
