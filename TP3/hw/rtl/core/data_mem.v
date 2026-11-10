@@ -40,13 +40,14 @@ module data_mem #(
     output wire [  $clog2(DEPTH):0] o_used_count    //! Palabras usadas (0 a DEPTH)
 );
 
+    reg [31:0] r_mem[0:DEPTH-1];
     localparam ADDR_BITS = $clog2(DEPTH);  // bits para direccionamiento
     localparam NBYTES = 4;  // bytes por palabra
     localparam BYTE_OFFSET_BITS = 2;  // bits bajos de la direccion: byte dentro de la palabra
     localparam [NBYTES-1:0] BE_TODOS = {NBYTES{1'b1}};
     localparam [NBYTES-1:0] BE_NINGUNO = {NBYTES{1'b0}};
 
-    reg  [         31:0] r_mem                                                                 [0:DEPTH-1];
+    reg  [         31:0] r_mem                                                                                                  [0:DEPTH-1];
     //bitmap:
     reg  [    DEPTH-1:0] r_used;
     reg  [  ADDR_BITS:0] r_used_count;
@@ -57,12 +58,11 @@ module data_mem #(
     // Store efectivo del nucleo: la misma condicion escribe la memoria y marca el bitmap.
     wire                 w_core_we = i_we && i_valid && i_enable && !i_dbg_we;
 
-    // Mux del unico puerto de escritura: Debug Unit (ceros, 4 bytes) o nucleo (bytes de i_be).
-    wire [ADDR_BITS-1:0] w_wr_addr = i_dbg_we ? i_dbg_wr_addr : w_core_addr;
-    wire [         31:0] w_wr_data = i_dbg_we ? 32'h0000_0000 : i_wdata;
-    wire [   NBYTES-1:0] w_wr_be = i_dbg_we ? BE_TODOS : (w_core_we ? i_be : BE_NINGUNO);
+    wire [ADDR_BITS-1:0] w_wr_addr = i_dbg_we ? i_dbg_wr_addr : w_core_addr;  // Donde se escribe
+    wire [         31:0] w_wr_data = i_dbg_we ? 32'h0000_0000 : i_wdata;  // Que se escribe
+    wire [   NBYTES-1:0] w_wr_be = i_dbg_we ? BE_TODOS : (w_core_we ? i_be : BE_NINGUNO);  // Que bytes de la palabra se escribe
 
-    // Escritura en memoria: escritura por byte (byte k = bits [8k+7:8k], habilitado por w_wr_be[k])
+    // Escritura en memoria: escritura byte a byte dentro de la palabra
     always @(posedge clock) begin
         if (w_wr_be[0]) r_mem[w_wr_addr][7:0] <= w_wr_data[7:0];
         if (w_wr_be[1]) r_mem[w_wr_addr][15:8] <= w_wr_data[15:8];
@@ -72,10 +72,12 @@ module data_mem #(
 
     // Bitmap y contador de palabras usadas
     always @(posedge clock) begin
-        if (i_clear_used) begin  // El borrado tiene mayor prioridad
+        //Borrado de datos del bitmap
+        if (i_clear_used) begin
             r_used       <= {DEPTH{1'b0}};
             r_used_count <= {(ADDR_BITS + 1) {1'b0}};
         end else if (w_core_we) begin
+            // Marca como usada la posicion que se escribio
             r_used[w_core_addr] <= 1'b1;
             // Solo cuenta la primera escritura de cada palabra
             if (!r_used[w_core_addr]) r_used_count <= r_used_count + 1'b1;
