@@ -58,11 +58,11 @@ Un **procesador RISC-V (subconjunto de RV32I) segmentado en 5 etapas sobre la Ba
 
 ### 1.4 Métricas de éxito
 
-| Métrica                     | Definición                                                                                                                                                                                                                                                                                                                                      | Objetivo       | Dónde se mide                                             |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | --------------------------------------------------------- |
-| **North Star**              | Porcentaje de los programas de `asm/tests/instr/` y `asm/tests/hazards/` que, ejecutados **en la placa** en modo `RUN`, terminan con el mismo estado que el golden model                                                                                                                                                                         | 100 %          | US-411 AC1; se repite a la frecuencia final en US-602 AC3 |
+| Métrica                     | Definición                                                                                                                                                                                                                                                                                                                                  | Objetivo       | Dónde se mide                                             |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | --------------------------------------------------------- |
+| **North Star**              | Porcentaje de los programas de `asm/tests/instr/` y `asm/tests/hazards/` que, ejecutados **en la placa** en modo `RUN`, terminan con el mismo estado que el golden model                                                                                                                                                                    | 100 %          | US-411 AC1; se repite a la frecuencia final en US-602 AC3 |
 | **Cobertura de riesgos**    | Cada caso tiene al menos un programa de prueba: forwarding desde EX/MEM, desde MEM/WB, doble coincidencia, hacia `store_data` y hacia `branch_cmp`; `x0` sin forwarding; load-use (también con un store); branch tomado y no tomado; branch después de un load; `jal`/`jalr`; `jal` y branch en el mismo ciclo; HALT e ilegal especulativos | 100 % de casos | US-304 AC2                                                |
-| **Reprogramación dinámica** | Cargas consecutivas de programas distintos, sin reset entre ellas, todas con resultado correcto                                                                                                                                                                                                                                               | 5 de 5         | US-404 AC5 (simulación) y US-411 AC3 (placa)              |
+| **Reprogramación dinámica** | Cargas consecutivas de programas distintos, sin reset entre ellas, todas con resultado correcto                                                                                                                                                                                                                                             | 5 de 5         | US-404 AC5 (simulación) y US-411 AC3 (placa)              |
 
 ---
 
@@ -220,13 +220,13 @@ Por acuerdo del equipo, esta sección no desarrolla la arquitectura interna del 
 
 ### 4.1 Mapa de módulos de hardware
 
-| Carpeta / archivo         | Módulos                                                                                                                                                                                                                                                                 | Historias               |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| Carpeta / archivo         | Módulos                                                                                                                                                                                                                                                               | Historias               |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
 | `hw/rtl/core/`            | `riscv_core`; etapas `if_stage`, `id_stage`, `ex_stage`, `mem_stage`, `wb_stage`; latches `*_reg`; `alu`, `alu_control`, `control_unit`, `imm_gen`, `reg_file`, `branch_cmp`, `instr_mem`, `data_mem`, `store_align`, `load_extend`, `forwarding_unit`, `hazard_unit` | Hitos 2 y 3             |
-| `hw/rtl/debug/`           | `debug_unit`, `du_cmd_fsm`, `du_tx_mux`, `du_loader`, `du_dumper`, `du_exec_ctrl`; `du_defs.vh` (generado)                                                                                                                                                              | US-104, US-403 a US-408 |
-| `hw/rtl/uart/`            | `baudrate_gen`, `uart_rx*`, `uart_tx*` (del TP2)                                                                                                                                                                                                                        | US-101, US-401          |
-| `hw/rtl/top.v`            | UART + Debug Unit + núcleo (stub o real) + MMCM si ADR-016 lo pide                                                                                                                                                                                                      | US-401, US-411, US-602  |
-| `hw/tb/debug/core_stub.v` | Núcleo falso con la misma interfaz que `riscv_core`                                                                                                                                                                                                                     | US-402                  |
+| `hw/rtl/debug/`           | `debug_unit`, `du_cmd_fsm`, `du_tx_mux`, `du_loader`, `du_dumper`, `du_exec_ctrl`; `du_defs.vh` (generado)                                                                                                                                                            | US-104, US-403 a US-408 |
+| `hw/rtl/uart/`            | `baudrate_gen`, `uart_rx*`, `uart_tx*` (del TP2)                                                                                                                                                                                                                      | US-101, US-401          |
+| `hw/rtl/top.v`            | UART + Debug Unit + núcleo (stub o real) + MMCM si ADR-016 lo pide                                                                                                                                                                                                    | US-401, US-411, US-602  |
+| `hw/tb/debug/core_stub.v` | Núcleo falso con la misma interfaz que `riscv_core`                                                                                                                                                                                                                   | US-402                  |
 
 ### 4.2 Software de PC — capas y responsabilidades
 
@@ -487,9 +487,9 @@ Cada decisión no trivial tiene su ADR en [`docs/adr/`](adr/) con la estructura 
 
 **Decisiones previas requeridas:** ADR-011, ADR-013, ADR-014, ADR-015, ADR-020 (todas aprobadas). US-103 y US-104 necesitan además ADR-002 a ADR-008, ADR-017 y ADR-018 (aprobadas).
 
-### Épica H1-E1: Repositorio y Entorno de Verificación
+#### Épica H1-E1: Repositorio y Entorno de Verificación
 
-#### US-101 — Estructura de `TP3/` y Migración del TP2
+##### US-101 — Estructura de `TP3/` y Migración del TP2
 
 - **Esfuerzo:** S (1–2 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** ADR-020
 - **Objetivo Funcional:** dejar la carpeta `TP3/` con la estructura del proyecto y los módulos reutilizados del TP2, de forma que cualquiera de los dos integrantes pueda clonar el repositorio, crear su proyecto local en Vivado agregando los fuentes, y sintetizar sin subir archivos generados.
@@ -506,37 +506,8 @@ Cada decisión no trivial tiene su ADR en [`docs/adr/`](adr/) con la estructura 
   - **AC2.** El `top` del TP2 (UART + ALU) sintetiza con los fuentes migrados y sigue funcionando en placa (prueba de humo de la migración).
   - **AC3.** ~~Plantilla y ADR-001 a ADR-020 en `docs/adr/`~~ — ya cumplido antes de iniciar el desarrollo.
 - **Testing Mínimo:** _manual:_ clonar en la otra máquina del equipo, crear el proyecto siguiendo `docs/guia-herramientas.md` y sintetizar.
-- **Archivos a crear:**
 
-```mermaid
-treeView-beta
-    "tps-arqui/"
-        "TP3/"
-            "Makefile"
-            "README.md"
-            "CHANGELOG.md"
-            "hw/"
-                "rtl/"
-                    "uart/"
-                        "baudrate_gen.v — ✅ (TP2)"
-                        "uart_rx.v — ✅ (TP2)"
-                        "uart_rx_fsm.v — ✅ (TP2)"
-                        "uart_rx_datapath.v — ✅ (TP2)"
-                        "uart_tx.v — ✅ (TP2)"
-                        "uart_tx_fsm.v — ✅ (TP2)"
-                        "uart_tx_datapath.v — ✅ (TP2)"
-                    "legacy/"
-                        "alu_tp1.v — ✅ (solo referencia)"
-                        "uart_interface.v — ✅ (solo referencia, se reemplaza)"
-                "constraints/"
-                    "basys3.xdc"
-        ".gitignore — (actualizado)"
-        "docs/"
-            "guia-herramientas.md"
-            "adr/ — ✅ (ya creado: template + ADR-001..020)"
-```
-
-#### US-102 — Infraestructura de Lint, Simulación y Testbenches Autoverificables
+##### US-102 — Infraestructura de Lint, Simulación y Testbenches Autoverificables
 
 - **Esfuerzo:** M (3 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-101, ADR-015
 - **Objetivo Funcional:** tener una forma estándar y rápida de revisar el RTL y de simular cualquier módulo desde la terminal, saber si pasó o falló sin mirar formas de onda ni abrir Vivado, y correrlo automáticamente en cada PR (ADR-015).
@@ -562,40 +533,10 @@ treeView-beta
   - **AC6.** El workflow de CI corre en un PR de prueba y queda en rojo si falla el lint, un testbench o una verificación de Python.
   - **AC7.** `make lint` pasa sin advertencias sobre los módulos migrados del TP2, y falla si se introduce una (por ejemplo, una señal sin usar).
 - **Testing Mínimo:** la propia prueba de loopback y un error de lint introducido a propósito.
-- **Archivos a crear:**
 
-```mermaid
-treeView-beta
-    "tps-arqui/"
-        "TP3/"
-            "Makefile — setup, lint, sim, sim-all, test-py, check-py, check, clean"
-            "hw/"
-                "scripts/"
-                    "sim.sh — compila y corre un testbench con Icarus"
-                    "lint.sh — lint del RTL con Verilator"
-                "tb/"
-                    "common/"
-                        "tb_utils.vh"
-                        "tb_readmemh.v — prueba de la convención +HEX"
-                        "ejemplo.hex"
-                    "uart/"
-                        "tb_uart_loopback.v"
-            "tools/"
-                "pyproject.toml — proyecto uv no instalable + configuración de ruff, mypy y pytest"
-                "uv.lock"
-                "riscv_toolkit/ — paquete (los subpaquetes se crean en cada historia)"
-                    "__main__.py"
-                "tests/"
-                    "test_smoke.py"
-        ".gitattributes — fines de línea LF para scripts y Makefile"
-        ".github/"
-            "workflows/"
-                "ci.yml"
-```
+#### Épica H1-E2: Diseño y Contratos
 
-### Épica H1-E2: Diseño y Contratos
-
-#### US-103 — Diagrama del Datapath Segmentado y Especificación de Interfaces
+##### US-103 — Diagrama del Datapath Segmentado y Especificación de Interfaces
 
 - **Esfuerzo:** M (3 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** ADR-005, ADR-006, ADR-007, ADR-010, ADR-017, ADR-018, ADR-019
 - **Objetivo Funcional:** cumplir el tip del enunciado "diseñen, dibujen y esquematicen antes de escribir la primera línea", y congelar la interfaz del núcleo para que la pista B pueda construir la Debug Unit en paralelo.
@@ -615,22 +556,8 @@ treeView-beta
   - **AC5.** El documento de interfaz está versionado; cualquier cambio posterior requiere avisar a la otra pista y actualizar `docs/interfaces/`.
 - **Entidades/Modelos implicados:** latches, señales de control, estados de la Debug Unit.
 - **Testing Mínimo:** revisión cruzada (cada integrante revisa lo que diseñó el otro).
-- **Archivos a crear:**
 
-```mermaid
-treeView-beta
-    "tps-arqui/"
-        "docs/"
-            "diagramas/"
-                "datapath_pipeline.drawio"
-                "datapath_pipeline.svg"
-                "debug_unit_fsm.svg"
-            "interfaces/"
-                "riscv_core.md"
-                "tabla_control.md"
-```
-
-#### US-104 — Especificación del Protocolo de la Debug Unit
+##### US-104 — Especificación del Protocolo de la Debug Unit
 
 - **Esfuerzo:** S (1,5 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** ADR-002, ADR-003, ADR-008, ADR-009, ADR-010, ADR-014, ADR-017, ADR-018
 - **Objetivo Funcional:** fijar byte a byte el protocolo PC ↔ FPGA para que la Debug Unit (hardware) y el codec de Python (software) se implementen por separado y funcionen juntos al primer intento.
@@ -649,35 +576,10 @@ treeView-beta
   - **AC4.** El documento incluye un número de versión del protocolo, que devuelve el comando `PING`.
 - **Reglas de Negocio:** R-DU-1 a R-DU-6.
 - **Testing Mínimo:** los ejemplos de bytes del documento se convierten en casos de prueba de US-409 y del testbench de US-403; `test_du_defs_sync.py`.
-- **Archivos a crear:**
 
-```mermaid
-treeView-beta
-    "tps-arqui/"
-        "docs/"
-            "protocolo.md"
-            "diagramas/"
-                "secuencia_protocolo.md — (Mermaid)"
-        "TP3/"
-            "tools/"
-                "pyproject.toml — (mypy también revisa scripts/)"
-                "riscv_toolkit/"
-                    "protocol/"
-                        "comandos.py"
-                "scripts/"
-                    "gen_du_defs.py"
-                "tests/"
-                    "protocol/"
-                        "test_du_defs_sync.py"
-            "hw/"
-                "rtl/"
-                    "debug/"
-                        "du_defs.vh — (generado y versionado)"
-```
+#### Épica H1-E3: Toolchain de Ensamblado y Referencia
 
-### Épica H1-E3: Toolchain de Ensamblado y Referencia
-
-#### US-105 — Tabla ISA Compartida (Fuente Única de Verdad)
+##### US-105 — Tabla ISA Compartida (Fuente Única de Verdad)
 
 - **Esfuerzo:** S (1 día) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** ADR-004, ADR-011, ADR-013
 - **Objetivo Funcional:** definir las 33 instrucciones una sola vez en código, con funciones de codificación y decodificación de campos, para que ensamblador, desensamblador y golden model no puedan divergir.
@@ -692,25 +594,8 @@ treeView-beta
   - **AC3.** `encode_b` y `encode_j` rechazan inmediatos impares o fuera de rango con una excepción clara.
   - **AC4.** El módulo no importa nada fuera de la biblioteca estándar.
 - **Testing Mínimo:** _unitarias_: `tests/isa/test_formatos.py` (ida y vuelta por formato, casos borde de inmediatos, una palabra conocida por formato); `tests/isa/test_instrucciones.py` (`test_tabla_completa`: exactamente 33 mnemónicos, y cada fila contra la sección 2.2); `tests/isa/test_registros.py`.
-- **Archivos a crear:**
 
-```mermaid
-treeView-beta
-    "TP3/"
-        "tools/"
-            "riscv_toolkit/"
-                "isa/"
-                    "instrucciones.py"
-                    "formatos.py"
-                    "registros.py"
-            "tests/"
-                "isa/"
-                    "test_formatos.py"
-                    "test_instrucciones.py"
-                    "test_registros.py"
-```
-
-#### US-106 — Ensamblador de Dos Pasadas
+##### US-106 — Ensamblador de Dos Pasadas
 
 - **Esfuerzo:** M (4 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-105, ADR-013
 - **Objetivo Funcional:** cumplir el requisito del enunciado de "contar con un mecanismo para traducir instrucciones a lenguaje máquina": convertir texto assembly en una `Imagen` (palabras + símbolos + mapa de líneas) validada.
@@ -738,30 +623,8 @@ treeView-beta
 - **Testing Mínimo:**
   - _Unitarias:_ `test_lexer.py`, `test_parser.py`, `test_assembler.py` (una prueba por instrucción, por error, por pseudoinstrucción).
   - _Contraste:_ `test_vs_gnu.py` compara contra un archivo de referencia `.hex` generado una vez con el toolchain GNU y versionado en `tools/tests/assembler/fixtures/` (así los tests no requieren tener GNU instalado). Se regenera con `make gnu-ref`.
-- **Archivos a crear:**
 
-```mermaid
-treeView-beta
-    "TP3/"
-        "tools/"
-            "riscv_toolkit/"
-                "assembler/"
-                    "lexer.py"
-                    "parser.py"
-                    "assembler.py"
-                    "imagen.py"
-                    "errores.py"
-            "tests/"
-                "assembler/"
-                    "test_lexer.py"
-                    "test_parser.py"
-                    "test_assembler.py"
-                    "test_vs_gnu.py"
-                    "fixtures/"
-                        "todas_las_instrucciones.{asm,hex}"
-```
-
-#### US-107 — Desensamblador, Formatos de Salida y CLI `rvasm`
+##### US-107 — Desensamblador, Formatos de Salida y CLI `rvasm`
 
 - **Esfuerzo:** S (2 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-106
 - **Objetivo Funcional:** producir los archivos que consumen la simulación (`.hex`), la carga por UART (`.bin`) y la GUI (`.lst`), y poder convertir cualquier palabra de vuelta a texto (lo usan la GUI y el golden model para mostrar instrucciones).
@@ -777,28 +640,8 @@ treeView-beta
   - **AC4.** El `.lst` muestra la expansión de cada pseudoinstrucción.
   - **AC5.** `rvasm` sale con código ≠ 0 si hay errores de ensamblado.
 - **Testing Mínimo:** `test_disassembler.py` (ida y vuelta de las 33 + ilegales), `test_salidas.py`.
-- **Archivos a crear:**
 
-```mermaid
-treeView-beta
-    "TP3/"
-        "tools/"
-            "riscv_toolkit/"
-                "assembler/"
-                    "salidas.py"
-                "disasm/"
-                    "disassembler.py"
-                "cli/"
-                    "rvasm.py"
-            "riscv_toolkit/__main__.py — (subcomando asm)"
-            "tests/"
-                "assembler/"
-                    "test_salidas.py"
-                "disasm/"
-                    "test_disassembler.py"
-```
-
-#### US-108 — Simulador de Referencia (Golden Model)
+##### US-108 — Simulador de Referencia (Golden Model)
 
 - **Esfuerzo:** M (3 días) · **Prioridad:** Alta · **Dependencias:** US-105, US-106 (solo para la CLI `rvsim`), ADR-014, ADR-018
 - **Objetivo Funcional:** tener un "resultado esperado" automático para cualquier programa, y la base del modo sin placa de la GUI.
@@ -818,25 +661,6 @@ treeView-beta
   - **AC5.** Un `lw` desalineado da el mismo resultado que el alineado y genera una advertencia.
   - **AC6.** El formato de `--expect` está documentado y tiene un test de ida y vuelta.
 - **Testing Mínimo:** _unitarias_ (`tests/iss/test_golden_model.py`) por instrucción; _integración:_ ensamblar y correr 3 o 4 programas chicos propios (`tests/iss/fixtures/*.asm`: aritmética, loads/stores, branches, un loop) y comparar el estado final con valores calculados a mano. La suite completa con firma llega en US-304 (`test_asm_suite.py`).
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "TP3/"
-        "tools/"
-            "riscv_toolkit/"
-                "iss/"
-                    "golden_model.py"
-                    "expected.py — formato .expected (AC6)"
-                "cli/"
-                    "rvsim.py"
-            "riscv_toolkit/__main__.py — (subcomando sim)"
-            "tests/"
-                "iss/"
-                    "test_golden_model.py"
-                    "fixtures/"
-                        "*.asm"
-```
 
 ---
 
@@ -1437,24 +1261,6 @@ treeView-beta
   - **AC3.** El reporte de _Check Timing_ ya no marca `rx` como entrada sin restricción.
   - **AC4.** Un byte con paridad errónea (inyectado en simulación) activa `o_parity_err`.
 - **Testing Mínimo:** `tb_uart_loopback.v` con `COUNT_MAX` calculado y un caso de paridad errónea; prueba en placa con `tools/scripts/uart_echo_test.py`.
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "TP3/"
-        "hw/"
-            "rtl/"
-                "top.v — (nuevo)"
-                "uart/"
-                    "baudrate_gen.v — ⚠️ (TP2, se parametriza)"
-                    "uart_rx.v — ⚠️ (TP2, se agrega o_parity_err)"
-            "constraints/"
-                "basys3.xdc — (false path + LEDs)"
-        "tools/"
-            "pyproject.toml — (agrega pyserial)"
-            "scripts/"
-                "uart_echo_test.py"
-```
 
 #### US-402 — Infraestructura de Pruebas de la Pista B: Núcleo Stub y Modelo de UART de PC
 
@@ -1469,19 +1275,6 @@ treeView-beta
   - **AC2.** Un testbench de prueba manda un byte con `send_byte` a `uart_rx` y lo recibe con `recv_byte` desde `uart_tx` (loopback a través del modelo).
   - **AC3.** El modelo puede inyectar un byte con paridad errónea y una trama truncada.
 - **Testing Mínimo:** `tb_uart_host_model.v`.
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "TP3/"
-        "hw/"
-            "tb/"
-                "debug/"
-                    "core_stub.v"
-                    "tb_uart_host_model.v"
-                "common/"
-                    "uart_host_model.vh"
-```
 
 #### US-403 — Intérprete de Comandos de la Debug Unit
 
@@ -1506,21 +1299,6 @@ treeView-beta
   - **AC6.** Un byte con paridad errónea en medio de un comando responde `NACK(ERR_PARIDAD)` y la Debug Unit sigue respondiendo.
 - **Reglas de Negocio:** R-DU-1, R-DU-2, R-DU-5, R-DU-6.
 - **Testing Mínimo:** `tb_du_cmd_fsm.v` con `uart_host_model.vh` y `core_stub` (US-402).
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "TP3/"
-        "hw/"
-            "rtl/"
-                "debug/"
-                    "debug_unit.v"
-                    "du_cmd_fsm.v"
-                    "du_tx_mux.v"
-            "tb/"
-                "debug/"
-                    "tb_du_cmd_fsm.v"
-```
 
 ### Épica H4-E2: Carga y Volcado de Estado
 
@@ -1547,20 +1325,6 @@ treeView-beta
   - **AC7.** Un `LOAD` cortado por timeout (US-403 AC4) o con checksum incorrecto deja **toda** la IMEM rellena con HALT.
 - **Reglas de Negocio:** R-RP-1, R-PR-3, R-DU-4, R-DU-6.
 - **Testing Mínimo:** `tb_du_loader.v` con `core_stub` (US-402), verificando lo que la Debug Unit escribe en la IMEM y la DMEM y las señales que activa. AC1, AC2 y AC4 necesitan ejecutar el programa: se verifican con el núcleo real en US-411.
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "TP3/"
-        "hw/"
-            "rtl/"
-                "debug/"
-                    "du_loader.v"
-                    "debug_unit.v — (instancia du_loader)"
-            "tb/"
-                "debug/"
-                    "tb_du_loader.v"
-```
 
 #### US-405 — Volcado de Registros, Latches y Memoria Usada
 
@@ -2223,61 +1987,6 @@ El catálogo se mantiene en esta sección y se revisa al cierre de cada hito.
 
 ---
 
-## 12. Estructura de Repositorio Final
-
-Todo el código del TP3 vive en la carpeta **`TP3/`** del repositorio `tps-arqui` (al lado de `TP1/` y `TP2/`). La documentación (`docs/`) y la configuración de GitHub (`.github/`, incluido el CI) quedan en la raíz. **Las rutas que aparecen en las historias de usuario (`hw/…`, `asm/…`, `tools/…`) son relativas a `TP3/`**; las que empiezan con `docs/` o `.github/` son relativas a la raíz.
-
-```mermaid
-treeView-beta
-    "tps-arqui/"
-        ".github/"
-            "workflows/"
-                "ci.yml — lint y simulación HDL + verificaciones de Python (ADR-015)"
-        "TP3/"
-            "Makefile — setup, lint, sim, sim-all, verify, test-py, check-py, check"
-            "README.md — informe del TP3"
-            "CHANGELOG.md"
-            "hw/"
-                "rtl/"
-                    "top.v — UART + Debug Unit + núcleo + MMCM"
-                    "uart/ — reutilizado del TP2 (baudrate_gen, uart_rx*, uart_tx*)"
-                    "core/ — riscv_core y todas sus etapas, latches y unidades"
-                    "debug/ — debug_unit y submódulos du_*"
-                    "legacy/ — alu del TP1 y uart_interface (solo referencia, fuera de síntesis)"
-                "tb/"
-                    "common/ — tb_utils.vh, uart_host_model.vh"
-                    "uart/"
-                    "core/"
-                    "debug/ — incluye core_stub.v"
-                "constraints/"
-                    "basys3.xdc"
-                "ip/ — .xci del Clock Wizard, solo si ADR-016 lo requiere"
-                "scripts/ — sim.sh, lint.sh, freq_sweep.tcl"
-                "reports/ — reportes exportados desde Vivado (timing, utilización, potencia)"
-            "asm/"
-                "README.md — convención de firma de resultado"
-                "tests/ — h2/ (sin firma), instr/ y hazards/ (firma en 0x3FC)"
-                "demos/ — programas para la defensa"
-                "special/ — no_halt, infinite_loop, illegal"
-            "tools/ — software de PC (Python)"
-                "pyproject.toml"
-                "riscv_toolkit/ — isa, assembler, disasm, iss, protocol, session, cli, ui"
-                "scripts/ — verify_rtl.py, verify_board.py, uart_echo_test.py, gen_du_defs.py, gen_*.py"
-                "tests/"
-        "docs/"
-            "PRD-pipeline-riscv.md — este documento"
-            "adr/ — ADR-001 … ADR-020 + README (índice) + template"
-            "interfaces/ — riscv_core.md, tabla_control.md"
-            "protocolo.md"
-            "diagramas/"
-            "guia-herramientas.md — lint, simulación y proyecto de Vivado"
-            "informe/"
-            "manual/"
-            "defensa/"
-```
-
----
-
 ## 13. Convenciones Rápidas
 
 - **Idioma:** documentación, comentarios e informe en español; nombres de módulos, señales, clases y funciones siguiendo el estilo del TP2 (identificadores en inglés técnico con prefijos `i_`/`o_`/`r_`/`w_`). _Si el equipo prefiere nombres en español en Python, se fija acá y se aplica a todo `tools/`._
@@ -2338,29 +2047,6 @@ Revisión de la presentación `enunciados/TRABAJO FINAL 2026.pdf` contra la espe
 ---
 
 ## 15. Versionado, Ramas y Roadmap
-
-### 15.1 Ramas y commits
-
-- **`main`:** solo recibe merges desde `develop` al cerrar un hito; cada merge se etiqueta con la versión del hito.
-- **`develop`:** rama de integración. Todo entra por Pull Request revisado por el otro integrante, con el CI en verde (DoD, sección 10).
-- **Ramas de trabajo:** `feature/US-XXX-descripcion-corta` (una por historia) y `fix/descripcion` para correcciones.
-- **Commits:** `tipo(alcance): descripción` con `tipo` ∈ {`feat`, `fix`, `docs`, `test`, `refactor`, `chore`} y `alcance` = `core`, `debug`, `uart`, `isa`, `asm`, `protocol`, `ui`, `docs`, etc. Ejemplo: `feat(core): agrega forwarding desde MEM/WB (US-301)`.
-- Las plantillas de issues y PR del repositorio (hitos, épicas e historias) se usan para seguir el avance.
-
-### 15.2 Versiones y releases
-
-| Versión | Se etiqueta cuando… | Contenido del release                                                                      |
-| ------- | ------------------- | ------------------------------------------------------------------------------------------ |
-| v0.1    | Cierra el Hito 1    | Toolchain de PC (ensamblador, desensamblador, golden model), protocolo y diseño congelados |
-| v0.2    | Cierra el Hito 2    | Núcleo en simulación con flush básico                                                      |
-| v0.3    | Cierra el Hito 3    | Núcleo con riesgos, suite completa en simulación, `cpi.csv`                                |
-| v0.4    | Cierra el Hito 4    | **Primer bitstream** + CLI; resultados en placa                                            |
-| v0.5    | Cierra el Hito 5    | GUI                                                                                        |
-| v1.0    | Cierra el Hito 6    | Bitstream final a la frecuencia elegida, informe, manual, sesiones de plan B               |
-
-- A partir de v0.4, cada release de GitHub adjunta el **bitstream** (`.bit`) generado desde ese commit, los reportes de `hw/reports/` y el hash del commit (US-411 AC4).
-- `CHANGELOG.md` sigue el formato _Keep a Changelog_: cada historia agrega su entrada en `[Unreleased]`, y al etiquetar se mueve a la versión.
-- La versión del protocolo/formato del snapshot (`PING`, ADR-003/017) es independiente de la versión del proyecto y solo sube cuando cambia el layout.
 
 ### 15.3 Roadmap (fuera del alcance de v1.0)
 

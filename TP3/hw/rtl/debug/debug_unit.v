@@ -1,15 +1,17 @@
 `include "du_defs.vh"
 
-// Debug Unit (US-403): interprete de comandos (du_cmd_fsm), respuestas cortas (du_resp_tx) y
-// multiplexor de la UART de transmision (du_tx_mux).
+// Debug Unit (US-403): interprete de comandos (du_cmd_fsm), respuestas cortas (du_resp_tx),
+// multiplexor de la UART de transmision (du_tx_mux) y carga del programa (du_loader, US-404).
 //
 // Se conecta a la UART del top: recibe los bytes de uart_rx y transmite por uart_tx.
-// Los submodulos todavia no existen: sus pedidos (o_req_*) y respuestas (i_*_done) salen como
-// puertos para que el testbench los emule. Cada historia mete el suyo adentro y saca esos
-// puertos: du_loader (US-404), du_dumper (US-405, canal 1 del mux) y du_exec_ctrl (US-406).
+// Los submodulos que todavia no existen: sus pedidos (o_req_*) y respuestas (i_*_done) salen
+// como puertos para que el testbench los emule. Cada historia mete el suyo adentro y saca esos
+// puertos: du_dumper (US-405, canal 1 del mux) y du_exec_ctrl (US-406).
 module debug_unit #(
     parameter CLK_FREQ_HZ       = 100_000_000,
-    parameter RX_TIMEOUT_CYCLES = CLK_FREQ_HZ / 1000 * `DU_RX_TIMEOUT_MS
+    parameter RX_TIMEOUT_CYCLES = CLK_FREQ_HZ / 1000 * `DU_RX_TIMEOUT_MS,
+    parameter IMEM_ADDR_BITS    = 8,
+    parameter DMEM_ADDR_BITS    = 8
   )(
     input  wire        clock,
     input  wire        i_reset,
@@ -24,15 +26,15 @@ module debug_unit #(
     output wire [7:0]  o_tx_data,
     input  wire        i_tx_done,
 
-    // TODO(US-404): du_loader
-    output wire        o_req_load,
-    output wire        o_load_byte,
-    output wire [7:0]  o_load_data,
-    output wire        o_load_cancel,
-    input  wire        i_load_done,
-    input  wire [7:0]  i_load_err,
-    output wire        o_req_reset,
-    input  wire        i_reset_done,
+    // Nucleo: carga de la IMEM y limpieza (du_loader, docs/interfaces/riscv_core.md 2.2 y 2.3)
+    output wire        o_imem_we,
+    output wire [IMEM_ADDR_BITS-1:0] o_imem_addr,
+    output wire [31:0] o_imem_wdata,
+    output wire        o_dmem_we,
+    output wire [DMEM_ADDR_BITS-1:0] o_dmem_addr,
+    output wire        o_clear_used,
+    output wire        o_flush_all,
+    output wire        o_load_done,  // TODO(US-406): pasa a du_exec_ctrl (contador de ciclos)
 
     // TODO(US-406): du_exec_ctrl y nucleo
     output wire        o_req_run,
@@ -62,6 +64,8 @@ module debug_unit #(
   wire [7:0] w_resp_tipo, w_resp_codigo;
   wire       w_start_0, w_done_0;
   wire [7:0] w_data_0;
+  wire       w_req_load, w_load_byte, w_load_cancel, w_load_done, w_req_reset, w_reset_done;
+  wire [7:0] w_load_data, w_load_err;
 
   du_cmd_fsm #(
     .CLK_FREQ_HZ(CLK_FREQ_HZ), .RX_TIMEOUT_CYCLES(RX_TIMEOUT_CYCLES)
@@ -71,9 +75,9 @@ module debug_unit #(
     .o_resp_send(w_resp_send), .o_resp_tipo(w_resp_tipo), .o_resp_codigo(w_resp_codigo),
     .i_resp_done(w_resp_done),
     .o_tx_sel(w_tx_sel),
-    .o_req_load(o_req_load), .o_load_byte(o_load_byte), .o_load_data(o_load_data),
-    .o_load_cancel(o_load_cancel), .i_load_done(i_load_done), .i_load_err(i_load_err),
-    .o_req_reset(o_req_reset), .i_reset_done(i_reset_done),
+    .o_req_load(w_req_load), .o_load_byte(w_load_byte), .o_load_data(w_load_data),
+    .o_load_cancel(w_load_cancel), .i_load_done(w_load_done), .i_load_err(w_load_err),
+    .o_req_reset(w_req_reset), .i_reset_done(w_reset_done),
     .o_req_run(o_req_run), .o_req_step(o_req_step), .o_req_abort(o_req_abort),
     .i_step_done(i_step_done), .i_run_fin(i_run_fin),
     .i_halted(i_halted), .i_illegal(i_illegal),
@@ -81,6 +85,19 @@ module debug_unit #(
     .o_dm_addr(o_dm_addr), .o_dm_n(o_dm_n),
     .i_dump_done(i_dump_done), .i_dump_err(i_dump_err), .o_snap_estado(o_snap_estado),
     .o_estado(o_estado)
+  );
+
+  du_loader #(
+    .IMEM_ADDR_BITS(IMEM_ADDR_BITS), .DMEM_ADDR_BITS(DMEM_ADDR_BITS)
+  ) u_loader (
+    .clock(clock), .i_reset(i_reset),
+    .i_req_load(w_req_load), .i_load_byte(w_load_byte), .i_load_data(w_load_data),
+    .i_load_cancel(w_load_cancel), .o_done(w_load_done), .o_err(w_load_err),
+    .i_req_reset(w_req_reset), .o_reset_done(w_reset_done),
+    .o_imem_we(o_imem_we), .o_imem_addr(o_imem_addr), .o_imem_wdata(o_imem_wdata),
+    .o_dmem_we(o_dmem_we), .o_dmem_addr(o_dmem_addr),
+    .o_clear_used(o_clear_used), .o_flush_all(o_flush_all),
+    .o_load_done(o_load_done)
   );
 
   du_resp_tx u_resp (
