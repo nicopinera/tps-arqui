@@ -32,19 +32,19 @@ module instr_mem #(
     // Bits bajos del PC que no direccionan palabras (byte dentro de la palabra)
     localparam BYTE_OFFSET_BITS = 2;
 
-    reg  [         31:0] r_mem                                                             [0:DEPTH-1];
-
-    // Indice de palabra: bits [ADDR_BITS+1:2] del PC
-    wire [ADDR_BITS-1:0] w_word_addr = i_pc[ADDR_BITS+BYTE_OFFSET_BITS-1:BYTE_OFFSET_BITS];
+    reg [31:0] r_mem[0:DEPTH-1];
 
     initial begin
         if (INIT_FILE != "") $readmemh(INIT_FILE, r_mem);
     end
 
+    // Indice de palabra: bits [ADDR_BITS+1:2] del PC
+    wire [ADDR_BITS-1:0] w_word_addr = i_pc[ADDR_BITS+BYTE_OFFSET_BITS-1:BYTE_OFFSET_BITS];
+
+    assign o_instr = r_mem[w_word_addr];
+
     always @(posedge clock) begin
         if (i_we) r_mem[i_addr] <= i_wdata;
     end
-
-    assign o_instr = r_mem[w_word_addr];
 
 endmodule
