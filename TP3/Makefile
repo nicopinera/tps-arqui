@@ -1,20 +1,22 @@
 # Makefile del TP3: lint, simulacion y verificaciones de Python (US-102, ADR-015).
 #
 # Se usa desde Linux o WSL, parado en TP3/. La sintesis, implementacion y programacion
-# de la placa se hacen desde la GUI de Vivado 2025.2
+# de la placa se hacen desde la GUI de Vivado 2025.2; synth-ooc usa Vivado en modo batch.
 
 SHELL := /bin/bash
 
 TB    ?=
 WAVES ?= 0
 HEX   ?=
+MOD   ?=
+VIVADO ?= vivado
 
 TOOLS_DIR := tools
 BUILD_DIR := build
 TB_NAMES  := $(sort $(basename $(notdir $(shell find hw/tb -type f -name 'tb_*.v' 2>/dev/null))))
 UV_RUN := cd $(TOOLS_DIR) && uv run
 
-.PHONY: help setup lint sim sim-all test-py check-py gnu-ref check clean
+.PHONY: help setup lint sim sim-all synth-ooc test-py check-py gnu-ref check clean
 
 help:
 	@echo "Objetivos:"
@@ -24,6 +26,8 @@ help:
 	@echo "       WAVES=1                     genera build/<tb>.vcd"
 	@echo "       HEX=<ruta>                  programa a cargar con \$$readmemh (+HEX)"
 	@echo "  make sim-all                   Corre todos los hw/tb/**/tb_*.v y resume el resultado"
+	@echo "  make synth-ooc                 Sintesis fuera de contexto de hw/rtl/core con Vivado (recursos y latches)"
+	@echo "       MOD=\"alu data_mem\"        solo esos modulos (por defecto, todos)"
 	@echo "  make test-py                   Tests de Python con cobertura"
 	@echo "  make check-py                  ruff + mypy + pytest + pip-audit"
 	@echo "  make gnu-ref                   Regenera el .hex de referencia del ensamblador con GNU as (US-106)"
@@ -66,6 +70,16 @@ sim-all:
 	echo "Testbenches: $$((total - failed)) de $$total pasaron"; \
 	if [ $$total -eq 0 ]; then echo "No se encontraron testbenches en hw/tb"; exit 1; fi; \
 	[ $$failed -eq 0 ]
+
+# Sintesis fuera de contexto: LUTs, LUTRAM, FF, BRAM y latches por modulo (sin timing).
+# Necesita Vivado 2025.2 en el PATH (o VIVADO=<ruta al ejecutable>). Deja build/synth/.
+synth-ooc:
+	@mkdir -p $(BUILD_DIR)/synth
+	@cd $(BUILD_DIR)/synth && $(VIVADO) -mode batch -nojournal -nolog -notrace \
+		-source ../../hw/scripts/synth_ooc.tcl -tclargs $(MOD) > vivado.log 2>&1; \
+		status=$$?; sed -n '/^Sintesis fuera de contexto/,$$p' vivado.log; \
+		[ $$status -eq 0 ] || echo "Vivado termino con error: ver $(BUILD_DIR)/synth/vivado.log"; \
+		exit $$status
 
 # --- Python ------------------------------------------------------------------------------
 
