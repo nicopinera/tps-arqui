@@ -1,8 +1,8 @@
-# Guía de los bloques del núcleo (H2-E1, US-201 a US-205)
+# Guía de los bloques del núcleo (H2-E1 y H2-E2, US-201 a US-210)
 
 Cómo funcionan los bloques combinacionales y de memoria del núcleo, que la épica H2-E2 va a conectar en las etapas del pipeline. El código está en `TP3/hw/rtl/core/`; los contratos, en [`tabla_control.md`](../interfaces/tabla_control.md), [`riscv_core.md`](../interfaces/riscv_core.md) y [`formatos.md`](../interfaces/formatos.md); las decisiones, en ADR-005, ADR-008, ADR-018 y ADR-019.
 
-> Estado: H2-E1 completa (US-201 a US-205). Esta guía cubre solo las partes difíciles de cada bloque, no todo el código.
+> Estado: H2-E1 completa (US-201 a US-205); H2-E2 en curso (US-206). Esta guía cubre solo las partes difíciles de cada bloque, no todo el código.
 
 ## 1. Panorama
 
@@ -55,7 +55,7 @@ En un `always @(*)`, si en algún camino del if/case una salida no recibe valor,
 
 ## 3. ALU y control de ALU (US-201)
 
-El bloque alu control tiene por fin determina a partir del opcode, el funct3 y el bit 5 de funct7 que operacion debe hacer la ALU, mientras que la control unit en la etapa de ID se encarga de generar las señales de control unicamente.
+El bloque alu control tiene por fin determina a partir de alu_op, el funct3 y el bit 5 de funct7 que operacion debe hacer la ALU, mientras que la control unit en la etapa de ID se encarga de generar las señales de control unicamente.
 
 ### 3.1 Dos niveles de decodificación: `alu_op` → `alu_ctrl`
 
@@ -123,7 +123,7 @@ La memoria de instrucciones por dentro esta implementada como un arreglo de 32x2
 
 Para esto se hace lo siguiente:
 
-- Se descartan [1:0] (Byte offset), porque dividir por 4 equivale a sacar esos bits. Ademas estos valen 00 siempre, porque el PC es múltiplo de 4.
+- Se descartan [1:0] (Byte offset), porque dividir por 4 equivale a sacar esos bits. Ademas estos deberian valer 00 siempre, porque el PC es múltiplo de 4.
 - Se toman ADDR bits, por ejemplo para una memoria de 256, ADDR es 8 (se le suma el Byte offset para tomar esa parte)[9:2].
 - Se ignoran los demas bits, siguiendo el ejemplo anterior seria [31:10].
 
@@ -151,7 +151,7 @@ wire [ADDR_BITS-1:0] w_core_addr = i_addr[ADDR_BITS+BYTE_OFFSET_BITS-1 : BYTE_OF
 
 En el caso de lectura la memoria de datos hace lo mismo lo que modifica el resultado final es el load extend. La memoria de datos devuelve la palabra completa que se lee y load extend se encarga de mover el byte o la media palabra a la parte baja y extender a 32 bits, con el signo (lb, lh) o con ceros (lbu, lhu).
 
-### 6.4 Exclusion de lectura entre debug unit y core
+### 6.4 Exclusion de escritura entre debug unit y core
 
 Tanto el núcleo como la Debug Unit pueden escribir en la memoria. El mux del puerto le da prioridad a la debug unit, si `i_dbg_we=1`, se escribe la limpieza y el store del núcleo se descarta. Para que ese store tampoco marque el bitmap, se define una señal de store efectivo que usan tanto la escritura como el bitmap: el núcleo escribe solo si la instrucción es un store, no es una burbuja lo cual se valida mediante el `i_valid`, el núcleo no está congelado (`i_enable`) y la Debug Unit no está escribiendo (`!i_dbg_we`).
 
@@ -238,3 +238,90 @@ always @(*) begin
     endcase
 end
 ```
+
+## 8. Etapa IF y latch IF/ID (US-206)
+
+Este bloque instancia e implementa los sub-bloques de la etapa IF, el cual sera instanciado en un superbloque core
+
+### 8.1 Entradas de `if_stage`
+
+El stall es activado por la hazard unit cuando hay un riesgo tipo load-use, por ejemplo:
+
+```
+lw x1, 2(x0)
+add x2, x1, x3
+```
+
+El valor de x1, esta disponible en la etapa WB, requeriendo que la siguiente instruccion se congele un ciclo en ID para poder tener el valor de x1.
+
+```
+  ciclo          │   1   │   2   │   3   │   4   │   5   │   6   │
+  clock        ──┘‾‾‾└───┘‾‾‾└───┘‾‾‾└───┘‾‾‾└───┘‾‾‾└───┘‾‾‾└───
+                 ↑       ↑       ↑       ↑       ↑       ↑
+  IF           ──┤  lw   │  add  │       │       │       │       │
+  ID (IF/ID)   ──┤       │  lw   │  add  │  add  │       │       │
+  EX (ID/EX)   ──┤       │       │  lw   │ bubbl │  add  │       │
+  MEM (EX/MEM) ──┤       │       │       │  lw   │ bubbl │  add  │
+  WB (MEM/WB)  ──┤       │       │       │       │  lw   │ bubbl │
+
+  stall        ______________________/‾‾‾‾‾‾‾\________________________
+  fwd_a        ──────── 00 ──────────────────────│  01   │── 00 ───
+```
+
+Lo que muestra esta imagen es que cuando la instruccion de add este en EX, le llega el valor de x1 desde WB, gestionado por la forward unit
+
+### 8.2 Mux del próximo PC con prioridad
+
+El mux se realiza mediante prioridades, donde la redireccion desde EX (salto condicional o jalr) > redireccion desde ID (salto incondicional, sin contar jalr) > pc+4. Esto tiene un motivo fundamental: La que se resulve mas tarde es la que gana porque su decision anula a las que vinieron despues
+
+```verilog
+// if_stage.v:54-58
+always @(*) begin
+    r_pc_next = w_pc_plus4;
+    if (i_redirect_ex) r_pc_next = i_redirect_ex_pc;
+    else if (i_redirect_jal) r_pc_next = i_jal_pc;
+end
+```
+
+### 8.3 Cuándo se escribe el PC: la redirección de EX le gana a la detención
+
+```verilog
+// if_stage.v:51
+wire w_pc_we = i_enable && (i_redirect_ex || (!i_stall && !i_halt_fetch));
+```
+
+De esta parte lo mas interesante es que la escritura de next pc se habilita a pesar de que haya un stall o un halt si se trata de salto condicional o jalr (redireccion desde EX), esto es mas visible con un ejemplo:
+
+```
+0x00  addi x1, x0, 2        # contador = 2
+  loop:
+  0x04  addi x1, x1, -1
+  0x08  bne  x1, x0, loop     # mientras x1 no sea 0, vuelve
+  0x0C  halt                  # el ensamblador lo agrega solo al final
+```
+
+El bne se resuelve en EX pero halt se detecta en ID
+
+### 8.4 Latch IF/ID y el bit `valid`
+
+si i_valid = 0, IF tiene la busqueda detenida (HALT o ilegal en ID, o ABORT), entonces lo que sale de la IMEM no es una instruccion valida, no debe ejecutarse
+si i_flush = 1, indica que la instruccion que busco IF es del camino equivocado (hay un jal en ID o se resolvio un salto en EX), se descarta antes de que llegue a tener efecto
+
+En ambos casos se mete una burbuja, en este caso se usa la instruccion NOP pero podria ser cualquiera ya que esta de igual manera no se va a ejecutar a posterior, lo que importa es el valid = 0. Se usa NOP para que en el snapshot no aparezca una instruccion "real" en un latch vacio.
+
+```verilog
+// if_id_reg.v:38 y 52-60
+wire w_burbuja = i_flush || !i_valid;
+
+always @(posedge clock) begin
+    if (i_reset) begin
+        o_instr <= INSTR_NOP;
+        o_valid <= 1'b0;
+    end else if (i_enable && (i_flush || !i_stall)) begin
+        o_instr <= w_burbuja ? INSTR_NOP : i_instr;
+        o_valid <= !w_burbuja;
+    end
+end
+```
+
+Ademas hay que decidir si se esta ante un congelamiento (osea los valores tienen que mantenerse) esto se hace evaluando i_enable e i_stall: si i_enable = 0, o si i_stall esta activado y no hay flush, no se cambia ni el valid ni la instruccion. Con flush se carga igual aunque haya stall, porque mantener dejaria en ID una instruccion del camino equivocado. Si se carga y es una burbuja (flush o i_valid = 0) se carga un NOP (de relleno, es no valido) y sino la instruccion y se dice valida
