@@ -61,4 +61,9 @@ localparam [2:0] IMM_B = 3'b010;
 localparam [2:0] IMM_U = 3'b011;
 localparam [2:0] IMM_J = 3'b100;
 
+// ---------------------------------------------------------------------------------------------
+// Burbuja: instr que queda en un latch con valid = 0 (flush, halt_fetch o reset)
+// ---------------------------------------------------------------------------------------------
+localparam [31:0] INSTR_NOP = 32'h0000_0013;  // addi x0, x0, 0
+
 /* verilator lint_on UNUSEDPARAM */
