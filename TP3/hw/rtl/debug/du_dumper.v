@@ -15,12 +15,10 @@
 // El nucleo esta congelado durante todo el volcado: las lecturas de depuracion son combinacionales y valen lo mismo de principio a fin.
 //
 // Organizacion:
-//   1. FSM chica (IDLE, ENVIAR, ESPERAR, FIN) y sus registros: un byte por vuelta
+//   1. FSM chica (IDLE, BUSCAR, ENVIAR, ESPERAR, FIN) y sus registros: un byte por vuelta
 //   2. r_pos dice que byte de la trama va saliendo (0 = A5)
 //   3. tabla: que byte corresponde a cada r_pos (copia de protocolo.md 6.2)
 
-// TODO(nico): sacar este lint_off cuando todas las entradas se usen (P6)
-/* verilator lint_off UNUSEDSIGNAL */
 module du_dumper #(
     parameter NBIT           = 8,
     parameter NBIT_32        = 32,
@@ -67,28 +65,86 @@ module du_dumper #(
     output reg  [NBIT-1:0]     o_tx_data,     // Byte a mandar (lo toma uart_tx junto con el start)
     input  wire                i_tx_done      // Pulso: la UART termino el byte en vuelo
   );
-  // La FSM solo sabe mandar un byte y esperar a que salga. En que parte de la trama se esta
-  // lo dice r_pos, no el estado.
-  localparam [1:0]
-             IDLE    = 2'd0,  // esperando un pedido
-             ENVIAR  = 2'd1,  // un ciclo: o_tx_start con el byte de r_pos
-             ESPERAR = 2'd2,  // hasta el i_tx_done de ese byte
-             FIN     = 2'd3;  // un ciclo: o_done
-  // TODO(US-405 P6): un estado mas (BUSCAR) para saltar las palabras no usadas del bitmap
+  // La FSM solo sabe preparar un byte, mandarlo y esperar a que salga. En que parte de la
+  // trama se esta lo dice r_pos, no el estado.
+  localparam [2:0]
+             IDLE    = 3'd0,  // esperando un pedido
+             BUSCAR  = 3'd1,  // antes de cada byte: si empieza una palabra de memoria, busca la proxima usada
+             ENVIAR  = 3'd2,  // un ciclo: o_tx_start con el byte de r_pos
+             ESPERAR = 3'd3,  // hasta el i_tx_done de ese byte
+             FIN     = 3'd4;  // un ciclo: o_done
 
   localparam [15:0] LEN_FIJO = `DU_SNAPSHOT_FIJO;  // 221: todo el payload menos los 6K de memoria
 
-  reg [1:0]      state_reg;
-  reg [15:0]     r_pos;  // Byte de la trama que va saliendo: 0 = A5, 1 = tipo, 2-3 = len, 4.. payload
-  reg [NBIT-1:0] r_xor;  // XOR de lo ya mandado (sin el A5): es el checksum
-  reg [15:0]     r_len;  // Longitud del payload, fijada al arrancar con el K de la foto
+  // Donde empieza cada seccion dentro del payload (protocolo.md 6.2, columna Offset). Cada
+  // seccion termina donde empieza la siguiente. El estado (1 B) esta en el offset 0.
+  localparam [15:0]
+             OFF_CICLOS  = 16'd1,    // 4 B
+             OFF_PC      = 16'd5,    // 4 B
+             OFF_RIESGOS = 16'd9,    // 1 B
+             OFF_REGS    = 16'd10,   // 32 registros x 4 B = 128 B
+             OFF_LATCH   = 16'd138,  // IF/ID 13 + ID/EX 31 + EX/MEM 19 + MEM/WB 18 = 81 B
+             OFF_K       = 16'd219,  // 2 B
+             OFF_MEM     = 16'd221;  // K x [dir 2 B + dato 4 B]
 
+  // ---------------------------------------------------------------------------------------
+  // Registros
+  // ---------------------------------------------------------------------------------------
+  reg [2:0]              state_reg;
+  reg [15:0]             r_pos;      // Byte de la trama que va saliendo: 0 = A5, 1 = tipo, 2-3 = len, 4.. payload
+  reg [NBIT-1:0]         r_xor;      // XOR de lo ya mandado (sin el A5): es el checksum
+  reg [NBIT-1:0]         r_estado;   // i_snap_estado copiado al pedido (la FSM lo da valido en ese ciclo)
+  reg [DMEM_ADDR_BITS:0] r_k;        // K copiado al pedido: de el salen la longitud y los 2 B de K
+  reg [647:0]            r_latches;  // Copia de los 4 latches al pedido: {MEM/WB, EX/MEM, ID/EX, IF/ID}
+  reg [DMEM_ADDR_BITS:0] r_mem_addr; // Palabra de DMEM que se esta mandando o buscando (1 bit mas: 256 = fin)
+  reg [2:0]              r_sub;      // Byte dentro de la entrada de memoria: 0-1 = dir, 2-5 = dato
+
+  // ---------------------------------------------------------------------------------------
+  // Cuentas que salen de los registros
+  // ---------------------------------------------------------------------------------------
   // longitud = 221 + 6K, con 6K = 4K + 2K (K <= 256: 221 + 1536 = 1757 entra en 16 bits)
-  wire [15:0] w_k   = {{(15-DMEM_ADDR_BITS){1'b0}}, i_dbg_used_count};
+  wire [15:0] w_k   = {{(15-DMEM_ADDR_BITS){1'b0}}, r_k};
   wire [15:0] w_len = LEN_FIJO + (w_k << 2) + (w_k << 1);
 
   // Posicion del checksum: despues de A5, tipo, len (4 B) y el payload
-  wire [15:0] w_pos_checksum = 16'd4;  // TODO(US-405 P3): r_len + 16'd4 cuando haya payload
+  wire [15:0] w_pos_checksum = w_len + 16'd4;
+
+  // Posicion dentro del payload (0 = byte estado). Solo tiene sentido con r_pos >= 4.
+  wire [15:0] w_off = r_pos - 16'd4;
+
+  // Posicion dentro de cada seccion. De cada una solo se usan los bits bajos (lo que entra
+  // en la seccion): el resto vale cualquier cosa fuera de rango y no se mira.
+  /* verilator lint_off UNUSEDSIGNAL */
+  wire [15:0] w_rel_ciclos = w_off - OFF_CICLOS;  // 0..3: byte de i_ciclos
+  wire [15:0] w_rel_pc     = w_off - OFF_PC;      // 0..3: byte de i_pc
+  wire [15:0] w_rel_regs   = w_off - OFF_REGS;    // 0..127: [6:2] registro, [1:0] byte
+  wire [15:0] w_rel_latch  = w_off - OFF_LATCH;   // 0..80: byte de r_latches
+  wire [15:0] w_rel_k      = w_off - OFF_K;       // 0..1: byte de K
+  /* verilator lint_on UNUSEDSIGNAL */
+
+  // Byte k de la copia de latches = r_latches[8k+7:8k]: el bit donde empieza es k * 8
+  wire [9:0] w_bit_latch = {w_rel_latch[6:0], 3'b000};
+
+  // Byte de riesgos (offset 9), protocolo.md 6.2: bit 7 en 0
+  wire [NBIT-1:0] w_riesgos = {1'b0, i_fwd_b, i_fwd_a, i_flush_id_ex, i_flush_if_id, i_stall};
+
+  // Memoria: el byte que toca es parte de una entrada [dir 2 B | dato 4 B]
+  wire w_en_mem = (r_pos >= 16'd4) && (w_off >= OFF_MEM) && (r_pos != w_pos_checksum);
+  wire [15:0] w_dir_bytes = {{(14-DMEM_ADDR_BITS){1'b0}}, r_mem_addr[DMEM_ADDR_BITS-1:0], 2'b00};
+  wire [1:0]  w_sub_dato  = r_sub[1:0] - 2'd2;  // r_sub 2..5 -> byte 0..3 del dato (en 2 bits: 4-2 = 2, 5-2 = 3)
+  wire [DMEM_ADDR_BITS:0] w_mem_addr_sig = r_mem_addr + {{DMEM_ADDR_BITS{1'b0}}, 1'b1};
+
+  // Byte n (0 = el menos significativo) de una palabra de 32 bits: es el bus[8n+7:8n]
+  function [NBIT-1:0] byte_de;
+    input [NBIT_32-1:0] palabra;
+    input [1:0]         n;
+    case (n)
+      2'd0:    byte_de = palabra[7:0];
+      2'd1:    byte_de = palabra[15:8];
+      2'd2:    byte_de = palabra[23:16];
+      default: byte_de = palabra[31:24];
+    endcase
+  endfunction
 
   // El A5 no entra en el checksum, y el checksum no se suma a si mismo
   wire w_suma_xor = (r_pos != 16'd0) && (r_pos != w_pos_checksum);
@@ -99,23 +155,43 @@ module du_dumper #(
   always @(posedge clock)
     if (i_reset)
     begin
-      state_reg <= IDLE;
-      r_pos     <= 16'd0;
-      r_xor     <= {NBIT{1'b0}};
-      r_len     <= 16'd0;
+      state_reg  <= IDLE;
+      r_pos      <= 16'd0;
+      r_xor      <= {NBIT{1'b0}};
+      r_estado   <= {NBIT{1'b0}};
+      r_k        <= {(DMEM_ADDR_BITS+1){1'b0}};
+      r_latches  <= 648'd0;
+      r_mem_addr <= {(DMEM_ADDR_BITS+1){1'b0}};
+      r_sub      <= 3'd0;
     end
     else
     case (state_reg)
-      // Quieto hasta que la FSM de comandos pide un snapshot (i_req_dump). Ahi fija la
-      // longitud con el K de este momento, arranca desde el byte 0 y pasa a ENVIAR.
+      // Quieto hasta que la FSM de comandos pide un snapshot (i_req_dump). Ahi saca la foto
+      // de lo que podria cambiar despues (estado, K y latches), arranca desde el byte 0 y
+      // pasa a BUSCAR.
       IDLE:
         if (i_req_dump)
         begin
-          r_len     <= w_len;
-          r_pos     <= 16'd0;
-          r_xor     <= {NBIT{1'b0}};
-          state_reg <= ENVIAR;
+          r_estado   <= i_snap_estado;
+          r_k        <= i_dbg_used_count;
+          r_latches  <= {i_mem_wb, i_ex_mem, i_id_ex, i_if_id};  // IF/ID en los bits bajos: sale primero
+          r_pos      <= 16'd0;
+          r_xor      <= {NBIT{1'b0}};
+          r_mem_addr <= {(DMEM_ADDR_BITS+1){1'b0}};
+          r_sub      <= 3'd0;
+          state_reg  <= BUSCAR;
         end
+
+      // Antes de cada byte. Solo hace algo si el byte que toca es el primero de una entrada
+      // de memoria (w_en_mem y r_sub = 0) y la palabra r_mem_addr no fue escrita: avanza
+      // una direccion por ciclo hasta encontrar una con i_dbg_mem_used = 1. En cualquier
+      // otro caso pasa directo a ENVIAR. Si llega al final de la DMEM sin encontrar (el
+      // bitmap no coincide con K: no deberia pasar) tambien sigue, para no colgarse.
+      BUSCAR:
+        if (w_en_mem && r_sub == 3'd0 && !i_dbg_mem_used && !r_mem_addr[DMEM_ADDR_BITS])
+          r_mem_addr <= w_mem_addr_sig;
+        else
+          state_reg <= ENVIAR;
 
       // Dura un ciclo: o_tx_start = 1 y la UART toma o_tx_data (el byte de r_pos).
       // Ese byte se suma al checksum. Siempre pasa a ESPERAR.
@@ -127,8 +203,9 @@ module du_dumper #(
       end
 
       // Quieto hasta que la UART termina el byte (i_tx_done). Si era el checksum, pasa a
-      // FIN; si no, avanza r_pos y vuelve a ENVIAR. Ese ENVIAR cae un ciclo despues del
-      // done, cuando uart_tx ya salio de STOP.
+      // FIN. Si no, avanza r_pos (y, en memoria, el byte de la entrada o la palabra) y
+      // vuelve a BUSCAR. Ese ENVIAR cae al menos un ciclo despues del done, cuando uart_tx
+      // ya salio de STOP.
       ESPERAR:
         if (i_tx_done)
         begin
@@ -136,8 +213,18 @@ module du_dumper #(
             state_reg <= FIN;
           else
           begin
-            r_pos     <= r_pos + 16'd1;
-            state_reg <= ENVIAR;
+            r_pos <= r_pos + 16'd1;
+            if (w_en_mem)
+            begin
+              if (r_sub == 3'd5)
+              begin
+                r_sub      <= 3'd0;                  // entrada completa: la proxima palabra
+                r_mem_addr <= w_mem_addr_sig;        // se busca desde la siguiente direccion
+              end
+              else
+                r_sub <= r_sub + 3'd1;
+            end
+            state_reg <= BUSCAR;
           end
         end
 
@@ -152,31 +239,53 @@ module du_dumper #(
   // Salidas que dependen solo del estado
   assign o_tx_start = (state_reg == ENVIAR);
   assign o_done     = (state_reg == FIN);
+  assign o_err      = {NBIT{1'b0}};
 
-  assign o_err          = {NBIT{1'b0}};
-  assign o_dbg_reg_addr = 5'd0;                    // TODO(US-405 P4): sale de r_pos
-  assign o_dbg_mem_addr = {DMEM_ADDR_BITS{1'b0}};  // TODO(US-405 P6): recorrido del bitmap
+  // Lecturas de depuracion (combinacionales: el nucleo contesta en el mismo ciclo)
+  assign o_dbg_reg_addr = w_rel_regs[6:2];                         // 4 bytes por registro
+  assign o_dbg_mem_addr = r_mem_addr[DMEM_ADDR_BITS-1:0];
 
   // ---------------------------------------------------------------------------------------
   // 2. Tabla: que byte sale en cada posicion de la trama (protocolo.md 6 y 6.2)
   // ---------------------------------------------------------------------------------------
+  // Cada condicion pregunta "estoy antes de que empiece la seccion siguiente?": que ya se
+  // paso el comienzo de la propia lo garantizan las condiciones de arriba.
   always @(*)
     if (r_pos == w_pos_checksum)
       o_tx_data = r_xor;
-    else
-    case (r_pos)
-      16'd0:
+    else if (r_pos < 16'd4)                  // sobre: A5, tipo, longitud LE
+    case (r_pos[1:0])
+      2'd0:
         o_tx_data = `DU_SYNC;
-      16'd1:
+      2'd1:
         o_tx_data = `DU_TIPO_SNAPSHOT;
-      16'd2:
-        o_tx_data = r_len[7:0];   // longitud LE: primero el byte bajo
-      16'd3:
-        o_tx_data = r_len[15:8];
-      // TODO(US-405 P3..P6): payload, offset = r_pos - 4 (estado, ciclos, PC, riesgos, registros, latches, K, memoria)
+      2'd2:
+        o_tx_data = w_len[7:0];
       default:
-        o_tx_data = {NBIT{1'b0}};
+        o_tx_data = w_len[15:8];
+    endcase
+    else if (w_off < OFF_CICLOS)             // offset 0
+      o_tx_data = r_estado;
+    else if (w_off < OFF_PC)                 // offsets 1..4
+      o_tx_data = byte_de(i_ciclos, w_rel_ciclos[1:0]);
+    else if (w_off < OFF_RIESGOS)            // offsets 5..8
+      o_tx_data = byte_de(i_pc, w_rel_pc[1:0]);
+    else if (w_off < OFF_REGS)               // offset 9
+      o_tx_data = w_riesgos;
+    else if (w_off < OFF_LATCH)              // offsets 10..137: registro o_dbg_reg_addr
+      o_tx_data = byte_de(i_dbg_reg_data, w_rel_regs[1:0]);
+    else if (w_off < OFF_K)                  // offsets 138..218
+      o_tx_data = r_latches[w_bit_latch +: 8];
+    else if (w_off < OFF_MEM)                // offsets 219..220: K LE
+      o_tx_data = w_rel_k[0] ? w_k[15:8] : w_k[7:0];
+    else                                     // offsets 221..: entrada de memoria
+    case (r_sub)
+      3'd0:
+        o_tx_data = w_dir_bytes[7:0];        // direccion en bytes, LE
+      3'd1:
+        o_tx_data = w_dir_bytes[15:8];
+      default:
+        o_tx_data = byte_de(i_dbg_mem_data, w_sub_dato);  // dato LE
     endcase
 
 endmodule
-/* verilator lint_on UNUSEDSIGNAL */
