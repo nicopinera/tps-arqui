@@ -2,17 +2,16 @@
 
 Guía para entender **en qué estado está la Debug Unit (DU), qué hace en cada uno y por qué pasa al siguiente**. La referencia formal (bytes, códigos, tablas) está en [`protocolo.md`](../protocolo.md). Esta guía cuenta la historia.
 
-- La **Parte 1** (secciones 1 a 6) explica la FSM **del protocolo**: lo que ve la PC.
-- La **Parte 2** (secciones 7 a 17) explica **cómo está implementada en Verilog** (US-403): los módulos, cada señal y cada registro, y los pasos internos que da la FSM ante cada comando.
-- La **Parte 3** (secciones 18 a 28) explica `du_loader` (US-404): cómo se carga el programa y cómo se limpia todo antes de ejecutar.
+- La **Parte 1** explica la FSM **del protocolo**: lo que ve la PC.
+- La **Parte 2** explica **cómo está implementada en Verilog**: los módulos, cada señal y cada registro, y los pasos internos que da la FSM ante cada comando.
+- La **Parte 3** explica `du_loader`: cómo se carga el programa y cómo se limpia todo antes de ejecutar.
+- La **Parte 4** explica `du_dumper`: cómo se arma y se manda el snapshot.
 
 ![FSM de la Debug Unit](../diagramas/debug_unit_fsm.svg)
 
 ## 1. Qué es una FSM
 
-Una **máquina de estados finitos** (_Finite State Machine_) es un circuito que en cada momento está en **uno** de un conjunto chico de estados. Un **evento** (llega un byte, el núcleo avisa que terminó) la hace **transicionar** a otro estado y, en el camino, ejecutar una **acción** (mandar un `ACK`, poner `i_enable = 1`).
-
-En el diagrama, cada flecha se lee **`evento [condición] / acción`**. Por ejemplo, `RUN / ACK, i_enable = 1` quiere decir "llegó el comando RUN; respondo ACK y habilito el reloj del núcleo".
+Una **máquina de estados finitos** (_Finite State Machine_) es un circuito que en cada momento está en **uno** de un conjunto chico de estados. Un **evento** (llega un byte, el núcleo avisa que terminó) la hace **transicionar** a otro estado y, en el camino, ejecutar una **acción**. En el diagrama, cada flecha se lee **`evento [condición] / acción`**. Por ejemplo, `RUN / ACK, i_enable = 1` quiere decir "llegó el comando RUN; respondo ACK y habilito el reloj del núcleo".
 
 ## 2. Los 7 estados en una línea
 
@@ -38,7 +37,7 @@ Al prender la placa, o al apretar el botón de reset (`i_reset`), la DU arranca 
 
 La GUI manda el byte `'L'` (`0x4C`) y la DU pasa a `LOADING`.
 
-**Qué viaja:** no el texto en assembly, sino el **código máquina ya ensamblado**. La PC corre el ensamblador y manda palabras de 32 bits (`addi x1, x0, 5` viaja como `93 00 50 00`). El orden es:
+**Qué viaja:** el **código máquina ya ensamblado**. La PC corre el ensamblador y manda palabras de 32 bits. El orden es:
 
 1. `N`: cuántas palabras vienen (2 bytes).
 2. Las `N` palabras, 4 bytes cada una.
@@ -61,18 +60,18 @@ Mientras está en `LOADING`, **todo byte es parte de la carga**. Si dentro de un
 
 **Si algo falló** → `IDLE`, con **toda** la IMEM rellena de HALT, y responde `NACK`. Pueden fallar cuatro cosas:
 
-| Falla          | Qué significa                                                                                            |
-| -------------- | -------------------------------------------------------------------------------------------------------- |
-| `ERR_CHECKSUM` | Llegaron todos los bytes, pero alguno se corrompió en el cable                                           |
-| `ERR_TIMEOUT`  | Pasaron **100 ms sin que llegue ningún byte** en medio de la carga (por ejemplo, se desenchufó el cable) |
-| `ERR_PARIDAD`  | Un byte llegó con el bit de paridad incorrecto                                                           |
-| `ERR_TAMANO`   | `N` es 0 o mayor que 256                                                                                 |
+| Falla          | Qué significa                                                      |
+| -------------- | ------------------------------------------------------------------ |
+| `ERR_CHECKSUM` | Llegaron todos los bytes, pero alguno se corrompió en el cable     |
+| `ERR_TIMEOUT`  | Pasaron **100 ms sin que llegue ningún byte** en medio de la carga |
+| `ERR_PARIDAD`  | Un byte llegó con el bit de paridad incorrecto                     |
+| `ERR_TAMANO`   | `N` es 0 o mayor que 256                                           |
 
 **Sobre el timeout:** no es un tiempo total para el `LOAD`, sino el tiempo **entre un byte y el siguiente**. Cada byte que llega reinicia el contador. Un programa largo puede tardar varios segundos en cargarse sin problema, siempre que no haya un hueco de 100 ms.
 
 **¿Por qué rellenar con HALT y no dejar lo que había?** Porque las primeras palabras ya se escribieron. La IMEM quedó con la mitad del programa nuevo y la mitad del viejo: una mezcla que no es ningún programa. Rellenarla con HALT garantiza que, si alguien la ejecuta igual, se detiene en la primera instrucción. Y como no hay programa válido, la DU vuelve a `IDLE`.
 
-**¿Y los errores a mitad de la carga?** Paridad y tamaño se detectan **antes** de que termine de llegar la carga. Si la DU respondiera en ese momento, los bytes que siguen llegando se leerían como comandos. Por eso primero espera a que la línea quede en silencio (100 ms) y recién después responde el `NACK` ([protocolo §7.2](../protocolo.md)).
+**¿Y los errores a mitad de la carga?** Paridad y tamaño se detectan **antes** de que termine de llegar la carga. Si la DU respondiera en ese momento, los bytes que siguen llegando se leerían como comandos. Por eso primero espera a que la línea quede en silencio (100 ms) y recién después responde el `NACK`.
 
 ### 3.4 `STEP`: `READY` → `DUMPING` → `STEPPING`
 
@@ -98,8 +97,6 @@ Cada `STEP` siguiente hace lo mismo: `STEPPING` → `DUMPING` → `STEPPING`.
 | `RESET` | `READY`                | Volver a empezar el **mismo** programa desde el ciclo 0 sin reenviarlo (limpia todo menos la IMEM) |
 | `LOAD`  | `LOADING`              | Abandonar esta depuración y cargar otro programa                                                   |
 | `DUMP`  | `DUMPING` → `STEPPING` | Pedir la foto de nuevo sin avanzar (por ejemplo, si se perdió la anterior)                         |
-
-> **Ojo:** `ACK` no es un comando, es una **respuesta** de la FPGA. La PC nunca manda un `ACK`. Los que llevan de `STEPPING` a `READY` son `RESET` y, pasando por `LOADING`, `LOAD`.
 
 `RESET` y `LOAD` se aceptan en `STEPPING` porque, en modo paso a paso, el programa puede no terminar nunca (por ejemplo, un loop infinito). Sin esos dos comandos, no habría forma de salir sin apretar el botón de la placa (ADR-010).
 
@@ -176,63 +173,27 @@ Para no llenar el diagrama de autolazos, hay dos reglas que valen en todos los e
 
 El botón de reset de la placa (`i_reset`) lleva a `IDLE` desde **cualquier** estado.
 
-## 6. Errores comunes al razonar la FSM
-
-- **Confundir el motivo con el estado.** `HALTED`, `ILLEGAL` y `ABORTED` son motivos de terminación que viajan en el snapshot. El estado es siempre `HALTED`.
-- **Creer que `STEP` = una instrucción.** Es **un ciclo de reloj**. Una instrucción tarda 5 ciclos en atravesar el pipeline, y en cada ciclo hay hasta 5 instrucciones avanzando a la vez.
-- **Creer que la DU detecta el HALT.** Lo detecta el núcleo. La DU solo mira `o_halted`.
-- **Pensar que el timeout es para todo el `LOAD`.** Es entre bytes.
-- **Interpretar bytes de datos como comandos.** En `LOADING` todo byte es dato, aunque valga `'R'`.
-
 ---
 
-## Parte 2: cómo está implementada (US-403)
-
-La Parte 1 describe **qué** hace la Debug Unit. Esta parte explica **cómo** lo hace el hardware de [`TP3/hw/rtl/debug/`](../../TP3/hw/rtl/debug/).
-
-**Convención:** cada vez que aparece una señal o un registro, entre paréntesis se dice qué significa. Los prefijos siguen la convención del repo:
-
-| Prefijo | Qué es                                                                   | Ejemplo                                          |
-| ------- | ------------------------------------------------------------------------ | ------------------------------------------------ |
-| `i_`    | entrada del módulo                                                       | `i_rx_done` (pulso: "llegó un byte bueno")       |
-| `o_`    | salida del módulo                                                        | `o_estado` (estado del protocolo hacia los LEDs) |
-| `r_`    | registro: guarda un valor entre ciclos (flip-flops)                      | `r_timer` (ciclos desde el último byte)          |
-| `w_`    | cable: valor calculado en el momento, sin memoria (lógica combinacional) | `w_timeout` (1 cuando `r_timer` llegó al límite) |
-
-## 7. La idea en una frase
-
-La US-403 construye el **recepcionista** de la placa. Recibe los bytes que manda la PC, entiende qué comando es, decide si se puede hacer en este momento, le pasa el trabajo a quien corresponde y **siempre contesta algo** (R-DU-2).
-
-Como en una mesa de entradas: llega alguien con un trámite (el comando).
-
-- Si el trámite no existe, "no existe ese trámite" (`NACK(ERR_DESCONOCIDO)`).
-- Si existe pero hoy no se atiende, "hoy no" (`NACK(ERR_ESTADO)`).
-- Si se atiende, lo manda a la oficina correcta (el submódulo), espera que termine y le da el comprobante (`ACK` o los datos).
+## Parte 2: cómo está implementada
 
 ## 8. Mapa de bloques
 
 ```text
  PC ──(cable rx)──► uart_rx ──► ┌────────────────────── debug_unit ───────────────────────┐
                                 │                                                         │
-                                │  du_cmd_fsm ─pedidos o_req_*─► du_loader [exec] [dumper]│  ← exec y dumper
-                                │  (el cerebro) ◄──"listo" i_*_done──                      │    (US-405, US-406):
-                                │      │                                   │               │    los emula el testbench
-                                │      ▼                                   │               │
-                                │  du_resp_tx                              │               │
-                                │  (ACK, NACK, PING_INFO)                  │               │
-                                │      │ canal 0                   canal 1 │               │
-                                │      └──────────►  du_tx_mux  ◄──────────┘               │
+                                │  du_cmd_fsm ─pedidos o_req_*─► du_loader / exec / dumper│
+                                │  (el cerebro) ◄──"listo" i_*_done──                     │
+                                │      │                                   │              │
+                                │      ▼                                   │              │
+                                │  du_resp_tx                              │              │
+                                │  (ACK, NACK, PING_INFO)                  │              │
+                                │      │ canal 0                   canal 1 │              │
+                                │      └──────────►  du_tx_mux  ◄──────────┘              │
                                 │                   (el turno)                            │
                                 └─────────────────────────│───────────────────────────────┘
  PC ◄──(cable tx)── uart_tx ◄─────────────────────────────┘
 ```
-
-| Archivo                                               | Qué es                             | Analogía                          |
-| ----------------------------------------------------- | ---------------------------------- | --------------------------------- |
-| [`du_tx_mux.v`](../../TP3/hw/rtl/debug/du_tx_mux.v)   | decide quién usa la UART de salida | el turno en un único teléfono     |
-| [`du_resp_tx.v`](../../TP3/hw/rtl/debug/du_resp_tx.v) | arma y manda las respuestas cortas | el sello "recibido" / "rechazado" |
-| [`du_cmd_fsm.v`](../../TP3/hw/rtl/debug/du_cmd_fsm.v) | interpreta, decide y coordina      | el recepcionista                  |
-| [`debug_unit.v`](../../TP3/hw/rtl/debug/debug_unit.v) | contiene y conecta a los tres      | el edificio                       |
 
 ## 9. Conceptos que hay que tener claros
 
@@ -244,16 +205,6 @@ Como en una mesa de entradas: llega alguien con un trámite (el comando).
   - `A5` marca el comienzo.
   - El **checksum** es el XOR de todos los bytes salvo el `A5`, y sirve para que la PC detecte bytes dañados.
 
-**Pulso y nivel.**
-
-```text
-            ciclo:  1   2   3   4   5   6
-pulso   (timbre)  ___|‾‾‾|___________________   vale 1 un solo ciclo: "pasó algo AHORA"
-nivel   (luz)     ___|‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾   queda en 1 MIENTRAS algo sea cierto
-```
-
-Si alguien avisa con un pulso y el otro no estaba mirando en ese ciclo, el aviso se pierde. Con un nivel no se pierde.
-
 **Handshake (pedido y listo).** Coordina a dos módulos sin que ninguno sepa cuánto tarda el otro, como pedir un café y esperar que te llamen:
 
 ```text
@@ -261,14 +212,6 @@ du_cmd_fsm:  o_req_step   ___|‾|_______________________
 exec:        i_step_done  ____________________|‾|______   (pueden pasar 3 o 30 000 ciclos)
 du_cmd_fsm:  r_ctrl       ESPERA_CMD | ESPERA_SUB ...  | VOLCANDO
 ```
-
-**Moore y Mealy.**
-
-- Una salida **Moore** depende **solo de registros**.
-- Una salida **Mealy** depende de registros **y de las entradas del momento**.
-- **Regla del proyecto:** si un módulo A le da a B una salida Mealy, la salida de B que vuelve a A tiene que ser Moore. Si no, se arma un **lazo combinacional**: los dos `always @(*)` se reevalúan infinitamente y el simulador se cuelga **sin avanzar el tiempo**. Pasó con un mutante de `du_resp_tx`: `o_tx_done` de `uart_tx` es Mealy, así que `o_tx_start` tiene que ser Moore.
-
-**Timeout.** Contador de ciclos **sin recibir bytes**. Si la PC empezó un comando largo y se calla demasiado (por ejemplo, se desenchufó el cable), la placa responde `NACK(ERR_TIMEOUT)` en vez de esperar para siempre.
 
 **Drenado.** Ante un error en medio de los argumentos, la placa primero **tira** los bytes que siguen llegando hasta que la línea queda en silencio, y recién después responde. Si respondiera enseguida, los bytes que faltan se interpretarían como comandos: un `0x53` dentro de una instrucción sería un `STEP`.
 
@@ -279,7 +222,7 @@ du_cmd_fsm:  r_ctrl       ESPERA_CMD | ESPERA_SUB ...  | VOLCANDO
 **Problema:** hay una sola `uart_tx` (el transmisor serie) y dos módulos que quieren mandar:
 
 - `du_resp_tx` (respuestas cortas);
-- `du_dumper` (snapshots, US-405).
+- `du_dumper` (snapshots).
 
 Si hablan a la vez, los bytes se mezclan.
 
@@ -308,7 +251,7 @@ Son cuatro `assign`, sin reloj:
 - **Ida:** pasan solo el `start` y el `data` del canal elegido.
 - **Vuelta:** el `done` le llega **solo** al canal elegido; al otro le llega 0. Si le llegara a los dos, el que no habló creería que su byte salió y se saltearía uno.
 
-**Regla de uso:** `i_sel` cambia solo **entre tramas**, nunca con un byte en vuelo. La cumple `du_cmd_fsm` (sección 12.8).
+**Regla de uso:** `i_sel` cambia solo **entre tramas**, nunca con un byte en vuelo. La cumple `du_cmd_fsm`.
 
 ## 11. `du_resp_tx`: el sello de "recibido" o "rechazado"
 
@@ -322,7 +265,7 @@ PING_INFO(versión)  A5   04    01    00    01      04       ← 6 bytes
                          └────────── XOR de estos ───┘       (el A5 no entra)
 ```
 
-**¿Por qué solo estas tres?** Son las únicas respuestas que se arman **sin leer el núcleo**: un tipo y como mucho un byte. Las que llevan datos (`SNAPSHOT`, de 221 bytes o más, y `MEM_DATA`) las arma el dumper, que lee registros y memoria. Es como HTTP: respuestas de estado ("200 OK", "404") por un lado, respuestas con cuerpo (la página) por el otro.
+**¿Por qué solo estas tres?** Son las únicas respuestas que se arman **sin leer el núcleo**. Las que llevan datos (`SNAPSHOT`, de 221 bytes o más, y `MEM_DATA`) las arma el dumper, que lee registros y memoria.
 
 | Comando                    | Respuesta                        | La manda              |
 | -------------------------- | -------------------------------- | --------------------- |
@@ -356,17 +299,12 @@ stateDiagram-v2
     WAIT --> IDLE : i_tx_done y era el último (o_done = 1)
 ```
 
-**¿Por qué existe `START`?** ¿Por qué no se pide el byte siguiente en el mismo ciclo del `i_tx_done`?
-
-1. En ese ciclo `uart_tx` todavía está en STOP, así que ignora el pedido y el byte se pierde.
-2. `o_tx_start` tiene que ser Moore (sección 9): con `START`, depende solo del estado.
-
 ## 12. `du_cmd_fsm`: el cerebro
 
 ### 12.1 Las dos funciones de decisión
 
 - **`es_comando(cmd)`** (¿este byte es uno de los 8 comandos?): 1 para `L R S D X A ? M`, 0 para los otros 248 bytes.
-- **`es_valido(estado, cmd)`** (¿este comando se puede hacer en este estado?): la tabla de [protocolo §4.1](../protocolo.md) en código.
+- **`es_valido(estado, cmd)`** (¿este comando se puede hacer en este estado?).
 
 | Estado              | Comandos válidos (además de `PING`, que vale siempre) |
 | ------------------- | ----------------------------------------------------- |
@@ -374,15 +312,13 @@ stateDiagram-v2
 | `READY`, `STEPPING` | todos menos `ABORT`                                   |
 | `RUN`               | solo `ABORT`                                          |
 
-**El orden importa:** primero "¿es comando?" y después "¿es válido?". Al revés, un byte basura respondería `ERR_ESTADO` en lugar de `ERR_DESCONOCIDO`.
-
 ### 12.2 Dos "estados" distintos: `r_estado` y `r_ctrl`
 
 Es la idea central de la implementación. Hay **dos** registros de estado:
 
 | Registro   | Qué guarda                                | Valores                                                                                    | Quién lo ve                              |
 | ---------- | ----------------------------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------- |
-| `r_estado` | el estado **del protocolo** (Parte 1)     | `IDLE`, `LOADING`, `READY`, `RUN`, `STEPPING`, `DUMPING`, `HALTED`                         | la PC (snapshot) y los LEDs (`o_estado`) |
+| `r_estado` | el estado **del protocolo**               | `IDLE`, `LOADING`, `READY`, `RUN`, `STEPPING`, `DUMPING`, `HALTED`                         | la PC (snapshot) y los LEDs (`o_estado`) |
 | `r_ctrl`   | el **paso interno** que está dando la FSM | `ESPERA_CMD`, `RESPONDIENDO`, `ESPERA_SUB`, `VOLCANDO`, `CARGANDO`, `ARGS_MEM`, `DRENANDO` | nadie más                                |
 
 **¿Por qué dos?** Mientras sale un `NACK(ERR_ESTADO)` desde `STEPPING`, la placa **sigue estando en `STEPPING`**: el protocolo dice "sin cambiar nada". Si "estoy respondiendo" fuera otro valor de `r_estado`, se perdería en qué estado estaba la placa.
@@ -548,20 +484,7 @@ En las filas 5 a 12 también se guarda `r_cmd = i_rx_data`.
 
 ### 12.6 Cada comando, paso a paso
 
-**`PING`, o un comando inválido** (AC1, AC2, AC3). Siempre la misma forma; solo cambian el tipo y el código:
-
-```mermaid
-sequenceDiagram
-    participant PC
-    participant FSM as du_cmd_fsm
-    participant RT as du_resp_tx
-    PC->>FSM: 53 (STEP) estando en IDLE
-    Note over FSM: es_comando sí, es_valido(IDLE, STEP) no<br/>r_ctrl = RESPONDIENDO, r_estado sigue en IDLE
-    FSM->>RT: o_resp_send, tipo 02, código 02
-    RT->>PC: A5 02 01 00 02 01
-    RT->>FSM: o_done (i_resp_done)
-    Note over FSM: r_estado = r_estado_sig (IDLE), r_ctrl = ESPERA_CMD
-```
+**`PING`, o un comando inválido**. Siempre la misma forma; solo cambian el tipo y el código:
 
 **`LOAD` correcto.** La FSM no cuenta los bytes: sabe cuántos son el loader, que leyó `N`.
 
@@ -593,31 +516,6 @@ sequenceDiagram
 | `ERR_PARIDAD`  | FSM (`i_parity_err`) | en medio de la carga               |                     sí                      |            sí             |
 | `ERR_TAMANO`   | loader               | después de `N`, con bytes viniendo |                     sí                      | no (el loader ya terminó) |
 | `ERR_CHECKSUM` | loader               | con el último byte                 | sí (no cambia nada: ya no vienen más bytes) |            no             |
-
-Ejemplo, paridad mala en medio de la carga (AC6):
-
-```mermaid
-sequenceDiagram
-    participant PC
-    participant FSM as du_cmd_fsm
-    participant LD as du_loader
-    PC->>FSM: 4C 01 00
-    PC->>FSM: byte con paridad mala (i_parity_err)
-    Note over FSM: r_err = 07, r_ctrl = DRENANDO
-    FSM->>LD: o_load_cancel (rellená la IMEM con HALT)
-    PC->>FSM: 00 50 00 xx (se tiran, cada uno reinicia r_timer)
-    Note over FSM: silencio durante RX_TIMEOUT_CYCLES
-    FSM->>PC: A5 02 01 00 07 04 (NACK PARIDAD)
-    Note over FSM: r_estado = IDLE
-```
-
-Cómo se ve el timer en ese caso:
-
-```text
-bytes       :  4C   01   00   ✗p   00   50   00   xx  ·····silencio·····
-r_ctrl      : ESP  CAR  CAR  DRE  DRE  DRE  DRE  DRE  DRE  DRE  DRE | RESP
-r_timer     :   0    0    0    0    0    0    0    0  ↗↗↗↗↗↗↗↗↗↗↗↗↗ (LÍMITE) → NACK(07)
-```
 
 **`RESET`.** Pide la limpieza, espera y responde. Desde `IDLE` queda en `IDLE`, porque no hay programa; desde cualquier otro estado va a `READY`. Borra el motivo.
 
@@ -680,29 +578,10 @@ sequenceDiagram
 Tres detalles del `RUN`:
 
 1. **Primero el ACK, después la ejecución.** Si el programa terminara en 3 ciclos, el snapshot final necesitaría la UART mientras el ACK todavía está saliendo. Con `r_run_pend` el `o_req_run` sale recién con `i_resp_done`.
-2. **`i_run_fin` es un nivel.** El fin puede llegar mientras la FSM está en `RESPONDIENDO` contestando un `PING`. Un pulso en ese momento se perdería; el nivel espera a que la FSM vuelva a `ESPERA_CMD`:
-   ```text
-   r_ctrl     : ESPERA_CMD | RESPONDIENDO (sale PING_INFO)       | ESPERA_CMD | VOLCANDO
-   i_run_fin  : ____________________|‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
-                                    ↑ terminó acá…                ↑ …y se atiende acá
-   ```
+2. **`i_run_fin` es un nivel.** El fin puede llegar mientras la FSM está en `RESPONDIENDO` contestando un `PING`. Un pulso en ese momento se perdería; el nivel espera a que la FSM vuelva a `ESPERA_CMD`
 3. **La guarda `!r_req_run`.** Si un `ABORT` anterior dejó `i_run_fin` en 1, en el ciclo en que sale `o_req_run` ese 1 todavía es el viejo. Contrato: el submódulo baja `i_run_fin` al recibir `o_req_run`, y la FSM lo ignora en ese ciclo.
 
 **Byte con paridad mala** sin argumentos en curso (en `ESPERA_CMD`): `NACK(ERR_PARIDAD)` enseguida y sin cambio de estado. En `RUN` la ejecución sigue.
-
-### 12.7 El timeout por dentro
-
-```verilog
-always @(posedge clock)
-  if (i_reset || !w_con_timer || w_byte)   // fuera de los pasos con timer, o llegó un byte
-    r_timer <= 0;
-  else if (!w_timeout)                     // cuenta hasta el límite y se queda ahí
-    r_timer <= r_timer + 1;
-```
-
-- `RX_TIMEOUT_CYCLES` (parámetro: ciclos de silencio permitidos) vale `CLK_FREQ_HZ / 1000 * DU_RX_TIMEOUT_MS`. A 100 MHz son 10 000 000 ciclos (100 ms).
-- El testbench lo baja a 3000 para no simular millones de ciclos.
-- El ancho del contador sale de `$clog2`, con el mismo truco de `baudrate_gen` para comparar con el mismo ancho.
 
 ### 12.8 Las salidas
 
@@ -719,86 +598,13 @@ always @(posedge clock)
 - **¿Por qué `o_snap_estado` usa `r_estado_sig` y no `r_estado`?** Durante el volcado `r_estado` vale `DUMPING`, pero el protocolo pide que el snapshot de un `STEP` diga `STEPPING` ([protocolo §8.5](../protocolo.md)): el estado **de destino**.
 - **Todas las salidas hacia otros módulos salen de registros (Moore)**, por la regla de la sección 9. La excepción es `o_load_byte` (`i_rx_done` filtrado por el paso). Es seguro porque nada vuelve por ese camino hacia `uart_rx`.
 
-## 13. `debug_unit`: la caja
-
-Conecta `du_cmd_fsm` → `du_resp_tx` → canal 0 de `du_tx_mux` → `uart_tx`. La UART **no** está adentro: la Debug Unit recibe `rx_done`/`rx_data`/`parity_err` y entrega `tx_start`/`tx_data`, y el top las conecta.
-
-Los puertos de los submódulos que todavía no existen (`o_req_*`, `i_*_done`, el canal 1 del mux) salen **afuera**, marcados con `TODO(US-405/406)`, para que el testbench los conteste. Cuando cada submódulo exista, entra a la caja y esos puertos desaparecen.
-
-`du_loader` ya entró (US-404): sus pedidos y respuestas quedaron como cables internos (`w_req_load`, `w_load_byte`, `w_load_cancel`, `w_load_done`, `w_load_err`, `w_req_reset`, `w_reset_done`), y en su lugar salen los puertos hacia el núcleo: `o_imem_we`/`o_imem_addr`/`o_imem_wdata`, `o_dmem_we`/`o_dmem_addr`, `o_clear_used`, `o_flush_all` y `o_load_done` (este último irá a `du_exec_ctrl` en US-406).
-
-| Submódulo        | Puertos que hoy están afuera                                                                                                                               |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `du_exec_ctrl`   | `o_req_run`, `o_req_step`, `o_req_abort`, `i_step_done`, `i_run_fin`, `i_halted`, `i_illegal`                                                              |
-| `du_dumper`      | `o_req_dump`, `o_req_dump_mem`, `o_dm_addr`, `o_dm_n`, `o_snap_estado`, `i_dump_done`, `i_dump_err`, `i_dump_tx_start`, `i_dump_tx_data`, `o_dump_tx_done` |
-
-## 14. Cómo se probó
-
-| Testbench                                                  | Chequeos | Qué prueba                                                                               |
-| ---------------------------------------------------------- | -------: | ---------------------------------------------------------------------------------------- |
-| [`tb_du_tx_mux.v`](../../TP3/hw/tb/debug/tb_du_tx_mux.v)   |       16 | sale solo el canal elegido; el `done` llega solo a ese canal                             |
-| [`tb_du_resp_tx.v`](../../TP3/hw/tb/debug/tb_du_resp_tx.v) |       50 | las 9 tramas fijas de [protocolo §8.1](../protocolo.md) byte a byte (AC5); un solo `o_done` |
-| [`tb_du_cmd_fsm.v`](../../TP3/hw/tb/debug/tb_du_cmd_fsm.v) |      284 | toda la Debug Unit **por la UART real**, como en la placa (AC1 a AC6)                    |
-
-En `tb_du_cmd_fsm` los submódulos que faltan **se emulan**:
-
-- **loader:** desde US-404 es el `du_loader` real, adentro de `debug_unit`, escribiendo en un `core_stub`. El testbench mira sus señales internas (`u_du.w_load_cancel`, `u_du.u_loader.r_state`) para contar cancelaciones y bytes reenviados de más, y la IMEM del `core_stub` para ver la palabra cargada y el HALT;
-- **exec falso:** el `STEP` termina a los 3 ciclos y el drenado del `ABORT` a los 4. El fin del `RUN` lo dispara el test con `r_fin_tb`;
-- **dumper falso:** otra copia de `du_resp_tx` conectada al canal 1. Manda una trama corta de tipo `SNAPSHOT` con `o_snap_estado` como dato, así se verifica el momento del cambio de canal y el motivo.
-
-Recorre `IDLE` → errores de `LOAD` → `READY` → `STEPPING` → `HALTED` → `READY` → `RUN` (fin por ilegal, fin durante un `PING`, `ABORT`, `RUN` después de `ABORT`) → `LOAD` desde `HALTED`. También prueba los 248 bytes que no son comandos.
-
-**Mutantes:** se rompió la FSM a propósito de 5 maneras y el testbench detectó todas:
-
-| Bug inyectado                         | Lo detectó                                   |
-| ------------------------------------- | -------------------------------------------- |
-| sin la guarda `!r_req_run`            | "RUN tras ABORT" termina en el primer ciclo  |
-| `DRENANDO` reenvía bytes al loader    | "bytes drenados no van al loader"            |
-| `ERR_TAMANO` sin drenar               | el `3F` de relleno se interpretó como `PING` |
-| `RESET` no borra el motivo            | `DUMP` informa `0x12` en vez de `0x02`       |
-| el timer no se reinicia con cada byte | un `LOAD` normal da timeout                  |
-
-## 15. Decisiones de diseño
-
-| Decisión                                   | Elegido                                         | Por qué                                              |
-| ------------------------------------------ | ----------------------------------------------- | ---------------------------------------------------- |
-| ¿Dónde se arman las respuestas cortas?     | módulo aparte (`du_resp_tx`)                    | se prueba solo y la FSM no se llena de estados       |
-| ¿Quién responde ACK/NACK?                  | la FSM                                          | todas las respuestas cortas salen de un solo lugar   |
-| ¿Quién junta los argumentos de `DUMP_MEM`? | la FSM                                          | ya tiene que contarlos para el timeout               |
-| ¿Quién coordina "ejecutar → volcar"?       | la FSM                                          | toda la lógica de estados está en un archivo         |
-| ¿Pulso o nivel?                            | pulsos para los "listo", nivel para `i_run_fin` | el fin del `RUN` llega en cualquier momento          |
-| ¿Cómo se piden las acciones?               | un pulso por comando (`o_req_*`)                | lo pide el PRD y el cableado se lee solo             |
-| ¿Dónde vive el motivo?                     | en la FSM (`r_motivo`)                          | es estado del protocolo, igual que `r_estado`        |
-| `RUN`                                      | primero el ACK, después ejecutar                | el snapshot nunca compite con el ACK                 |
-| `top.v`                                    | sigue con el eco de US-401                      | todavía no hay quién atienda los pedidos en la placa |
-
-## 16. Pendientes y riesgos
-
-1. **`o_load_cancel` no espera confirmación.** Se asume que rellenar la IMEM con HALT (256 ciclos, unos 2,5 µs) termina antes de que salga el NACK (unos 3 ms). Está marcado con `shortcut:` en el código. Con el loader de US-404 se cumple: `LIMPIAR` + `FIN` tardan 257 ciclos (§24). Si algún día tarda más, hay que agregar un "cancelación terminada".
-2. **Los errores del loader también drenan.** Con checksum incorrecto, el `NACK` sale 100 ms después. Es inofensivo, pero el protocolo solo lo exige para errores en medio de los argumentos.
-3. **Los bytes que llegan en `RESPONDIENDO`, `ESPERA_SUB` o `VOLCANDO` se ignoran**, también los de paridad mala: la PC no debe mandar nada en ese momento ([protocolo §7.4](../protocolo.md)).
-4. **Si un byte y el fin del `RUN` llegan en el mismo ciclo**, gana el fin y el byte se pierde. La ventana es de 10 ns y la PC reintenta por timeout.
-5. **Solo simulación y lint:** no se probó en la placa ni se sintetizó en Vivado.
-
-## 17. Preguntas para repasar
-
-1. ¿Qué pasaría si `i_run_fin` fuera un pulso y el programa terminara mientras la placa responde un `PING` en `RUN`? ¿En qué paso de `r_ctrl` estaría la FSM?
-2. En un `LOAD` de 100 palabras, el byte 10 llega con paridad mala. ¿Qué pasos de `r_ctrl` recorre la FSM, qué hace `r_timer` y qué responde? ¿Por qué no puede contestar enseguida?
-3. ¿Por qué `o_snap_estado` usa `r_estado_sig` y no `r_estado`? ¿Qué valor tendría el byte 0 del snapshot de un `STEP` si usara `r_estado`?
-4. ¿Por qué `r_estado` y `r_ctrl` son registros distintos? ¿Qué se rompería si `RESPONDIENDO` fuera un valor más de `r_estado`?
-5. ¿Por qué `du_resp_tx` necesita el estado `START` en lugar de pedir el siguiente byte en el mismo ciclo del `i_tx_done`?
-
 ---
 
 ## Parte 3: `du_loader`, el que carga el programa (US-404)
 
-Archivo: [`du_loader.v`](../../TP3/hw/rtl/debug/du_loader.v). Testbench: [`tb_du_loader.v`](../../TP3/hw/tb/debug/tb_du_loader.v).
-
 ## 18. Qué es y qué problema resuelve
 
-`du_cmd_fsm` sabe **que** llegó un `LOAD`, pero no sabe cuántos bytes trae ni qué hacer con ellos. `du_loader` es el **cargador**: recibe los bytes del programa uno por uno, los junta en instrucciones de 32 bits, los escribe en la IMEM del núcleo y, al final, deja todo el sistema limpio para arrancar (ADR-009).
-
-Analogía: la FSM es el recepcionista que recibe una caja con papeles. El loader es el empleado que la abre, revisa que estén todas las hojas, las archiva en orden y tira lo que quedó del trámite anterior.
+`du_cmd_fsm` sabe **que** llegó un `LOAD`, pero no sabe cuántos bytes trae ni qué hacer con ellos. `du_loader` es el **cargador**: recibe los bytes del programa uno por uno, los junta en instrucciones de 32 bits, los escribe en la IMEM del núcleo y, al final, deja todo el sistema limpio para arrancar.
 
 Hace tres trabajos:
 
@@ -901,24 +707,6 @@ La DMEM se pone en 0 y salen `flush_all`, `clear_used` y `load_done` **en los cu
 
 **¿Por qué con error se rellena toda la IMEM y no solo desde N?** Porque no se sabe **qué** byte llegó mal: pudo ser una instrucción del medio. Lo único seguro es que no quede nada ejecutable.
 
-## 24. Ejemplo: `LOAD` de una instrucción
-
-La PC manda `4C 01 00 13 00 50 00 42`: `LOAD`, N = 1, la palabra `0x00500013` (`addi x0, x0, 5`) y el checksum `01^00^13^00^50^00 = 0x42`. El `4C` lo consume la FSM; al loader le llega el resto.
-
-```text
-byte que llega   :  (req)   01      00      13      00      50      00      42
-r_state después  :  LEN_LO  LEN_HI  PALAB   PALAB   PALAB   PALAB   CHECK   LIMPIAR
-r_byte_idx desp. :  0       0       0       1       2       3       0       0
-r_xor después    :  00      01      01      12      12      42      42      42
-escritura IMEM   :                                                  addr 0 = 00500013
-
-LIMPIAR (256 ciclos): addr 0    -> DMEM = 0 (la IMEM no: 0 < r_inicio = 1)
-                      addr 1..255 -> DMEM = 0 y IMEM = HALT
-FIN (1 ciclo):        flush_all, clear_used, load_done, o_done con o_err = 0
-```
-
-Entre byte y byte pasan unos 1000 ciclos (la UART es lenta) y el loader se queda en el mismo estado hasta el próximo `i_load_byte`. `LIMPIAR` + `FIN` tardan 257 ciclos (≈ 2,6 µs a 100 MHz). Después la FSM responde el `ACK`.
-
 ## 25. Detalles técnicos
 
 - **La cancelación va antes del `case`.** Puede llegar en cualquier estado de la carga, incluso en `LIMPIAR`. Si llega un byte extra con la paridad mal mientras se limpia, la FSM cancela y la limpieza **vuelve a empezar** como `CANCEL`: toda la IMEM queda en HALT y no sale `o_done`. La FSM ya está en `DRENANDO` y va a responder `NACK(ERR_PARIDAD)`, así que lo que ve la PC es coherente con lo que quedó en la placa.
@@ -927,37 +715,162 @@ Entre byte y byte pasan unos 1000 ciclos (la UART es lenta) y el loader se queda
 - **`r_word_idx + 1 == r_n`** se compara en el ciclo en que se escribe la última palabra, porque `r_word_idx` todavía vale el índice de esa palabra.
 - **Una dirección por ciclo, sin handshake.** El puerto de depuración de las memorias escribe en un ciclo, así que no hay que esperar a nadie. IMEM y DMEM se recorren juntas con el mismo `r_addr`.
 - **`RESET` también pulsa `o_load_done`**, porque ADR-009 pide el contador de ciclos en 0 también después de un `RESET`.
-- **La FSM no espera al loader en la cancelación.** Responde el `NACK` unos 3 ms después y el loader termina en 2,6 µs (ver §16, punto 1).
+- **La FSM no espera al loader en la cancelación.** Responde el `NACK` unos 3 ms después y el loader termina en 2,6 µs.
 
-## 26. Errores comunes
+---
 
-- **Validar con `r_n` en `LEN_HI`.** En ese ciclo `r_n` todavía tiene solo el byte bajo: N = 300 (`2C 01`) se validaría como 44 y pasaría. Por eso existe `w_n`.
-- **Armar la palabra al revés.** Si cada byte entrara por abajo (`{r_word, i_load_data}`), `13 00 50 00` daría `0x13005000`. Se detecta enseguida usando bytes distintos entre sí, que es lo que hace el testbench.
-- **Olvidar el borde N = 256.** `r_inicio = 256` significa "no rellenar nada": `r_addr >= 256` nunca se cumple en `LIMPIAR`.
-- **Avisar con `o_done` en una cancelación.** La FSM ya respondió el `NACK`; un `o_done` de más le llegaría cuando está en otro paso.
-- **Aceptar N = 0.** El protocolo pide `1 ≤ N ≤ IMEM_DEPTH` ([§4](../protocolo.md)). Un `LOAD` vacío dejaría la IMEM toda en HALT respondiendo `ACK`.
+## Parte 4: `du_dumper`, el que manda la foto
 
-## 27. Cómo se probó
+## 29. Qué es y qué problema resuelve
 
-[`tb_du_loader.v`](../../TP3/hw/tb/debug/tb_du_loader.v) conecta `du_loader` con `core_stub` (US-402). El testbench hace de FSM (manda los pulsos) y después lee directamente la IMEM y la DMEM del núcleo falso. Antes de cada carga hace correr el núcleo unos ciclos para **ensuciar** la DMEM, el bitmap y el PC, así se comprueba que la limpieza los borra de verdad.
+El enunciado pide mandar a la PC "el contenido de los 32 registros, de los latches intermedios y de la memoria de datos usada". `du_dumper` es el **serializador** que hace eso: saca una **foto** del procesador (el _snapshot_) y la manda byte por byte por la UART, dentro de una trama `SNAPSHOT`.
 
-| Caso                                        | Qué verifica                                                                                    | AC          |
-| ------------------------------------------- | ----------------------------------------------------------------------------------------------- | ----------- |
-| carga válida (N = 5)                        | programa en `[0, 4]`, HALT en el resto, DMEM y contador en 0, PC = 0, un solo pulso de cada uno | —           |
-| N = 256                                     | no queda ningún HALT                                                                            | —           |
-| checksum incorrecto                         | `ERR_CHECKSUM` y toda la IMEM en HALT                                                           | AC3, AC7    |
-| cancelación a mitad de la carga             | sin `o_done`, toda la IMEM en HALT, un `flush_all`                                              | AC7         |
-| cancelación durante `LIMPIAR`               | igual que la anterior                                                                           | AC7         |
-| N = 300 con bytes que siguen llegando       | `ERR_TAMANO`, un solo `o_done`, toda la IMEM en HALT                                            | —           |
-| N = 0                                       | `ERR_TAMANO`, toda la IMEM en HALT                                                              | —           |
-| `RESET`                                     | IMEM intacta, DMEM en 0, `o_reset_done` y no `o_done`                                           | AC4 (parte) |
-| cinco cargas seguidas (N = 20, 3, 1, 64, 2) | cada una deja solo su programa                                                                  | AC5         |
+Analogía: la FSM es el recepcionista que decide **cuándo** hay que mandar un informe (después de `STEP`, al terminar `RUN`, o con `DUMP`). El dumper es el empleado que arma el informe: lo escribe hoja por hoja, en un orden fijo, y le pone un número de control al final.
 
-AC1, AC2 y AC4 completos necesitan **ejecutar** el programa, así que se verifican con el núcleo real en US-411.
+| Pedido de la FSM | Qué hace el dumper                                               | Cómo avisa que terminó |
+| ---------------- | ---------------------------------------------------------------- | ---------------------- |
+| `i_req_dump`     | manda la trama `SNAPSHOT` completa por el canal 1 de `du_tx_mux` | `o_done` (`o_err = 0`) |
 
-## 28. Preguntas para repasar
+`DUMP_MEM` (la trama `MEM_DATA`) también va a usar este módulo, pero es US-408.
 
-1. Llega `LOAD` con N = 256 (`00 01`). ¿Qué vale `w_n` en el ciclo del segundo byte? ¿Y `r_n` en ese mismo ciclo? ¿Qué pasaría si se validara con `r_n`?
-2. ¿Por qué con checksum incorrecto se rellena toda la IMEM y con checksum correcto solo desde N?
-3. Un byte con paridad mala llega mientras el loader está en `LIMPIAR` después de un checksum correcto. ¿Qué responde la placa, qué queda en la IMEM y por qué es coherente?
-4. ¿Qué cambiaría si `r_word_idx` fuera de 8 bits?
+**¿Qué NO se manda?** La IMEM: el programa ya lo tiene la PC, porque fue ella quien lo cargó. De la DMEM solo van las palabras que el programa **escribió**.
+
+## 30. Conceptos que usa
+
+- **Trama y payload.** La trama es el sobre: `[A5][tipo][longitud: 2 B][payload][checksum]`. El `A5` marca el comienzo y no entra en el checksum.
+- **Longitud = 221 + 6·K.** Es la cantidad de bytes del payload. 221 es la parte fija (siempre igual); **K** es la cantidad de palabras de DMEM que escribió el programa (`i_dbg_used_count`), y cada una ocupa 6 bytes (dirección 2 + dato 4). La longitud va **antes** del payload, así que hay que saber K **al arrancar**.
+- **`K` mayúscula y `k` minúscula no son lo mismo.** `K` = palabras usadas de la DMEM. `k` = número de byte dentro de un bus (`bus[8k+7 : 8k]`).
+- **Little-endian (LE).** El byte menos significativo va primero: PC = `0x00000014` sale `14 00 00 00`.
+- **Checksum al vuelo.** No se guarda la trama: un registro de 8 bits hace `r_xor ^= byte` con cada byte que sale. Al final, `r_xor` **es** el checksum.
+- **Handshake con la UART.** El dumper pulsa `o_tx_start` con el byte en `o_tx_data` y espera `i_tx_done`. Un byte tarda 11 bits / 19200 bps ≈ **573 µs ≈ 57 000 ciclos** a 100 MHz: para el dumper, la UART es lentísima.
+- **Lectura de depuración combinacional.** El núcleo tiene puertos extra para que la DU lea registros y DMEM: se pone la dirección (`o_dbg_reg_addr`) y **en el mismo ciclo** sale el dato (`i_dbg_reg_data`), sin esperar un flanco.
+- **Bitmap de memoria usada.** Un bit por palabra de DMEM que se pone en 1 cuando el programa la escribe (`i_dbg_mem_used`), más un contador (`i_dbg_used_count` = K).
+- **Foto del mismo ciclo (R-DU-3).** Todo lo que sale tiene que ser del mismo ciclo del núcleo. El núcleo está congelado (`i_enable = 0`) durante todo el volcado, y además el dumper **copia** al arrancar lo que podría cambiar.
+
+## 31. Puertos
+
+| Puerto                                                            | Dir.    | Hacia / desde  | Qué significa                                                                      |
+| ----------------------------------------------------------------- | ------- | -------------- | ---------------------------------------------------------------------------------- |
+| `i_req_dump`                                                      | entrada | FSM            | pulso: "mandá un snapshot"                                                         |
+| `i_snap_estado`                                                   | entrada | FSM            | byte 0 del payload: `{motivo, estado de la DU}`; vale bien en el ciclo del pedido  |
+| `o_done`, `o_err`                                                 | salida  | FSM            | pulso "terminé" y error (siempre 0 en snapshot; existe por `DUMP_MEM`)             |
+| `i_ciclos`                                                        | entrada | `du_exec_ctrl` | ciclos ejecutados desde el último `LOAD`/`RESET` (hasta US-406 lo da el testbench) |
+| `i_pc`                                                            | entrada | núcleo         | PC actual                                                                          |
+| `o_dbg_reg_addr` → `i_dbg_reg_data`                               | ambos   | núcleo         | "¿qué registro?" → su valor (combinacional)                                        |
+| `o_dbg_mem_addr` → `i_dbg_mem_data`, `i_dbg_mem_used`             | ambos   | núcleo         | "¿qué palabra de DMEM?" → su dato y si el programa la escribió                     |
+| `i_dbg_used_count`                                                | entrada | núcleo         | K: cuántas palabras escribió el programa (0..256)                                  |
+| `i_stall`, `i_flush_if_id`, `i_flush_id_ex`, `i_fwd_a`, `i_fwd_b` | entrada | núcleo         | señales de riesgo del ciclo (van al byte 9)                                        |
+| `i_if_id`, `i_id_ex`, `i_ex_mem`, `i_mem_wb`                      | entrada | núcleo         | los 4 latches como buses planos (13, 31, 19 y 18 bytes)                            |
+| `o_tx_start`, `o_tx_data`, `i_tx_done`                            | ambos   | `du_tx_mux` 1  | "mandá este byte", el byte, "la UART terminó"                                      |
+
+Los buses de latches ya vienen ordenados por el núcleo ([`riscv_core.md` §4](../interfaces/riscv_core.md)): el byte `k` del bloque es `bus[8k+7 : 8k]`. Así el dumper no necesita saber qué campo hay en cada byte.
+
+## 32. La idea: una FSM chica y un contador de posición
+
+El módulo separa dos preguntas:
+
+- **¿Cuándo?** (mandar, esperar, terminar) → la **FSM**, con 5 estados.
+- **¿Qué byte?** → un contador **`r_pos`** (qué byte de la trama va saliendo: 0 = `A5`) y una **tabla** que, para cada posición, dice qué byte corresponde. La tabla es una copia de [`protocolo.md` §6.2](../protocolo.md).
+
+La FSM **no sabe nada de secciones**: no hay un estado "REGISTROS" ni "LATCHES". Para agregar una sección se agrega una fila a la tabla y la FSM no cambia.
+
+## 33. Registros
+
+| Registro     | Bits | Qué guarda                                                                                                                        |
+| ------------ | ---: | --------------------------------------------------------------------------------------------------------------------------------- |
+| `state_reg`  |    3 | el estado                                                                                                                         |
+| `r_pos`      |   16 | qué byte de la trama va saliendo: 0 = `A5`, 1 = tipo, 2-3 = longitud, 4… = payload, último = checksum. Con K = 256 son 1762 bytes |
+| `r_xor`      |    8 | checksum al vuelo (todo lo mandado menos el `A5`)                                                                                 |
+| `r_estado`   |    8 | copia de `i_snap_estado` al pedido                                                                                                |
+| `r_k`        |    9 | copia de K al pedido: de él salen la longitud y los 2 bytes de K                                                                  |
+| `r_latches`  |  648 | copia de los 4 latches al pedido: `{MEM/WB, EX/MEM, ID/EX, IF/ID}`                                                                |
+| `r_mem_addr` |    9 | palabra de DMEM que se está mandando o buscando; el bit 8 en 1 (= 256) significa "se pasó del final"                              |
+| `r_sub`      |    3 | byte dentro de la entrada de memoria: 0-1 = dirección, 2-5 = dato                                                                 |
+
+**¿Por qué se copian estado, K y latches, y no el PC ni los registros?**
+
+- `i_snap_estado` lo arma la FSM y solo garantiza que vale bien **en el ciclo del pedido**.
+- K define la longitud, que sale al principio. Si se leyera de nuevo al final y fuera distinto, la trama mentiría.
+- Los latches: el núcleo está congelado, pero la copia hace explícito que los 81 bytes son del mismo ciclo (lo pide la US). Son 648 flip-flops.
+- PC, ciclos, registros y DMEM vienen de cosas congeladas durante todo el volcado: valen lo mismo de principio a fin.
+
+## 34. Los estados
+
+```mermaid
+stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> BUSCAR : i_req_dump (copia estado, K y latches; r_pos = 0)
+    BUSCAR --> BUSCAR : empieza una entrada de memoria y la palabra no está usada (r_mem_addr + 1)
+    BUSCAR --> ENVIAR : en cualquier otro caso
+    ENVIAR --> ESPERAR : siempre (1 ciclo con o_tx_start)
+    ESPERAR --> BUSCAR : i_tx_done y no era el checksum (r_pos + 1)
+    ESPERAR --> FIN : i_tx_done y era el checksum
+    FIN --> IDLE : siempre (1 ciclo con o_done)
+```
+
+| Estado    | Qué hace                                                                      | Qué lo hace salir                           | A dónde va       |
+| --------- | ----------------------------------------------------------------------------- | ------------------------------------------- | ---------------- |
+| `IDLE`    | nada: espera un pedido                                                        | `i_req_dump`                                | `BUSCAR`         |
+| `BUSCAR`  | antes de cada byte; si empieza una palabra de memoria, busca la próxima usada | encontró una usada, o no hacía falta buscar | `ENVIAR`         |
+| `ENVIAR`  | **un ciclo**: `o_tx_start = 1`, la UART toma `o_tx_data`; suma el byte al XOR | nada: dura un ciclo                         | `ESPERAR`        |
+| `ESPERAR` | nada: el byte viaja por la línea                                              | `i_tx_done`                                 | `BUSCAR` o `FIN` |
+| `FIN`     | **un ciclo**: `o_done = 1`                                                    | nada: dura un ciclo                         | `IDLE`           |
+
+Las salidas son **Moore** (dependen solo del estado): `o_tx_start = (estado == ENVIAR)` y `o_done = (estado == FIN)`. Como esos estados duran un ciclo, los pulsos duran un ciclo sin hacer nada más.
+
+**El ciclo de separación con la UART.** `uart_tx` avisa `i_tx_done` cuando todavía está en STOP; si en ese mismo ciclo le llegara otro start, lo ignoraría y el byte se perdería. Acá no puede pasar: el `done` lleva a `BUSCAR` y recién después a `ENVIAR`, así que hay al menos un ciclo en el medio.
+
+## 35. La tabla: qué byte sale en cada posición
+
+Primero se calculan dos posiciones:
+
+- `w_off = r_pos − 4`: posición **dentro del payload** (le saca el sobre).
+- `w_rel_X = w_off − OFF_X`: posición **dentro de la sección X** (le saca el comienzo de la sección).
+
+Después, una cadena de `if / else if` donde **cada condición pregunta "¿estoy antes de que empiece la sección siguiente?"**. Que ya se pasó el comienzo de la propia lo garantizan las condiciones de arriba, que no se cumplieron.
+
+| `r_pos` / `w_off`   | Sección   | Byte que sale                                           |
+| ------------------- | --------- | ------------------------------------------------------- |
+| `r_pos` = `len + 4` | checksum  | `r_xor` (se pregunta primero: su posición depende de K) |
+| `r_pos` 0..3        | sobre     | `A5`, `03`, `len[7:0]`, `len[15:8]`                     |
+| `w_off` 0           | estado    | `r_estado`                                              |
+| `w_off` 1..4        | ciclos    | byte `w_rel` de `i_ciclos`                              |
+| `w_off` 5..8        | PC        | byte `w_rel` de `i_pc`                                  |
+| `w_off` 9           | riesgos   | `{0, fwd_b, fwd_a, flush_id_ex, flush_if_id, stall}`    |
+| `w_off` 10..137     | registros | registro `w_rel[6:2]`, byte `w_rel[1:0]`                |
+| `w_off` 138..218    | latches   | `r_latches[8k+7 : 8k]` con `k = w_rel`                  |
+| `w_off` 219..220    | K         | byte `w_rel` de K                                       |
+| `w_off` 221…        | memoria   | según `r_sub`: dirección en bytes (2) o dato (4), LE    |
+
+**Registros: un número, dos datos.** Hay 32 registros de 4 bytes, así que `w_rel` va de 0 a 127. Dividido por 4 (`w_rel[6:2]`, los bits de arriba) da el **registro**; el resto (`w_rel[1:0]`, los 2 bits de abajo) da el **byte**. Ejemplo: `w_off = 23` → `w_rel = 13 = 0b0001101` → registro `00011` = x3, byte `01` = 1. `o_dbg_reg_addr` sale de ahí **combinacionalmente**: cuando cambia `r_pos`, el núcleo ya contesta el registro nuevo en el mismo ciclo.
+
+**`byte_de(palabra, n)`** es una `function` que devuelve `palabra[8n+7 : 8n]` (n = 0..3). En Verilog una `function` no es una llamada como en software: el sintetizador copia el hardware (un mux 4 a 1) en cada lugar donde se usa.
+
+**Latches con índice.** El byte `k` de la copia es `r_latches[8k +: 8]`. El índice de bit se arma con `{w_rel[6:0], 3'b000}` (multiplicar por 8 es correr 3 bits). Sale un multiplexor de 81 a 1 de 8 bits. La alternativa era un shift register (correr 8 bits por byte enviado y mandar siempre `[7:0]`); con la tabla por posición, el índice queda más simple de leer y cuesta parecido en LUTs.
+
+## 36. La memoria: `BUSCAR` y `r_sub`
+
+Es la única sección donde **la posición no alcanza**: las palabras no usadas se saltean, así que `w_off` no dice qué dirección de DMEM toca. Por eso hay dos registros propios:
+
+- `r_mem_addr`: la palabra de DMEM actual (va a `o_dbg_mem_addr`).
+- `r_sub`: qué byte de la entrada `[dir 2 B | dato 4 B]` toca (0..5).
+
+El recorrido:
+
+1. Al llegar a la primera posición de memoria, `r_sub = 0` y `r_mem_addr = 0`.
+2. **`BUSCAR`**: si `i_dbg_mem_used = 0` (el programa no escribió esa palabra), `r_mem_addr + 1` y se queda. Una dirección por ciclo. Cuando encuentra una usada, pasa a `ENVIAR`.
+3. Se mandan los 6 bytes: `r_sub` 0-1 = dirección **en bytes** (`r_mem_addr × 4`, LE), 2-5 = dato (LE). En cada `i_tx_done`, `r_sub + 1`.
+4. Después del 6.º byte: `r_sub = 0` y `r_mem_addr + 1`. Si todavía quedan entradas, vuelve a `BUSCAR` desde la dirección siguiente.
+
+Buscar cuesta como mucho 256 ciclos **en todo el volcado** (el recorrido nunca vuelve atrás): nada al lado de los ~57 000 ciclos de cada byte.
+
+**¿Y si el bitmap no coincide con K?** (no debería pasar: sería un bug del núcleo). Si `r_mem_addr` llega a 256 sin encontrar, `BUSCAR` sigue a `ENVIAR` igual. La trama sale con la longitud declarada y datos basura, pero el dumper **no se cuelga**. El testbench, que compara entrada por entrada, lo detectaría.
+
+## 38. Detalles técnicos
+
+- **Ningún byte se guarda antes de mandarlo.** `o_tx_data` es combinacional: sale de la tabla con el `r_pos` actual. `uart_tx` copia el dato a su shift register en el mismo ciclo del start, así que alcanza con que esté bien durante `ENVIAR`.
+- **El checksum se calcula con el mismo byte que sale**: en `ENVIAR`, `r_xor <= r_xor ^ o_tx_data`, salvo en el `A5` (`r_pos = 0`) y en el propio checksum.
+- **`w_off` "negativo".** Con `r_pos < 4`, `w_off = r_pos − 4` da un número enorme (16 bits sin signo). No importa: el caso `r_pos < 4` se pregunta antes en la tabla, y `w_en_mem` exige `r_pos >= 4`.
+- **De `w_rel_X` solo se usan los bits bajos.** Fuera de su sección valen cualquier cosa, y Verilator avisaría de los bits altos sin usar; por eso esos cables van entre un `lint_off UNUSEDSIGNAL` puntual.
+- **Contadores anchos.** `r_pos` tiene 16 bits porque la trama llega a 1762 bytes. `r_k` y `r_mem_addr` tienen 9 porque llegan a 256.
+- **Camino combinacional largo.** En `ENVIAR` el byte sale de `r_pos` → resta → `o_dbg_reg_addr` → banco de registros del núcleo → mux → UART, todo en un ciclo. En simulación no importa; si en la síntesis no cumple timing a 100 MHz, se registra el byte en `BUSCAR` (que siempre precede a `ENVIAR`).
