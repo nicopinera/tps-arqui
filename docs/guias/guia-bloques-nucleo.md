@@ -398,6 +398,24 @@ assign o_store_data = r_op_b;
 
 Un store usa los dos operandos para cosas distintas: la ALU calcula la dirección con rs1 + imm, y el dato a guardar es rs2. Por eso el mux 2 a 1 tiene la posibilidad de seleccionar el operando B o el inmedianto, y a su vez el operando B pasa directamente al registro EX/MEM
 
+### 10.2 Forwarding: el selector `11`
+
+Los dos operandos pasan por un mux de forwarding de 3 entradas, pero el selector es de 2 bits, así que hay un cuarto valor posible:
+
+```verilog
+// ex_stage.v:59-67 (operando A; el B es igual)
+always @(*) begin
+    r_op_a = i_rs1_data;
+    case (i_fwd_a)
+        FWD_MEM_WB: r_op_a = i_fwd_mem_wb;   // 01
+        FWD_EX_MEM: r_op_a = i_fwd_ex_mem;   // 10
+        default:    r_op_a = i_rs1_data;     // 00 y 11
+    endcase
+end
+```
+
+`11` no deberia darse nunca pero en caso de darse se comporta como `00`, es decir, usa el valor leído del banco en ID. Así nunca hay una salida indefinida.
+
 ### 10.3 `branch_cmp` en paralelo con la ALU
 
 branch_cmp compara los operandos forwardeados en paralelo a la ALU. La decisión de saltar se arma aparte en redirect:
