@@ -40,7 +40,10 @@ module debug_unit #(
     output wire        o_stop_fetch, // i_stop_fetch del nucleo (ABORT, US-407)
     input  wire        i_halted,     // o_halted del nucleo
     input  wire        i_illegal,    // o_illegal del nucleo
-    output wire [31:0] o_ciclos,     // TODO(US-405): va a i_ciclos de du_dumper
+    // Bits valid de los latches {MEM/WB [104], EX/MEM [112], ID/EX [200], IF/ID [96]}: 0000 =
+    // fin del drenado de ABORT. TODO(US-405): sacarlos de adentro cuando entren los buses para du_dumper
+    input  wire [3:0]  i_latch_valid,
+    output wire [31:0] o_ciclos,    // TODO(US-405): va a i_ciclos de du_dumper
 
     // TODO(US-405): du_dumper (transmite por el canal 1 del mux)
     output wire        o_req_dump,
@@ -104,7 +107,8 @@ module debug_unit #(
     .i_req_run(w_req_run), .i_req_step(w_req_step), .i_req_abort(w_req_abort),
     .o_step_done(w_step_done), .o_run_fin(w_run_fin),
     .i_load_done(w_load_done_ex),
-    .i_halted(i_halted), .o_enable(o_enable), .o_stop_fetch(o_stop_fetch),
+    .i_halted(i_halted), .i_valid(i_latch_valid),
+    .o_enable(o_enable), .o_stop_fetch(o_stop_fetch),
     .o_ciclos(o_ciclos)
   );
 
