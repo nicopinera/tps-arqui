@@ -67,6 +67,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `hw/tb/debug/tb_du_dump_mem.v`: `DUMP_MEM` de punta a punta por la UART con `core_stub`: las palabras coinciden con la DMEM, rangos inválidos → `NACK(ERR_RANGO)` sin cambio de estado, `NACK(ERR_ESTADO)` en `RUN` y los ejemplos de `protocolo.md` §8.9 byte a byte (AC1–AC4) (US-408).
 - `tb_du_dumper.v`: casos de `MEM_DATA` (bordes, DMEM entera, ejemplo §8.9) y de rechazo (no alineada, `n = 0`, se pasa del final, desborde con `n = FFFF`) (US-408).
 - `docs/guias/guia-estudio-debug-unit.md`: §37 sobre la trama `MEM_DATA` (US-408).
+- `docs/guias/guia-caso-timing-debug-unit.md`: caso de estudio de la síntesis OOC de la DU (primer reporte, camino crítico por la longitud recalculada, el cambio a `r_len`/`r_pos_checksum`, antes y después: WNS 0,859 → 1,873 ns, 12 → 7 niveles de lógica).
+- `hw/scripts/synth_du_ooc.tcl` y `hw/constraints/du_ooc.xdc`: síntesis e implementación _out-of-context_ de `debug_unit` a 100 MHz en la xc7a35t, con reportes de utilización y timing en `hw/reports/du_ooc_*.rpt` (ADR-016).
 
 ### Changed
 
@@ -86,5 +88,6 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `debug_unit` instancia `du_exec_ctrl`: se quitan `o_req_run`/`o_req_step`/`o_req_abort`/`i_step_done`/`i_run_fin` y `o_load_done` (ahora interno), y se agregan `o_enable`, `o_stop_fetch` y `o_ciclos` (hasta que entre `du_dumper`) (US-406).
 - `tb_du_cmd_fsm.v` usa el `du_exec_ctrl` real moviendo el `core_stub`; el fin del drenado de `ABORT` se emula levantando `i_halted` hasta US-407 (US-406).
 - `debug_unit` recibe `i_latch_valid[3:0]` (bits `valid` de los latches, hasta que entren los buses para `du_dumper`) y `tb_du_cmd_fsm.v` drena de verdad con los `valid` del `core_stub`, sin la emulación de `ABORT` (US-407).
+- `du_dumper` calcula la longitud y la posición del checksum una sola vez al pedido (`r_len`, `r_pos_checksum`) en lugar de en cada ciclo: salen del camino crítico (`r_k` → sumas → comparación → `r_xor`, WNS 0,859 ns en la primera síntesis OOC).
 - `debug_unit` instancia `du_dumper` (canal 1 del mux, `i_ciclos` desde `du_exec_ctrl`): se quitan los puertos del dumper externo, `o_ciclos` e `i_latch_valid` (los `valid` salen de los buses) y se agregan los puertos de lectura del núcleo (PC, registros, DMEM, bitmap, riesgos y latches). `tb_du_cmd_fsm.v` usa el dumper real en lugar del falso (US-405, US-408).
 - PRD US-106: `ensamblar` es una función en vez de la clase `Assembler`, la `Imagen` suma `expansiones` y el fixture de GNU pasa a `tools/tests/assembler/fixtures/` (también en ADR-013) (US-106).
