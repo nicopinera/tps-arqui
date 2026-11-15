@@ -63,6 +63,10 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `hw/rtl/core/if_stage.v`: registro PC, mux de próximo PC con prioridad redirección de EX > `jal` en ID > `pc + 4` (ADR-006) e IMEM con su puerto de carga; el PC se congela con `i_stall`/`i_halt_fetch` salvo ante una redirección de EX (US-206).
 - `hw/rtl/core/if_id_reg.v`: latch IF/ID (`pc`, `pc_plus4`, `instr`, `valid`) con reset, enable, flush (burbuja: `valid = 0`, `instr = NOP`) y stall; `INSTR_NOP` en `control_defs.vh` (US-206).
 - `hw/tb/core/tb_if_stage.v`: AC1–AC6, `halt_fetch` con y sin redirección, reset con `i_enable = 0` y vuelta de la IMEM fuera de rango (US-206).
+- `hw/rtl/core/id_stage.v`: extrae `rs1`, `rs2`, `rd`, `funct3` y `funct7_b5`, instancia `reg_file` (escritura desde WB y puerto de depuración por la etapa), `control_unit` e `imm_gen`, calcula el destino de `jal` (`pc + imm_J`) con `o_redirect_jal` en el mismo ciclo (ADR-006) y genera `o_halt_detected` para HALT o ilegal con `valid` (US-207).
+- `hw/rtl/core/id_ex_reg.v`: latch ID/EX con los campos de PRD §3.2; con `i_flush`, `i_bubble` o `valid = 0` entra una burbuja (`valid = 0`, `instr = NOP`, todas las señales de control en 0); parámetro `DEBUG_TRACE` para el campo `instr` (US-207).
+- `hw/tb/core/tb_id_stage.v`: AC1–AC4 con las palabras del ensamblador (R, I, shifts, load, store, `lui`, `jalr`, branches, `jal` con offset positivo y negativo, HALT e ilegales), banco a través de la etapa (bypass WB→ID, `x0`, escritura sin enable), flush, bubble, `i_enable = 0`, reset y `DEBUG_TRACE = 0` (US-207).
+- `hw/rtl/core/dmem_bitmap.v`: bitmap de memoria usada y contador (ADR-008), separado de `data_mem`; marca con `o_core_we`/`o_core_addr` de `data_mem` (H2-E2).
 - `make synth-ooc` (`hw/scripts/synth_ooc.tcl`): síntesis fuera de contexto de cada módulo de `hw/rtl/core/` con Vivado en modo batch; deja en `build/synth/` el reporte de utilización de cada módulo y una tabla con LUTs, LUTRAM, FF, latches, BRAM y *critical warnings*, y falla si algún módulo infiere latches (H2-E1).
 
 ### Changed
