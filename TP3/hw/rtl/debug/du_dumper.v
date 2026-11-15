@@ -108,7 +108,9 @@ module du_dumper #(
   reg [15:0]             r_pos;      // Byte de la trama que va saliendo: 0 = A5, 1 = tipo, 2-3 = len, 4.. payload
   reg [NBIT-1:0]         r_xor;      // XOR de lo ya mandado (sin el A5): es el checksum
   reg [NBIT-1:0]         r_estado;   // i_snap_estado copiado al pedido (la FSM lo da valido en ese ciclo)
-  reg [DMEM_ADDR_BITS:0] r_k;        // K copiado al pedido: de el salen la longitud y los 2 B de K
+  reg [DMEM_ADDR_BITS:0] r_k;        // K copiado al pedido: de el salen los 2 B de K
+  reg [15:0]             r_len;      // Longitud del payload, calculada una vez al pedido (bytes 2-3)
+  reg [15:0]             r_pos_checksum; // Posicion del checksum = r_len + 4, tambien al pedido
   reg [647:0]            r_latches;  // Copia de los 4 latches al pedido: {MEM/WB, EX/MEM, ID/EX, IF/ID}
   reg [DMEM_ADDR_BITS:0] r_mem_addr; // Palabra de DMEM que se esta mandando o buscando (1 bit mas: 256 = fin)
   reg [2:0]              r_sub;      // Byte dentro de la entrada de memoria: 0-1 = dir, 2-5 = dato
@@ -118,23 +120,24 @@ module du_dumper #(
   reg [NBIT-1:0]         r_err;      // -> o_err: resultado del ultimo pedido
 
   // ---------------------------------------------------------------------------------------
-  // Cuentas que salen de los registros
+  // Cuentas
   // ---------------------------------------------------------------------------------------
-  // longitud = 221 + 6K, con 6K = 4K + 2K (K <= 256: 221 + 1536 = 1757 entra en 16 bits)
-  wire [15:0] w_k   = {{(15-DMEM_ADDR_BITS){1'b0}}, r_k};
-  wire [15:0] w_len_snap = LEN_FIJO + (w_k << 2) + (w_k << 1);
+  wire [15:0] w_k = {{(15-DMEM_ADDR_BITS){1'b0}}, r_k};
+
+  // Longitudes, con las ENTRADAS del pedido: se guardan en r_len y r_pos_checksum en el
+  // ciclo del pedido (IDLE). Asi las sumas no quedan en el camino de cada byte
+  // (r_pos -> comparacion -> o_tx_data -> r_xor), que era el camino critico (hw/reports).
+  // SNAPSHOT: 221 + 6K, con 6K = 4K + 2K (K <= 256: 221 + 1536 = 1757 entra en 16 bits)
+  wire [15:0] w_k_in       = {{(15-DMEM_ADDR_BITS){1'b0}}, i_dbg_used_count};
+  wire [15:0] w_len_snap_in = LEN_FIJO + (w_k_in << 2) + (w_k_in << 1);
   // MEM_DATA: 4 + 4n, con n <= 256 ya validado (como mucho 1028)
-  wire [15:0] w_len_mem  = 16'd4 + (r_dm_n << 2);
-  wire [15:0] w_len      = r_modo ? w_len_mem : w_len_snap;
+  wire [15:0] w_len_mem_in  = 16'd4 + (i_dm_n << 2);
 
   // Validacion de DUMP_MEM sobre los argumentos del pedido. La suma dir/4 + n se hace en
   // 17 bits: en 16, n = FFFF con dir = 4 daria 0x0000 y pasaria como valido.
   localparam [16:0] DMEM_DEPTH = 17'd1 << DMEM_ADDR_BITS;
   wire [16:0] w_dm_fin = {3'b000, i_dm_addr[15:2]} + {1'b0, i_dm_n};  // palabra siguiente a la ultima
   wire        w_dm_ok  = (i_dm_addr[1:0] == 2'b00) && (i_dm_n != 16'd0) && (w_dm_fin <= DMEM_DEPTH);
-
-  // Posicion del checksum: despues de A5, tipo, len (4 B) y el payload
-  wire [15:0] w_pos_checksum = w_len + 16'd4;
 
   // Posicion dentro del payload (0 = byte estado). Solo tiene sentido con r_pos >= 4.
   wire [15:0] w_off = r_pos - 16'd4;
@@ -168,7 +171,7 @@ module du_dumper #(
 
   // Memoria: el byte que toca es parte de una entrada [dir 2 B | dato 4 B]
   // Solo en SNAPSHOT: en MEM_DATA no se salta nada y las direcciones salen de w_off
-  wire w_en_mem = !r_modo && (r_pos >= 16'd4) && (w_off >= OFF_MEM) && (r_pos != w_pos_checksum);
+  wire w_en_mem = !r_modo && (r_pos >= 16'd4) && (w_off >= OFF_MEM) && (r_pos != r_pos_checksum);
   wire [15:0] w_dir_bytes = {{(14-DMEM_ADDR_BITS){1'b0}}, r_mem_addr[DMEM_ADDR_BITS-1:0], 2'b00};
   wire [1:0]  w_sub_dato  = r_sub[1:0] - 2'd2;  // r_sub 2..5 -> byte 0..3 del dato (en 2 bits: 4-2 = 2, 5-2 = 3)
   wire [DMEM_ADDR_BITS:0] w_mem_addr_sig = r_mem_addr + {{DMEM_ADDR_BITS{1'b0}}, 1'b1};
@@ -186,7 +189,7 @@ module du_dumper #(
   endfunction
 
   // El A5 no entra en el checksum, y el checksum no se suma a si mismo
-  wire w_suma_xor = (r_pos != 16'd0) && (r_pos != w_pos_checksum);
+  wire w_suma_xor = (r_pos != 16'd0) && (r_pos != r_pos_checksum);
 
   // ---------------------------------------------------------------------------------------
   // 1. FSM y registros
@@ -206,6 +209,8 @@ module du_dumper #(
       r_dm_addr  <= 16'd0;
       r_dm_n     <= 16'd0;
       r_err      <= {NBIT{1'b0}};
+      r_len      <= 16'd0;
+      r_pos_checksum <= 16'd0;
     end
     else
     case (state_reg)
@@ -217,6 +222,10 @@ module du_dumper #(
         begin
           r_estado   <= i_snap_estado;
           r_k        <= i_dbg_used_count;
+          // Con la entrada, no con r_k: r_k recien toma el K nuevo en este flanco. Tienen
+          // que valer bien ya en r_pos = 0: si no, el A5 saldria como checksum.
+          r_len          <= w_len_snap_in;
+          r_pos_checksum <= w_len_snap_in + 16'd4;
           r_latches  <= {i_mem_wb, i_ex_mem, i_id_ex, i_if_id};  // IF/ID en los bits bajos: sale primero
           r_pos      <= 16'd0;
           r_xor      <= {NBIT{1'b0}};
@@ -233,6 +242,8 @@ module du_dumper #(
           begin
             r_dm_addr <= i_dm_addr;
             r_dm_n    <= i_dm_n;
+            r_len          <= w_len_mem_in;
+            r_pos_checksum <= w_len_mem_in + 16'd4;
             r_pos     <= 16'd0;
             r_xor     <= {NBIT{1'b0}};
             r_modo    <= 1'b1;
@@ -273,7 +284,7 @@ module du_dumper #(
       ESPERAR:
         if (i_tx_done)
         begin
-          if (r_pos == w_pos_checksum)
+          if (r_pos == r_pos_checksum)
             state_reg <= FIN;
           else
           begin
@@ -315,7 +326,7 @@ module du_dumper #(
   // Cada condicion pregunta "estoy antes de que empiece la seccion siguiente?": que ya se
   // paso el comienzo de la propia lo garantizan las condiciones de arriba.
   always @(*)
-    if (r_pos == w_pos_checksum)
+    if (r_pos == r_pos_checksum)
       o_tx_data = r_xor;
     else if (r_pos < 16'd4)                  // sobre: A5, tipo, longitud LE
     case (r_pos[1:0])
@@ -324,9 +335,9 @@ module du_dumper #(
       2'd1:
         o_tx_data = r_modo ? `DU_TIPO_MEM_DATA : `DU_TIPO_SNAPSHOT;
       2'd2:
-        o_tx_data = w_len[7:0];
+        o_tx_data = r_len[7:0];
       default:
-        o_tx_data = w_len[15:8];
+        o_tx_data = r_len[15:8];
     endcase
     else if (r_modo)                         // MEM_DATA: payload entero en w_byte_mem
       o_tx_data = w_byte_mem;
