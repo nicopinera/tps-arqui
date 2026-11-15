@@ -63,6 +63,10 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `du_exec_ctrl.v`: `ABORT` con estado `DRAIN`: `o_stop_fetch = 1` con el enable en 1 hasta que los 4 `valid` de los latches (`i_valid`) valen 0, o hasta `i_halted` si un HALT llega a WB durante el drenado; después `o_run_fin` como un RUN (ADR-010) (US-407).
 - `hw/tb/debug/tb_du_abort.v`: loop infinito + `ABORT` (drenado en 3 ciclos, latches vacíos, PC congelado), HALT durante el drenado, `ABORT` junto con `i_halted` y `ABORT` en `IDLE` (AC1) (US-407).
 - `docs/guias/guia-estudio-debug-unit.md`: §47 sobre el drenado de `ABORT` (US-407).
+- `du_dumper.v`: trama `MEM_DATA` de `DUMP_MEM` (`A5 05 len | dir | n | n palabras | XOR`) con el mismo serializador del snapshot (registro `r_modo`); valida el rango en 17 bits (alineada, `n ≥ 1`, `dir/4 + n ≤ 256`) y, si está mal, termina sin mandar nada con `o_err = ERR_RANGO` (US-408).
+- `hw/tb/debug/tb_du_dump_mem.v`: `DUMP_MEM` de punta a punta por la UART con `core_stub`: las palabras coinciden con la DMEM, rangos inválidos → `NACK(ERR_RANGO)` sin cambio de estado, `NACK(ERR_ESTADO)` en `RUN` y los ejemplos de `protocolo.md` §8.9 byte a byte (AC1–AC4) (US-408).
+- `tb_du_dumper.v`: casos de `MEM_DATA` (bordes, DMEM entera, ejemplo §8.9) y de rechazo (no alineada, `n = 0`, se pasa del final, desborde con `n = FFFF`) (US-408).
+- `docs/guias/guia-estudio-debug-unit.md`: §37 sobre la trama `MEM_DATA` (US-408).
 
 ### Changed
 
@@ -82,4 +86,5 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `debug_unit` instancia `du_exec_ctrl`: se quitan `o_req_run`/`o_req_step`/`o_req_abort`/`i_step_done`/`i_run_fin` y `o_load_done` (ahora interno), y se agregan `o_enable`, `o_stop_fetch` y `o_ciclos` (hasta que entre `du_dumper`) (US-406).
 - `tb_du_cmd_fsm.v` usa el `du_exec_ctrl` real moviendo el `core_stub`; el fin del drenado de `ABORT` se emula levantando `i_halted` hasta US-407 (US-406).
 - `debug_unit` recibe `i_latch_valid[3:0]` (bits `valid` de los latches, hasta que entren los buses para `du_dumper`) y `tb_du_cmd_fsm.v` drena de verdad con los `valid` del `core_stub`, sin la emulación de `ABORT` (US-407).
+- `debug_unit` instancia `du_dumper` (canal 1 del mux, `i_ciclos` desde `du_exec_ctrl`): se quitan los puertos del dumper externo, `o_ciclos` e `i_latch_valid` (los `valid` salen de los buses) y se agregan los puertos de lectura del núcleo (PC, registros, DMEM, bitmap, riesgos y latches). `tb_du_cmd_fsm.v` usa el dumper real en lugar del falso (US-405, US-408).
 - PRD US-106: `ensamblar` es una función en vez de la clase `Assembler`, la `Imagen` suma `expansiones` y el fixture de GNU pasa a `tools/tests/assembler/fixtures/` (también en ADR-013) (US-106).

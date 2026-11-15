@@ -727,11 +727,12 @@ El enunciado pide mandar a la PC "el contenido de los 32 registros, de los latch
 
 Analogía: la FSM es el recepcionista que decide **cuándo** hay que mandar un informe (después de `STEP`, al terminar `RUN`, o con `DUMP`). El dumper es el empleado que arma el informe: lo escribe hoja por hoja, en un orden fijo, y le pone un número de control al final.
 
-| Pedido de la FSM | Qué hace el dumper                                               | Cómo avisa que terminó |
-| ---------------- | ---------------------------------------------------------------- | ---------------------- |
-| `i_req_dump`     | manda la trama `SNAPSHOT` completa por el canal 1 de `du_tx_mux` | `o_done` (`o_err = 0`) |
+| Pedido de la FSM | Qué hace el dumper                                                                      | Cómo avisa que terminó               |
+| ---------------- | --------------------------------------------------------------------------------------- | ------------------------------------ |
+| `i_req_dump`     | manda la trama `SNAPSHOT` completa por el canal 1 de `du_tx_mux`                        | `o_done` (`o_err = 0`)               |
+| `i_req_dump_mem` | valida el rango y manda la trama `MEM_DATA` (§37), o no manda nada si el rango está mal | `o_done` (`o_err = 0` o `ERR_RANGO`) |
 
-`DUMP_MEM` (la trama `MEM_DATA`) también va a usar este módulo, pero es US-408.
+Las dos tramas comparten todo el mecanismo (FSM, checksum, UART); cambia solo la tabla de qué byte va en cada posición.
 
 **¿Qué NO se manda?** La IMEM: el programa ya lo tiene la PC, porque fue ella quien lo cargó. De la DMEM solo van las palabras que el programa **escribió**.
 
@@ -753,7 +754,8 @@ Analogía: la FSM es el recepcionista que decide **cuándo** hay que mandar un i
 | ----------------------------------------------------------------- | ------- | -------------- | --------------------------------------------------------------------------------- |
 | `i_req_dump`                                                      | entrada | FSM            | pulso: "mandá un snapshot"                                                        |
 | `i_snap_estado`                                                   | entrada | FSM            | byte 0 del payload: `{motivo, estado de la DU}`; vale bien en el ciclo del pedido |
-| `o_done`, `o_err`                                                 | salida  | FSM            | pulso "terminé" y error (siempre 0 en snapshot; existe por `DUMP_MEM`)            |
+| `i_req_dump_mem`, `i_dm_addr`, `i_dm_n`                           | entrada | FSM            | pulso: "mandá un `MEM_DATA`", dirección inicial en bytes y cantidad de palabras   |
+| `o_done`, `o_err`                                                 | salida  | FSM            | pulso "terminé" y error: 0, o `ERR_RANGO` si se rechazó un `DUMP_MEM`             |
 | `i_ciclos`                                                        | entrada | `du_exec_ctrl` | ciclos ejecutados desde el último `LOAD`/`RESET` (`o_ciclos` de `du_exec_ctrl`)   |
 | `i_pc`                                                            | entrada | núcleo         | PC actual                                                                         |
 | `o_dbg_reg_addr` → `i_dbg_reg_data`                               | ambos   | núcleo         | "¿qué registro?" → su valor (combinacional)                                       |
@@ -786,6 +788,10 @@ La FSM **no sabe nada de secciones**: no hay un estado "REGISTROS" ni "LATCHES".
 | `r_latches`  |  648 | copia de los 4 latches al pedido: `{MEM/WB, EX/MEM, ID/EX, IF/ID}`                                                                |
 | `r_mem_addr` |    9 | palabra de DMEM que se está mandando o buscando; el bit 8 en 1 (= 256) significa "se pasó del final"                              |
 | `r_sub`      |    3 | byte dentro de la entrada de memoria: 0-1 = dirección, 2-5 = dato                                                                 |
+| `r_modo`     |    1 | qué trama se está mandando: 0 = `SNAPSHOT`, 1 = `MEM_DATA` (§37)                                                                  |
+| `r_dm_addr`  |   16 | `MEM_DATA`: dirección pedida (en bytes), copiada al pedido                                                                        |
+| `r_dm_n`     |   16 | `MEM_DATA`: cantidad de palabras, copiada al pedido                                                                               |
+| `r_err`      |    8 | resultado del último pedido (`o_err`): 0 o `ERR_RANGO`                                                                            |
 
 **¿Por qué se copian estado, K y latches, y no el PC ni los registros?**
 
@@ -799,7 +805,9 @@ La FSM **no sabe nada de secciones**: no hay un estado "REGISTROS" ni "LATCHES".
 ```mermaid
 stateDiagram-v2
     [*] --> IDLE
-    IDLE --> BUSCAR : i_req_dump (copia estado, K y latches; r_pos = 0)
+    IDLE --> BUSCAR : i_req_dump (copia estado, K y latches; r_pos = 0; r_modo = 0)
+    IDLE --> BUSCAR : i_req_dump_mem con rango OK (copia dir y n; r_pos = 0; r_modo = 1)
+    IDLE --> FIN : i_req_dump_mem con rango mal (r_err = ERR_RANGO, no manda nada)
     BUSCAR --> BUSCAR : empieza una entrada de memoria y la palabra no está usada (r_mem_addr + 1)
     BUSCAR --> ENVIAR : en cualquier otro caso
     ENVIAR --> ESPERAR : siempre (1 ciclo con o_tx_start)
@@ -808,13 +816,13 @@ stateDiagram-v2
     FIN --> IDLE : siempre (1 ciclo con o_done)
 ```
 
-| Estado    | Qué hace                                                                      | Qué lo hace salir                           | A dónde va       |
-| --------- | ----------------------------------------------------------------------------- | ------------------------------------------- | ---------------- |
-| `IDLE`    | nada: espera un pedido                                                        | `i_req_dump`                                | `BUSCAR`         |
-| `BUSCAR`  | antes de cada byte; si empieza una palabra de memoria, busca la próxima usada | encontró una usada, o no hacía falta buscar | `ENVIAR`         |
-| `ENVIAR`  | **un ciclo**: `o_tx_start = 1`, la UART toma `o_tx_data`; suma el byte al XOR | nada: dura un ciclo                         | `ESPERAR`        |
-| `ESPERAR` | nada: el byte viaja por la línea                                              | `i_tx_done`                                 | `BUSCAR` o `FIN` |
-| `FIN`     | **un ciclo**: `o_done = 1`                                                    | nada: dura un ciclo                         | `IDLE`           |
+| Estado    | Qué hace                                                                      | Qué lo hace salir                           | A dónde va                              |
+| --------- | ----------------------------------------------------------------------------- | ------------------------------------------- | --------------------------------------- |
+| `IDLE`    | nada: espera un pedido                                                        | `i_req_dump` / `i_req_dump_mem`             | `BUSCAR` (o `FIN` si el rango está mal) |
+| `BUSCAR`  | antes de cada byte; si empieza una palabra de memoria, busca la próxima usada | encontró una usada, o no hacía falta buscar | `ENVIAR`                                |
+| `ENVIAR`  | **un ciclo**: `o_tx_start = 1`, la UART toma `o_tx_data`; suma el byte al XOR | nada: dura un ciclo                         | `ESPERAR`                               |
+| `ESPERAR` | nada: el byte viaja por la línea                                              | `i_tx_done`                                 | `BUSCAR` o `FIN`                        |
+| `FIN`     | **un ciclo**: `o_done = 1`                                                    | nada: dura un ciclo                         | `IDLE`                                  |
 
 Las salidas son **Moore** (dependen solo del estado): `o_tx_start = (estado == ENVIAR)` y `o_done = (estado == FIN)`. Como esos estados duran un ciclo, los pulsos duran un ciclo sin hacer nada más.
 
@@ -865,6 +873,66 @@ El recorrido:
 Buscar cuesta como mucho 256 ciclos **en todo el volcado** (el recorrido nunca vuelve atrás): nada al lado de los ~57 000 ciclos de cada byte.
 
 **¿Y si el bitmap no coincide con K?** (no debería pasar: sería un bug del núcleo). Si `r_mem_addr` llega a 256 sin encontrar, `BUSCAR` sigue a `ENVIAR` igual. La trama sale con la longitud declarada y datos basura, pero el dumper **no se cuelga**. El testbench, que compara entrada por entrada, lo detectaría.
+
+## 37. `MEM_DATA`: la trama de `DUMP_MEM` (US-408)
+
+**El problema.** El snapshot trae solo las palabras que el programa **escribió**. Un programa que **lee** una tabla que nunca escribe (por ejemplo, datos cargados antes) no la muestra en el snapshot. `DUMP_MEM` pide un rango cualquiera: "dame `n` palabras desde la dirección `dir`", estén usadas o no.
+
+**El pedido** (PC → FPGA, 5 bytes): `4D | dir (2 B, LE, en bytes) | n (2 B, LE)`. Lo junta `du_cmd_fsm` (`ARGS_MEM`) y se lo pasa al dumper con `i_req_dump_mem`, `i_dm_addr` e `i_dm_n`.
+
+**La respuesta** (FPGA → PC) usa el mismo sobre que el snapshot, con tipo `05`:
+
+```text
+A5 | 05 | len LE | dir (2 B LE) | n (2 B LE) | palabra 0 (4 B LE) | … | palabra n-1 | XOR
+               └────────── payload: len = 4 + 4n bytes ──────────┘
+```
+
+- `dir` y `n` se devuelven **tal como llegaron**: la PC sabe a qué pedido corresponde la respuesta sin acordarse de nada.
+- Después van las palabras `dir/4`, `dir/4 + 1`, …, `dir/4 + n − 1` de la DMEM, cada una en little-endian. **No** llevan la dirección al lado (a diferencia de la memoria del snapshot): son consecutivas, la dirección de la palabra `i` es `dir + 4i`.
+- El XOR es el de siempre: todo menos el `A5`.
+
+**Ejemplo byte a byte** (`protocolo.md` §8.9, verificado en `tb_du_dump_mem`). DMEM con `[0x000] = 5` y `[0x004] = 0`; la PC pide 2 palabras desde `0x000`:
+
+```text
+PC  → 4D 00 00 02 00
+FPGA→ A5 05 0C 00  00 00  02 00  05 00 00 00  00 00 00 00  0E
+      │  │  └─┬─┘  └─┬─┘  └─┬─┘  └────┬────┘  └────┬────┘  └─ XOR = 05^0C^02^05
+      │  │   len=12  dir=0   n=2   [0x000]=5    [0x004]=0
+      │  └─ tipo MEM_DATA
+      └─ sincronismo
+```
+
+**Validación** (`protocolo.md` §3). El rango es válido si:
+
+1. `dir` es múltiplo de 4 (`dir[1:0] == 0`): la DMEM se lee por palabras;
+2. `n ≥ 1`;
+3. `dir/4 + n ≤ 256`: la última palabra pedida existe.
+
+Si falla, el dumper **no manda nada**: va de `IDLE` directo a `FIN` con `r_err = ERR_RANGO`. `du_cmd_fsm` ve `o_done` con error y manda `NACK(ERR_RANGO)` por el canal 0 (`A5 02 01 00 05 06`), y vuelve al estado anterior. Así el dumper nunca empieza una trama que tendría que cortar a la mitad.
+
+**La suma en 17 bits (error clásico).** `dir/4` y `n` son de 16 bits. Si la suma se hace en 16 bits, `dir = 0x0004`, `n = 0xFFFF` da `1 + 65535 = 65536`, que en 16 bits es `0x0000 ≤ 256`: ¡válido! El dumper intentaría mandar 65 535 palabras (y la longitud `4 + 4n` tampoco entraría en 16 bits). Por eso `w_dm_fin` tiene 17 bits. `tb_du_dumper` lo prueba, y con la suma en 16 bits ese caso falla.
+
+**Cómo lo hace el hardware.** Se reutiliza todo: FSM, `r_pos`, `r_xor`, `o_tx_data` combinacional. Cambian tres cosas según `r_modo`:
+
+| Qué              | `SNAPSHOT` (`r_modo = 0`)             | `MEM_DATA` (`r_modo = 1`)                          |
+| ---------------- | ------------------------------------- | -------------------------------------------------- |
+| byte de tipo     | `03`                                  | `05`                                               |
+| longitud         | `221 + 6K`                            | `4 + 4·r_dm_n`                                     |
+| payload          | la tabla de §35                       | `w_byte_mem`: `w_off` 0-3 = dir y n; 4… = palabras |
+| `o_dbg_mem_addr` | `r_mem_addr` (con saltos de `BUSCAR`) | `dir/4 + (w_off − 4)/4`, sale de la posición       |
+| `BUSCAR`         | salta las palabras no usadas          | no salta nada (`w_en_mem` exige `r_modo = 0`)      |
+
+En `MEM_DATA` **la posición alcanza** para saber todo (no hay saltos): con `w_rel = w_off − 4`, la palabra es `w_rel[9:2]` y el byte `w_rel[1:0]`, el mismo truco de "dividir por 4" que los registros (§35). Por eso no hacen falta `r_mem_addr` ni `r_sub`.
+
+**Tiempo.** La trama más larga (`n = 256`) tiene 1033 bytes: ~0,6 s a 19 200 bps. El núcleo está congelado (en `RUN` el comando se rechaza con `ERR_ESTADO`), así que todas las palabras son del mismo instante.
+
+**Errores comunes.**
+
+1. Validar en 16 bits (ver arriba).
+2. Leer la DMEM con `dir` en vez de `dir/4`: la DMEM se indexa por palabra; `0x004` es la palabra 1.
+3. Mandar el NACK desde el dumper: el canal 1 es de tramas largas; las respuestas cortas son de `du_resp_tx` (canal 0) y las decide la FSM.
+4. Dejar `o_err` en el valor viejo: `r_err` se pone en 0 con cada pedido válido, si no un `DUMP` después de un rechazo llegaría a la FSM como error.
+5. Mandar los argumentos de `DUMP_MEM` en `RUN`: la FSM rechaza el comando y los 4 bytes siguientes se interpretarían como comandos nuevos. La PC no manda argumentos si recibió el NACK (`protocolo.md` §5).
 
 ## 38. Detalles técnicos
 
@@ -1003,7 +1071,7 @@ else if (r_enable && !i_halted)  r_ciclos <= r_ciclos + 1;
 - **Drenar (_drain_).** Dejar de meter instrucciones nuevas y dejar que las que ya están adentro terminen.
 - **`i_stop_fetch`** (entrada del núcleo, nivel). Con `i_enable = 1`: el PC no cambia, IF/ID e ID/EX reciben burbujas (se descarta la instrucción que estaba en ID) y lo que estaba en EX, MEM y WB termina. Es la misma lógica que usa el HALT: no hay una segunda forma de vaciar el pipeline.
 - **Burbuja.** Latch con `valid = 0`: una instrucción vacía que no escribe nada.
-- **Pipeline vacío.** El núcleo no tiene una salida "terminé de drenar". La Debug Unit lo deduce de los 4 bits `valid` de los buses de latches (`docs/interfaces/riscv_core.md`, sección 4): `IF/ID[96]`, `ID/EX[200]`, `EX/MEM[112]`, `MEM/WB[104]`. Por ahora entran a `debug_unit` por `i_latch_valid`; cuando los buses entren para `du_dumper` (US-405) se sacan adentro.
+- **Pipeline vacío.** El núcleo no tiene una salida "terminé de drenar". La Debug Unit lo deduce de los 4 bits `valid` de los buses de latches (`docs/interfaces/riscv_core.md`, sección 4): `IF/ID[96]`, `ID/EX[200]`, `EX/MEM[112]`, `MEM/WB[104]`. `debug_unit` los saca de los buses que ya recibe para `du_dumper` (`w_valid`).
 
 **Cómo funciona.** Dos señales, cada una con su trabajo:
 
