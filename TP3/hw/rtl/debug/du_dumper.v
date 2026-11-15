@@ -1,7 +1,8 @@
 `include "du_defs.vh"
 
-// Serializador del SNAPSHOT:
-// Con un pulso de i_req_dump manda por el canal 1 de du_tx_mux la trama:
+// Serializador de las tramas largas: SNAPSHOT (US-405) y MEM_DATA (US-408).
+//
+// SNAPSHOT. Con un pulso de i_req_dump manda por el canal 1 de du_tx_mux la trama:
 //
 //   A5 | 03 | longitud LE (221 + 6K) | payload | XOR
 //
@@ -12,12 +13,22 @@
 //   estado (1) | ciclos (4) | PC (4) | riesgos (1) | x0..x31 (128) |
 //   IF/ID (13) | ID/EX (31) | EX/MEM (19) | MEM/WB (18) | K (2) | K x [dir (2) + dato (4)]
 //
+// MEM_DATA (DUMP_MEM). Con un pulso de i_req_dump_mem valida el rango pedido
+// (protocolo.md 3: direccion multiplo de 4, n >= 1, dir/4 + n <= DMEM_DEPTH) y:
+//   - si esta mal, no manda nada: o_done con o_err = ERR_RANGO (du_cmd_fsm responde el NACK);
+//   - si esta bien, manda
+//
+//   A5 | 05 | longitud LE (4 + 4n) | dir (2, LE) | n (2, LE) | n palabras (4 c/u, LE) | XOR
+//
+//     con dir tal como llego (en bytes) y las palabras dir/4, dir/4 + 1, ..., usadas o no.
+//
 // El nucleo esta congelado durante todo el volcado: las lecturas de depuracion son combinacionales y valen lo mismo de principio a fin.
 //
 // Organizacion:
-//   1. FSM chica (IDLE, BUSCAR, ENVIAR, ESPERAR, FIN) y sus registros: un byte por vuelta
+//   1. FSM chica (IDLE, BUSCAR, ENVIAR, ESPERAR, FIN) y sus registros: un byte por vuelta.
+//      Es la misma para las dos tramas; r_modo dice cual se esta mandando.
 //   2. r_pos dice que byte de la trama va saliendo (0 = A5)
-//   3. tabla: que byte corresponde a cada r_pos (copia de protocolo.md 6.2)
+//   3. tabla: que byte corresponde a cada r_pos (copia de protocolo.md 6.1 y 6.2)
 
 module du_dumper #(
     parameter NBIT           = 8,
@@ -30,8 +41,11 @@ module du_dumper #(
     // Hacia CMD_FSM
     input  wire                i_req_dump,    // Pulso: empezar a mandar un SNAPSHOT
     input  wire [NBIT-1:0]     i_snap_estado, // Byte 0 del payload: {motivo, estado de la DU}
-    output wire                o_done,        // Pulso: salio el ultimo byte (el checksum)
-    output wire [NBIT-1:0]     o_err,         // Siempre 0 en SNAPSHOT; existe por DUMP_MEM (US-408)
+    input  wire                i_req_dump_mem,// Pulso: mandar un MEM_DATA con i_dm_addr e i_dm_n
+    input  wire [15:0]         i_dm_addr,     // Argumentos de DUMP_MEM: direccion en bytes
+    input  wire [15:0]         i_dm_n,        // y cantidad de palabras
+    output wire                o_done,        // Pulso: salio el ultimo byte (el checksum), o se rechazo el DUMP_MEM
+    output wire [NBIT-1:0]     o_err,         // Junto con o_done: 0 = ok, ERR_RANGO = DUMP_MEM fuera de rango
 
     // Hacia EXEC_CTRL (hasta US-406 lo maneja el testbench)
     input  wire [NBIT_32-1:0]  i_ciclos,      // Ciclos con i_enable = 1 desde el ultimo LOAD/RESET
@@ -98,13 +112,26 @@ module du_dumper #(
   reg [647:0]            r_latches;  // Copia de los 4 latches al pedido: {MEM/WB, EX/MEM, ID/EX, IF/ID}
   reg [DMEM_ADDR_BITS:0] r_mem_addr; // Palabra de DMEM que se esta mandando o buscando (1 bit mas: 256 = fin)
   reg [2:0]              r_sub;      // Byte dentro de la entrada de memoria: 0-1 = dir, 2-5 = dato
+  reg                    r_modo;     // Trama en curso: 0 = SNAPSHOT, 1 = MEM_DATA
+  reg [15:0]             r_dm_addr;  // MEM_DATA: direccion pedida (en bytes), copiada al pedido
+  reg [15:0]             r_dm_n;     // MEM_DATA: cantidad de palabras, copiada al pedido
+  reg [NBIT-1:0]         r_err;      // -> o_err: resultado del ultimo pedido
 
   // ---------------------------------------------------------------------------------------
   // Cuentas que salen de los registros
   // ---------------------------------------------------------------------------------------
   // longitud = 221 + 6K, con 6K = 4K + 2K (K <= 256: 221 + 1536 = 1757 entra en 16 bits)
   wire [15:0] w_k   = {{(15-DMEM_ADDR_BITS){1'b0}}, r_k};
-  wire [15:0] w_len = LEN_FIJO + (w_k << 2) + (w_k << 1);
+  wire [15:0] w_len_snap = LEN_FIJO + (w_k << 2) + (w_k << 1);
+  // MEM_DATA: 4 + 4n, con n <= 256 ya validado (como mucho 1028)
+  wire [15:0] w_len_mem  = 16'd4 + (r_dm_n << 2);
+  wire [15:0] w_len      = r_modo ? w_len_mem : w_len_snap;
+
+  // Validacion de DUMP_MEM sobre los argumentos del pedido. La suma dir/4 + n se hace en
+  // 17 bits: en 16, n = FFFF con dir = 4 daria 0x0000 y pasaria como valido.
+  localparam [16:0] DMEM_DEPTH = 17'd1 << DMEM_ADDR_BITS;
+  wire [16:0] w_dm_fin = {3'b000, i_dm_addr[15:2]} + {1'b0, i_dm_n};  // palabra siguiente a la ultima
+  wire        w_dm_ok  = (i_dm_addr[1:0] == 2'b00) && (i_dm_n != 16'd0) && (w_dm_fin <= DMEM_DEPTH);
 
   // Posicion del checksum: despues de A5, tipo, len (4 B) y el payload
   wire [15:0] w_pos_checksum = w_len + 16'd4;
@@ -120,7 +147,18 @@ module du_dumper #(
   wire [15:0] w_rel_regs   = w_off - OFF_REGS;    // 0..127: [6:2] registro, [1:0] byte
   wire [15:0] w_rel_latch  = w_off - OFF_LATCH;   // 0..80: byte de r_latches
   wire [15:0] w_rel_k      = w_off - OFF_K;       // 0..1: byte de K
+  wire [15:0] w_rel_mw     = w_off - 16'd4;       // MEM_DATA: [9:2] palabra, [1:0] byte
   /* verilator lint_on UNUSEDSIGNAL */
+
+  // MEM_DATA: el byte del payload. Offsets 0-3 = dir y n (LE), despues las palabras.
+  // La palabra que se lee es dir/4 + indice; o_dbg_mem_addr la pide (abajo).
+  wire [NBIT-1:0] w_byte_mem =
+       (w_off == 16'd0) ? r_dm_addr[7:0]  :
+       (w_off == 16'd1) ? r_dm_addr[15:8] :
+       (w_off == 16'd2) ? r_dm_n[7:0]     :
+       (w_off == 16'd3) ? r_dm_n[15:8]    :
+       byte_de(i_dbg_mem_data, w_rel_mw[1:0]);
+  wire [DMEM_ADDR_BITS-1:0] w_mem_addr_dm = r_dm_addr[DMEM_ADDR_BITS+1:2] + w_rel_mw[DMEM_ADDR_BITS+1:2];
 
   // Byte k de la copia de latches = r_latches[8k+7:8k]: el bit donde empieza es k * 8
   wire [9:0] w_bit_latch = {w_rel_latch[6:0], 3'b000};
@@ -129,7 +167,8 @@ module du_dumper #(
   wire [NBIT-1:0] w_riesgos = {1'b0, i_fwd_b, i_fwd_a, i_flush_id_ex, i_flush_if_id, i_stall};
 
   // Memoria: el byte que toca es parte de una entrada [dir 2 B | dato 4 B]
-  wire w_en_mem = (r_pos >= 16'd4) && (w_off >= OFF_MEM) && (r_pos != w_pos_checksum);
+  // Solo en SNAPSHOT: en MEM_DATA no se salta nada y las direcciones salen de w_off
+  wire w_en_mem = !r_modo && (r_pos >= 16'd4) && (w_off >= OFF_MEM) && (r_pos != w_pos_checksum);
   wire [15:0] w_dir_bytes = {{(14-DMEM_ADDR_BITS){1'b0}}, r_mem_addr[DMEM_ADDR_BITS-1:0], 2'b00};
   wire [1:0]  w_sub_dato  = r_sub[1:0] - 2'd2;  // r_sub 2..5 -> byte 0..3 del dato (en 2 bits: 4-2 = 2, 5-2 = 3)
   wire [DMEM_ADDR_BITS:0] w_mem_addr_sig = r_mem_addr + {{DMEM_ADDR_BITS{1'b0}}, 1'b1};
@@ -163,6 +202,10 @@ module du_dumper #(
       r_latches  <= 648'd0;
       r_mem_addr <= {(DMEM_ADDR_BITS+1){1'b0}};
       r_sub      <= 3'd0;
+      r_modo     <= 1'b0;
+      r_dm_addr  <= 16'd0;
+      r_dm_n     <= 16'd0;
+      r_err      <= {NBIT{1'b0}};
     end
     else
     case (state_reg)
@@ -179,7 +222,28 @@ module du_dumper #(
           r_xor      <= {NBIT{1'b0}};
           r_mem_addr <= {(DMEM_ADDR_BITS+1){1'b0}};
           r_sub      <= 3'd0;
+          r_modo     <= 1'b0;
+          r_err      <= {NBIT{1'b0}};
           state_reg  <= BUSCAR;
+        end
+        // DUMP_MEM: si el rango esta mal no se manda nada, solo o_done con el error
+        else if (i_req_dump_mem)
+        begin
+          if (w_dm_ok)
+          begin
+            r_dm_addr <= i_dm_addr;
+            r_dm_n    <= i_dm_n;
+            r_pos     <= 16'd0;
+            r_xor     <= {NBIT{1'b0}};
+            r_modo    <= 1'b1;
+            r_err     <= {NBIT{1'b0}};
+            state_reg <= BUSCAR;
+          end
+          else
+          begin
+            r_err     <= `DU_ERR_RANGO;
+            state_reg <= FIN;
+          end
         end
 
       // Antes de cada byte. Solo hace algo si el byte que toca es el primero de una entrada
@@ -239,11 +303,11 @@ module du_dumper #(
   // Salidas que dependen solo del estado
   assign o_tx_start = (state_reg == ENVIAR);
   assign o_done     = (state_reg == FIN);
-  assign o_err      = {NBIT{1'b0}};
+  assign o_err      = r_err;
 
   // Lecturas de depuracion (combinacionales: el nucleo contesta en el mismo ciclo)
   assign o_dbg_reg_addr = w_rel_regs[6:2];                         // 4 bytes por registro
-  assign o_dbg_mem_addr = r_mem_addr[DMEM_ADDR_BITS-1:0];
+  assign o_dbg_mem_addr = r_modo ? w_mem_addr_dm : r_mem_addr[DMEM_ADDR_BITS-1:0];
 
   // ---------------------------------------------------------------------------------------
   // 2. Tabla: que byte sale en cada posicion de la trama (protocolo.md 6 y 6.2)
@@ -258,13 +322,15 @@ module du_dumper #(
       2'd0:
         o_tx_data = `DU_SYNC;
       2'd1:
-        o_tx_data = `DU_TIPO_SNAPSHOT;
+        o_tx_data = r_modo ? `DU_TIPO_MEM_DATA : `DU_TIPO_SNAPSHOT;
       2'd2:
         o_tx_data = w_len[7:0];
       default:
         o_tx_data = w_len[15:8];
     endcase
-    else if (w_off < OFF_CICLOS)             // offset 0
+    else if (r_modo)                         // MEM_DATA: payload entero en w_byte_mem
+      o_tx_data = w_byte_mem;
+    else if (w_off < OFF_CICLOS)            // offset 0
       o_tx_data = r_estado;
     else if (w_off < OFF_PC)                 // offsets 1..4
       o_tx_data = byte_de(i_ciclos, w_rel_ciclos[1:0]);
