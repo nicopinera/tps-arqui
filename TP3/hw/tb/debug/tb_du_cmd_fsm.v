@@ -2,10 +2,11 @@
 
 // Prueba de la Debug Unit de US-403 a traves de la UART, como en la placa:
 //   host model -> uart_rx -> debug_unit -> uart_tx -> host model
-// du_loader (US-404) es el real, adentro de debug_unit, y escribe en un core_stub.
-// Los submodulos que todavia no existen los emula el testbench:
-//   exec falso     STEP termina a los 3 ciclos; RUN termina cuando el test levanta
-//                  r_fin_tb, o 4 ciclos despues de un ABORT
+// du_loader (US-404) y du_exec_ctrl (US-406) son los reales, adentro de debug_unit, y mueven
+// un core_stub. El o_halted / o_illegal que ve la Debug Unit lo maneja el test (cfg_halted,
+// cfg_illegal) para elegir en que STEP o en que momento del RUN termina el programa.
+// Lo que todavia no existe lo emula el testbench:
+//   ABORT          4 ciclos despues del pedido el test levanta cfg_halted (fin del drenado)
 //   dumper falso   otra instancia de du_resp_tx en el canal 1 del mux: manda una trama
 //                  SNAPSHOT (03) con el byte de estado como payload, o MEM_DATA (05)
 //
@@ -32,19 +33,16 @@ module tb_du_cmd_fsm;
   wire [7:0] w_rx_data, w_tx_data;
   wire [3:0] w_estado;
 
-  wire        w_imem_we, w_dmem_we, w_clear_used, w_flush_all, w_load_done;
+  wire        w_imem_we, w_dmem_we, w_clear_used, w_flush_all;
   wire [7:0]  w_imem_addr, w_dmem_addr;
   wire [31:0] w_imem_wdata;
-  wire        w_req_run, w_req_step, w_req_abort;
+  wire        w_enable, w_stop_fetch;
   wire        w_req_dump, w_req_dump_mem;
   wire [15:0] w_dm_addr, w_dm_n;
   wire [7:0]  w_snap_estado;
   wire        w_dump_tx_start, w_dump_tx_done;
   wire [7:0]  w_dump_tx_data;
 
-  reg        r_step_done = 1'b0;
-  reg        r_fin_abort = 1'b0;    // el exec falso termino el drenado de ABORT
-  reg        r_fin_tb = 1'b0;       // el test dice "el programa llego al HALT"
   reg        cfg_halted = 1'b0;     // o_halted / o_illegal del nucleo
   reg        cfg_illegal = 1'b0;
   reg        cfg_dm_err = 1'b0;     // el dumper falso responde ERR_RANGO a DUMP_MEM
@@ -66,10 +64,9 @@ module tb_du_cmd_fsm;
     .o_tx_start(w_tx_start), .o_tx_data(w_tx_data), .i_tx_done(w_tx_done),
     .o_imem_we(w_imem_we), .o_imem_addr(w_imem_addr), .o_imem_wdata(w_imem_wdata),
     .o_dmem_we(w_dmem_we), .o_dmem_addr(w_dmem_addr),
-    .o_clear_used(w_clear_used), .o_flush_all(w_flush_all), .o_load_done(w_load_done),
-    .o_req_run(w_req_run), .o_req_step(w_req_step), .o_req_abort(w_req_abort),
-    .i_step_done(r_step_done), .i_run_fin(r_fin_abort || r_fin_tb),
-    .i_halted(cfg_halted), .i_illegal(cfg_illegal),
+    .o_clear_used(w_clear_used), .o_flush_all(w_flush_all),
+    .o_enable(w_enable), .o_stop_fetch(w_stop_fetch),
+    .i_halted(cfg_halted), .i_illegal(cfg_illegal), .o_ciclos(),
     .o_req_dump(w_req_dump), .o_req_dump_mem(w_req_dump_mem),
     .o_dm_addr(w_dm_addr), .o_dm_n(w_dm_n), .o_snap_estado(w_snap_estado),
     .i_dump_done(w_dump_done), .i_dump_err(w_dump_err),
@@ -87,8 +84,8 @@ module tb_du_cmd_fsm;
 
   // --- Nucleo falso: lo que escribe du_loader queda en su IMEM -----------------------------
   core_stub u_core (
-    .clock(clock), .i_reset(i_reset), .i_enable(1'b0),
-    .i_flush_all(w_flush_all), .i_stop_fetch(1'b0),
+    .clock(clock), .i_reset(i_reset), .i_enable(w_enable),
+    .i_flush_all(w_flush_all), .i_stop_fetch(w_stop_fetch),
     .o_halted(), .o_illegal(), .o_pc(),
     .i_imem_we(w_imem_we), .i_imem_addr(w_imem_addr), .i_imem_wdata(w_imem_wdata),
     .i_dbg_dmem_we(w_dmem_we), .i_dbg_dmem_addr(w_dmem_addr), .i_clear_used(w_clear_used),
@@ -109,32 +106,22 @@ module tb_du_cmd_fsm;
       n_huerfanos = n_huerfanos + 1;
   end
 
-  // --- Exec falso (du_exec_ctrl) -------------------------------------------------------------
-  integer step_cnt = 0, abort_cnt = 0;
+  // --- Pedidos a du_exec_ctrl y ABORT emulado ------------------------------------------------
+  // shortcut: du_exec_ctrl todavia no drena con i_stop_fetch (US-407); el fin del drenado se
+  // emula levantando cfg_halted, y du_cmd_fsm pone el motivo ABORTED por su r_abort.
+  integer abort_cnt = 0;
   integer n_req_run = 0;
   always @(posedge clock)
   begin
-    r_step_done  <= 1'b0;
-    if (w_req_step)
-      step_cnt = 3;
-    else if (step_cnt > 0)
-    begin
-      step_cnt = step_cnt - 1;
-      if (step_cnt == 0)
-        r_step_done <= 1'b1;
-    end
-    if (w_req_run)
-    begin
-      r_fin_abort <= 1'b0;             // contrato: i_run_fin baja con o_req_run
+    if (u_du.w_req_run)
       n_req_run = n_req_run + 1;
-    end
-    if (w_req_abort)
+    if (u_du.w_req_abort)
       abort_cnt = 4;                   // drenado del pipeline
     else if (abort_cnt > 0)
     begin
       abort_cnt = abort_cnt - 1;
       if (abort_cnt == 0)
-        r_fin_abort <= 1'b1;
+        cfg_halted = 1'b1;
     end
   end
 
@@ -441,17 +428,10 @@ module tb_du_cmd_fsm;
     verificar("paridad en RUN", `DU_TIPO_NACK, 1, `DU_ERR_PARIDAD, `DU_ESTADO_RUN);
 
     // El programa termina por instruccion ilegal -> snapshot con motivo ILLEGAL
-    cfg_halted  = 1'b1;
     cfg_illegal = 1'b1;
-    fork
-      recv_frame(r_ok);
-      begin
-        repeat (10) @(negedge clock);
-        r_fin_tb = 1'b1;
-      end
-    join
+    cfg_halted  = 1'b1;
+    recv_frame(r_ok);
     verificar("RUN -> ILLEGAL", `DU_TIPO_SNAPSHOT, 1, 8'h26, `DU_ESTADO_HALTED);
-    r_fin_tb    = 1'b0;
     cfg_halted  = 1'b0;
     cfg_illegal = 1'b0;
 
@@ -459,7 +439,6 @@ module tb_du_cmd_fsm;
     enviar(`DU_CMD_RESET, 0);
     verificar("RESET", `DU_TIPO_ACK, 0, 8'h00, `DU_ESTADO_READY);
     correr;
-    cfg_halted = 1'b1;
     fork
       send_byte(`DU_CMD_PING);
       begin
@@ -469,11 +448,10 @@ module tb_du_cmd_fsm;
       end
       begin
         repeat (11 * host_ciclos_bit + 1000) @(negedge clock);  // con la respuesta saliendo
-        r_fin_tb = 1'b1;
+        cfg_halted = 1'b1;
       end
     join
     verificar("fin durante PING: snapshot", `DU_TIPO_SNAPSHOT, 1, 8'h16, `DU_ESTADO_HALTED);
-    r_fin_tb   = 1'b0;
     cfg_halted = 1'b0;
 
     // ABORT: sin respuesta inmediata; despues del drenado, snapshot con motivo ABORTED
@@ -482,6 +460,7 @@ module tb_du_cmd_fsm;
     correr;
     enviar(`DU_CMD_ABORT, 0);
     verificar("ABORT", `DU_TIPO_SNAPSHOT, 1, 8'h36, `DU_ESTADO_HALTED);
+    cfg_halted = 1'b0;
 
     // Otro RUN despues del ABORT: el i_run_fin viejo no lo termina en el primer ciclo
     enviar(`DU_CMD_RESET, 0);
@@ -491,6 +470,7 @@ module tb_du_cmd_fsm;
     check_eq("RUN tras ABORT sigue corriendo", {28'd0, w_estado}, {28'd0, `DU_ESTADO_RUN});
     enviar(`DU_CMD_ABORT, 0);
     verificar("ABORT", `DU_TIPO_SNAPSHOT, 1, 8'h36, `DU_ESTADO_HALTED);
+    cfg_halted = 1'b0;
 
     // LOAD desde HALTED borra el motivo y vuelve a READY
     cargar;
