@@ -60,6 +60,9 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `hw/rtl/debug/du_exec_ctrl.v`: modos `RUN` (enable sostenido hasta `o_halted`, fin como nivel `o_run_fin`) y `STEP` (un solo ciclo de enable, `o_step_done` un ciclo después); `i_enable` sale de un flip-flop (ADR-001, R-EJ-1, R-EJ-2) y contador de ciclos de 32 bits que solo suma cuando el núcleo avanza y vuelve a 0 con `load_done`. `ABORT` (`i_stop_fetch`) queda para US-407 (US-406).
 - `hw/tb/debug/tb_du_exec_ctrl.v`: con dos `core_stub` (fin por HALT y por ilegal) verifica un ciclo por STEP, STEP repetido = RUN (R-EJ-7), `o_run_fin` como nivel y la terminación por ilegal en ambos modos (AC1, AC2, AC6) (US-406).
 - `docs/guias/guia-estudio-debug-unit.md`: Parte 5 sobre `du_exec_ctrl` (estados, ejemplo ciclo a ciclo, contador, errores comunes) (US-406).
+- `du_exec_ctrl.v`: `ABORT` con estado `DRAIN`: `o_stop_fetch = 1` con el enable en 1 hasta que los 4 `valid` de los latches (`i_valid`) valen 0, o hasta `i_halted` si un HALT llega a WB durante el drenado; después `o_run_fin` como un RUN (ADR-010) (US-407).
+- `hw/tb/debug/tb_du_abort.v`: loop infinito + `ABORT` (drenado en 3 ciclos, latches vacíos, PC congelado), HALT durante el drenado, `ABORT` junto con `i_halted` y `ABORT` en `IDLE` (AC1) (US-407).
+- `docs/guias/guia-estudio-debug-unit.md`: §47 sobre el drenado de `ABORT` (US-407).
 
 ### Changed
 
@@ -78,4 +81,5 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `tb_du_cmd_fsm.v` usa el `du_loader` real con un `core_stub` en lugar del loader falso; además verifica la palabra cargada en la IMEM y el HALT después de un `LOAD` cortado (US-404).
 - `debug_unit` instancia `du_exec_ctrl`: se quitan `o_req_run`/`o_req_step`/`o_req_abort`/`i_step_done`/`i_run_fin` y `o_load_done` (ahora interno), y se agregan `o_enable`, `o_stop_fetch` y `o_ciclos` (hasta que entre `du_dumper`) (US-406).
 - `tb_du_cmd_fsm.v` usa el `du_exec_ctrl` real moviendo el `core_stub`; el fin del drenado de `ABORT` se emula levantando `i_halted` hasta US-407 (US-406).
+- `debug_unit` recibe `i_latch_valid[3:0]` (bits `valid` de los latches, hasta que entren los buses para `du_dumper`) y `tb_du_cmd_fsm.v` drena de verdad con los `valid` del `core_stub`, sin la emulación de `ABORT` (US-407).
 - PRD US-106: `ensamblar` es una función en vez de la clase `Assembler`, la `Imagen` suma `expansiones` y el fixture de GNU pasa a `tools/tests/assembler/fixtures/` (también en ADR-013) (US-106).
