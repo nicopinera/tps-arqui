@@ -1,6 +1,9 @@
 `timescale 1ns / 1ps
 
-// Testbench de la memoria de datos con bitmap de memoria usada.
+// Testbench de la memoria de datos y el bitmap de memoria usada (US-204, AC2 a AC5).
+//
+// Conecta data_mem -> dmem_bitmap como en la etapa MEM: la marca (o_core_we, o_core_addr) de
+// data_mem entra al bitmap, asi los AC se prueban de punta a punta.
 //
 // El testbench lleva un modelo propio (r_modelo, r_modelo_used, n_usadas) que se actualiza en
 // cada escritura. La task comparar_todo recorre las 256 palabras por el puerto de la Debug
@@ -31,6 +34,8 @@ module tb_data_mem;
     wire    [         31:0] w_dbg_data;
     wire                    w_dbg_used;
     wire    [  ADDR_BITS:0] w_used_count;
+    wire                    w_core_we;
+    wire    [ADDR_BITS-1:0] w_core_addr;
 
     // Modelo de referencia
     reg     [         31:0] r_modelo            [0:DEPTH-1];
@@ -45,19 +50,30 @@ module tb_data_mem;
     ) u_data_mem (
         .clock        (clock),
         .i_enable     (r_enable),
-        .i_clear_used (r_clear_used),
         .i_we         (r_we),
         .i_valid      (r_valid),
         .i_addr       (r_addr),
         .i_be         (r_be),
         .i_wdata      (r_wdata),
         .o_rdata      (w_rdata),
+        .o_core_we    (w_core_we),
+        .o_core_addr  (w_core_addr),
         .i_dbg_we     (r_dbg_we),
         .i_dbg_wr_addr(r_dbg_wr_addr),
         .i_dbg_addr   (r_dbg_addr),
-        .o_dbg_data   (w_dbg_data),
-        .o_dbg_used   (w_dbg_used),
-        .o_used_count (w_used_count)
+        .o_dbg_data   (w_dbg_data)
+    );
+
+    dmem_bitmap #(
+        .DEPTH(DEPTH)
+    ) u_dmem_bitmap (
+        .clock       (clock),
+        .i_clear_used(r_clear_used),
+        .i_mark      (w_core_we),
+        .i_mark_addr (w_core_addr),
+        .i_dbg_addr  (r_dbg_addr),
+        .o_dbg_used  (w_dbg_used),
+        .o_used_count(w_used_count)
     );
 
     always #(PERIODO / 2) clock = ~clock;
@@ -164,6 +180,21 @@ module tb_data_mem;
         ciclo_nucleo(1'b1, 1'b0, 1'b1, 32'h0000_0018, 4'b1111, 32'hBAD0_0003);  // we = 0
         ciclo_nucleo(1'b0, 1'b1, 1'b0, 32'h0000_001C, 4'b1111, 32'hBAD0_0004);  // los dos en 0
         comparar_todo("AC2 store sin enable/valid");
+
+        // La marca es combinacional y solo vale con un store efectivo
+        r_we    = 1'b1;
+        r_valid = 1'b1;
+        r_addr  = 32'h0000_0024;
+        #1 check_eq("marca: sin enable no marca", {31'd0, w_core_we}, 32'd0);
+        r_enable = 1'b1;
+        #1 check_eq("marca: store efectivo marca", {31'd0, w_core_we}, 32'd1);
+        check_eq("marca: palabra 9", {24'd0, w_core_addr}, 32'd9);
+        r_dbg_we = 1'b1;
+        #1 check_eq("marca: la limpieza de la DU anula la marca", {31'd0, w_core_we}, 32'd0);
+        r_dbg_we = 1'b0;
+        r_enable = 1'b0;
+        r_we     = 1'b0;
+        r_valid  = 1'b0;
 
         // ---- Escritura por byte (i_be) ----
         store(32'h0000_0020, 4'b1111, 32'h1122_3344);  // sw en la palabra 8

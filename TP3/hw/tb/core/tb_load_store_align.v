@@ -35,8 +35,6 @@ module tb_load_store_align;
 
     // Sin uso en este testbench
     wire    [         31:0] w_dbg_data;
-    wire                    w_dbg_used;
-    wire    [  ADDR_BITS:0] w_used_count;
 
     // Modelo de referencia: un byte por direccion
     reg     [          7:0] r_ref      [0:REGION_BYTES-1];
@@ -61,19 +59,18 @@ module tb_load_store_align;
     ) u_data_mem (
         .clock        (clock),
         .i_enable     (r_enable),
-        .i_clear_used (1'b0),
         .i_we         (r_we),
         .i_valid      (1'b1),
         .i_addr       (r_addr),
         .i_be         (w_be),
         .i_wdata      (w_wdata),
         .o_rdata      (w_word),
+        .o_core_we    (),
+        .o_core_addr  (),
         .i_dbg_we     (r_dbg_we),
         .i_dbg_wr_addr(r_dbg_wr_addr),
         .i_dbg_addr   ({ADDR_BITS{1'b0}}),
-        .o_dbg_data   (w_dbg_data),
-        .o_dbg_used   (w_dbg_used),
-        .o_used_count (w_used_count)
+        .o_dbg_data   (w_dbg_data)
     );
 
     load_extend u_load_extend (

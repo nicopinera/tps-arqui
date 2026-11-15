@@ -67,6 +67,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 
 ### Changed
 
+- `data_mem.v`: el bitmap y el contador pasan a `dmem_bitmap.v`; `data_mem` saca la marca del store efectivo (`o_core_we`, `o_core_addr`) y pierde `i_clear_used`, `o_dbg_used` y `o_used_count`. Mismo comportamiento: `tb_data_mem` prueba los dos módulos conectados (H2-E2).
 - `python -m riscv_toolkit` usa argparse y despacha subcomandos; sin subcomando sigue mostrando la versión, y se agregó `--version` (US-107).
 - `identificar(palabra)` pasa del desensamblador a `isa/instrucciones.py` para que el golden model reconozca las mismas instrucciones legales (US-108).
 - Módulos UART: correcciones para dejar el lint en cero, sin cambio de comportamiento (constantes con el ancho de los contadores, `default` en las máquinas de estado, señal sin usar eliminada en `baudrate_gen`) (US-102).
