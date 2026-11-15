@@ -5,10 +5,10 @@
 // du_loader (US-404) y du_exec_ctrl (US-406) son los reales, adentro de debug_unit, y mueven
 // un core_stub. El o_halted / o_illegal que ve la Debug Unit lo maneja el test (cfg_halted,
 // cfg_illegal) para elegir en que STEP o en que momento del RUN termina el programa. ABORT
-// drena de verdad: los valid de los latches del stub van a i_latch_valid (US-407).
-// Lo que todavia no existe lo emula el testbench:
-//   dumper falso  otra instancia de du_resp_tx en el canal 1 del mux: manda una trama
-//                  SNAPSHOT (03) con el byte de estado como payload, o MEM_DATA (05)
+// drena de verdad con los valid de los latches del stub (US-407). du_dumper tambien es el
+// real (US-405/408): los SNAPSHOT y MEM_DATA son las tramas completas, y aca se mira el
+// sobre, la longitud y el primer byte del payload (el contenido lo prueban tb_du_dumper y
+// tb_du_dump_mem).
 //
 //   AC1  PING responde PING_INFO en cualquier estado
 //   AC2  STEP en IDLE responde NACK(ERR_ESTADO) y el estado no cambia
@@ -42,17 +42,15 @@ module tb_du_cmd_fsm;
   wire [151:0] w_ex_mem;
   wire [143:0] w_mem_wb;
   wire [3:0]   w_valid = {w_mem_wb[104], w_ex_mem[112], w_id_ex[200], w_if_id[96]};
-  wire        w_req_dump, w_req_dump_mem;
-  wire [15:0] w_dm_addr, w_dm_n;
-  wire [7:0]  w_snap_estado;
-  wire        w_dump_tx_start, w_dump_tx_done;
-  wire [7:0]  w_dump_tx_data;
+  wire [31:0]  w_pc, w_reg_data, w_mem_data;
+  wire [4:0]   w_reg_addr;
+  wire [7:0]   w_mem_addr;
+  wire         w_mem_used, w_stall, w_fl_ifid, w_fl_idex;
+  wire [8:0]   w_used_count;                 // K del stub: la longitud del SNAPSHOT es 221 + 6K
+  wire [1:0]   w_fwd_a, w_fwd_b;
 
   reg        cfg_halted = 1'b0;     // o_halted / o_illegal del nucleo
   reg        cfg_illegal = 1'b0;
-  reg        cfg_dm_err = 1'b0;     // el dumper falso responde ERR_RANGO a DUMP_MEM
-  wire       w_dump_done;
-  wire [7:0] w_dump_err;
 
   baudrate_gen #(.COUNT_MAX(COUNT_MAX)) u_baud (
     .clock(clock), .i_reset(i_reset), .o_baudrate(w_s_tick)
@@ -71,12 +69,13 @@ module tb_du_cmd_fsm;
     .o_dmem_we(w_dmem_we), .o_dmem_addr(w_dmem_addr),
     .o_clear_used(w_clear_used), .o_flush_all(w_flush_all),
     .o_enable(w_enable), .o_stop_fetch(w_stop_fetch),
-    .i_halted(cfg_halted), .i_illegal(cfg_illegal), .i_latch_valid(w_valid), .o_ciclos(),
-    .o_req_dump(w_req_dump), .o_req_dump_mem(w_req_dump_mem),
-    .o_dm_addr(w_dm_addr), .o_dm_n(w_dm_n), .o_snap_estado(w_snap_estado),
-    .i_dump_done(w_dump_done), .i_dump_err(w_dump_err),
-    .i_dump_tx_start(w_dump_tx_start), .i_dump_tx_data(w_dump_tx_data),
-    .o_dump_tx_done(w_dump_tx_done),
+    .i_halted(cfg_halted), .i_illegal(cfg_illegal),
+    .i_pc(w_pc), .o_dbg_reg_addr(w_reg_addr), .i_dbg_reg_data(w_reg_data),
+    .o_dbg_mem_addr(w_mem_addr), .i_dbg_mem_data(w_mem_data), .i_dbg_mem_used(w_mem_used),
+    .i_dbg_used_count(w_used_count),
+    .i_stall(w_stall), .i_flush_if_id(w_fl_ifid), .i_flush_id_ex(w_fl_idex),
+    .i_fwd_a(w_fwd_a), .i_fwd_b(w_fwd_b),
+    .i_if_id(w_if_id), .i_id_ex(w_id_ex), .i_ex_mem(w_ex_mem), .i_mem_wb(w_mem_wb),
     .o_estado(w_estado)
   );
 
@@ -91,12 +90,14 @@ module tb_du_cmd_fsm;
   core_stub u_core (
     .clock(clock), .i_reset(i_reset), .i_enable(w_enable),
     .i_flush_all(w_flush_all), .i_stop_fetch(w_stop_fetch),
-    .o_halted(), .o_illegal(), .o_pc(),
+    .o_halted(), .o_illegal(), .o_pc(w_pc),
     .i_imem_we(w_imem_we), .i_imem_addr(w_imem_addr), .i_imem_wdata(w_imem_wdata),
     .i_dbg_dmem_we(w_dmem_we), .i_dbg_dmem_addr(w_dmem_addr), .i_clear_used(w_clear_used),
-    .i_dbg_reg_addr(5'd0), .o_dbg_reg_data(),
-    .i_dbg_mem_addr(8'd0), .o_dbg_mem_data(), .o_dbg_mem_used(), .o_dbg_used_count(),
-    .o_stall(), .o_flush_if_id(), .o_flush_id_ex(), .o_fwd_a(), .o_fwd_b(),
+    .i_dbg_reg_addr(w_reg_addr), .o_dbg_reg_data(w_reg_data),
+    .i_dbg_mem_addr(w_mem_addr), .o_dbg_mem_data(w_mem_data), .o_dbg_mem_used(w_mem_used),
+    .o_dbg_used_count(w_used_count),
+    .o_stall(w_stall), .o_flush_if_id(w_fl_ifid), .o_flush_id_ex(w_fl_idex),
+    .o_fwd_a(w_fwd_a), .o_fwd_b(w_fwd_b),
     .o_if_id(w_if_id), .o_id_ex(w_id_ex), .o_ex_mem(w_ex_mem), .o_mem_wb(w_mem_wb)
   );
 
@@ -116,48 +117,6 @@ module tb_du_cmd_fsm;
   always @(posedge clock)
     if (u_du.w_req_run)
       n_req_run = n_req_run + 1;
-
-  // --- Dumper falso (du_dumper, US-405): trama corta por el canal 1 ----------------------------
-  reg        r_dp_send = 1'b0, r_dp_err = 1'b0;
-  reg  [7:0] r_dp_tipo = 8'h00, r_dp_cod = 8'h00;
-  wire       w_dp_done;
-  reg [15:0] dm_addr_cap, dm_n_cap;
-  integer    n_dump = 0;
-
-  du_resp_tx u_dump (
-    .clock(clock), .i_reset(i_reset),
-    .i_send(r_dp_send), .i_tipo(r_dp_tipo), .i_codigo(r_dp_cod), .o_done(w_dp_done),
-    .o_tx_start(w_dump_tx_start), .o_tx_data(w_dump_tx_data), .i_tx_done(w_dump_tx_done)
-  );
-
-  assign w_dump_done = w_dp_done || r_dp_err;
-  assign w_dump_err  = r_dp_err ? `DU_ERR_RANGO : 8'h00;
-
-  always @(posedge clock)
-  begin
-    r_dp_send <= 1'b0;
-    r_dp_err  <= 1'b0;
-    if (w_req_dump)
-    begin
-      r_dp_send <= 1'b1;
-      r_dp_tipo <= `DU_TIPO_SNAPSHOT;
-      r_dp_cod  <= w_snap_estado;      // el byte 0 del snapshot real
-      n_dump = n_dump + 1;
-    end
-    if (w_req_dump_mem)
-    begin
-      dm_addr_cap = w_dm_addr;
-      dm_n_cap    = w_dm_n;
-      if (cfg_dm_err)
-        r_dp_err <= 1'b1;              // valida el rango y no manda nada
-      else
-      begin
-        r_dp_send <= 1'b1;
-        r_dp_tipo <= `DU_TIPO_MEM_DATA;
-        r_dp_cod  <= w_dm_n[7:0];
-      end
-    end
-  end
 
   // --- Tareas del host ---------------------------------------------------------------------
   reg r_ok;
@@ -189,8 +148,12 @@ module tb_du_cmd_fsm;
     begin
       check_eq(nombre, {31'd0, r_ok}, 32'd1);
       check_eq(nombre, {24'd0, host_tipo}, {24'd0, tipo});
-      check_eq(nombre, {16'd0, host_len}, len);
-      if (len == 1)
+      // SNAPSHOT: 221 + 6K (el nucleo esta congelado, K es el mismo que vio el dumper)
+      if (tipo == `DU_TIPO_SNAPSHOT)
+        check_eq(nombre, {16'd0, host_len}, 221 + 6 * w_used_count);
+      else
+        check_eq(nombre, {16'd0, host_len}, len);
+      if (len >= 1)
         check_eq(nombre, {24'd0, host_payload[0]}, {24'd0, payload});
       repeat (3 * host_ciclos_bit) @(negedge clock);   // que termine de salir la trama
       check_eq(nombre, {28'd0, w_estado}, {28'd0, estado});
@@ -362,14 +325,10 @@ module tb_du_cmd_fsm;
 
     // DUMP_MEM: argumentos, MEM_DATA y vuelta al estado previo
     dump_mem(16'h0000, 16'h0002);
-    verificar("DUMP_MEM", `DU_TIPO_MEM_DATA, 1, 8'h02, `DU_ESTADO_READY);
-    check_eq("DUMP_MEM: direccion", {16'd0, dm_addr_cap}, 32'h0000);
-    check_eq("DUMP_MEM: cantidad", {16'd0, dm_n_cap}, 32'h0002);
-    cfg_dm_err = 1'b1;
+    verificar("DUMP_MEM", `DU_TIPO_MEM_DATA, 12, 8'h00, `DU_ESTADO_READY);   // len 4 + 4n
+    check_eq("DUMP_MEM: n LE", {16'd0, host_payload[3], host_payload[2]}, 32'h0002);
     dump_mem(16'h03FC, 16'h0002);
-    cfg_dm_err = 1'b0;
     verificar("DUMP_MEM fuera de rango", `DU_TIPO_NACK, 1, `DU_ERR_RANGO, `DU_ESTADO_READY);
-    check_eq("DUMP_MEM: direccion 0x3FC", {16'd0, dm_addr_cap}, 32'h03FC);
     host_args[0] = 8'h00;                                     // cortado despues de 1 byte
     enviar(`DU_CMD_DUMP_MEM, 1);
     verificar("DUMP_MEM cortado", `DU_TIPO_NACK, 1, `DU_ERR_TIMEOUT, `DU_ESTADO_READY);

@@ -12,7 +12,11 @@
 //   - offsets 219..220: K copiado al pedido (despues se cambia i_dbg_used_count);
 //   - offsets 221..: K entradas [dir en bytes | dato] en direccion creciente, solo las usadas;
 //   - o_done de un pulso, o_tx_start de un ciclo, nada sale sin pedido.
-// En P7 se agrega la prueba con core_stub (AC2, AC4, AC5).
+// Y la trama MEM_DATA de DUMP_MEM (US-408, protocolo.md 6.1 y 8.9):
+//   - A5, tipo 05, longitud 4 + 4n, dir y n LE, n palabras desde dir/4 (usadas o no);
+//   - el ejemplo de protocolo.md 8.9 byte a byte;
+//   - rango invalido (no alineada, n = 0, se pasa del final, n = FFFF): o_done con
+//     o_err = ERR_RANGO y no sale ningun byte.
 module tb_du_dumper;
   `include "tb_utils.vh"
   `include "du_defs.vh"
@@ -26,6 +30,9 @@ module tb_du_dumper;
 
   // --- Entradas del dumper que maneja el testbench -------------------------------------
   reg        r_req = 1'b0;
+  reg        r_req_mem = 1'b0;     // i_req_dump_mem
+  reg [15:0] r_dm_addr = 16'd0;    // i_dm_addr
+  reg [15:0] r_dm_n = 16'd0;       // i_dm_n
   reg  [8:0] r_used_count = 9'd0;  // K que ve el dumper
   reg  [7:0] r_estado = 8'h00;     // i_snap_estado
   reg [31:0] r_ciclos = 32'd0;     // i_ciclos
@@ -55,7 +62,9 @@ module tb_du_dumper;
   // verilator lint_off PINCONNECTEMPTY
   du_dumper u_dump (
     .clock(clock), .i_reset(i_reset),
-    .i_req_dump(r_req), .i_snap_estado(r_estado), .o_done(w_done), .o_err(w_err),
+    .i_req_dump(r_req), .i_snap_estado(r_estado),
+    .i_req_dump_mem(r_req_mem), .i_dm_addr(r_dm_addr), .i_dm_n(r_dm_n),
+    .o_done(w_done), .o_err(w_err),
     .i_ciclos(r_ciclos), .i_pc(r_pc),
     .o_dbg_reg_addr(w_reg_addr), .i_dbg_reg_data(w_reg_data),
     .o_dbg_mem_addr(w_mem_addr), .i_dbg_mem_data(w_mem_data), .i_dbg_mem_used(w_mem_used),
@@ -88,9 +97,12 @@ module tb_du_dumper;
   // Monitores: pulsos de o_done y starts de mas de un ciclo
   integer n_done = 0;
   integer n_start_largo = 0;
+  integer n_starts = 0;
   reg     r_start_ant = 1'b0;
   always @(posedge clock)
   begin
+    if (w_start_1)
+      n_starts = n_starts + 1;
     if (w_done)
       n_done = n_done + 1;
     if (w_start_1 && r_start_ant)
@@ -244,6 +256,77 @@ module tb_du_dumper;
     end
   endtask
 
+  // --- MEM_DATA ------------------------------------------------------------------------------
+  // Pulso de i_req_dump_mem. Despues se cambian los argumentos: el dumper los tiene que copiar.
+  task pedir_mem;
+    input [15:0] addr;
+    input [15:0] n;
+    begin
+      @(negedge clock);
+      r_dm_addr = addr;
+      r_dm_n    = n;
+      r_req_mem = 1'b1;
+      @(negedge clock);
+      r_req_mem = 1'b0;
+      r_dm_addr = 16'hBEEF;
+      r_dm_n    = 16'h0BAD;
+    end
+  endtask
+
+  // DUMP_MEM valido: verifica la trama MEM_DATA completa contra tb_mem
+  task verificar_mem;
+    input [15:0] addr;
+    input [15:0] n;
+    reg          ok;
+    integer      done_antes, i, n_mal;
+    begin
+      done_antes = n_done;
+      fork
+        pedir_mem(addr, n);
+        recv_frame(ok);
+      join
+      repeat (4 * host_ciclos_bit) @(negedge clock);
+      check_eq("MEM_DATA: trama valida", {31'd0, ok}, 32'd1);
+      check_eq("MEM_DATA: tipo 05", {24'd0, host_tipo}, {24'd0, `DU_TIPO_MEM_DATA});
+      check_eq("MEM_DATA: longitud 4 + 4n", {16'd0, host_len}, 32'd4 + 32'd4 * n);
+      check_eq("MEM_DATA: dir LE", {16'd0, host_payload[1], host_payload[0]}, {16'd0, addr});
+      check_eq("MEM_DATA: n LE", {16'd0, host_payload[3], host_payload[2]}, {16'd0, n});
+      n_mal = 0;
+      for (i = 0; i < n; i = i + 1)
+        if (palabra_payload(4 + 4 * i) !== tb_mem[addr[9:2] + i])
+        begin
+          if (n_mal == 0)
+            $display("  palabra %0d (dir 0x%03h): llego 0x%08h, esperado 0x%08h", i,
+                     addr + 4 * i, palabra_payload(4 + 4 * i), tb_mem[addr[9:2] + i]);
+          n_mal = n_mal + 1;
+        end
+      check_eq("MEM_DATA: palabras", n_mal, 0);
+      check_eq("MEM_DATA: o_done un pulso", n_done - done_antes, 1);
+      check_eq("MEM_DATA: o_err en 0", {24'd0, w_err}, 32'd0);
+    end
+  endtask
+
+  // DUMP_MEM fuera de rango: o_done con ERR_RANGO y la UART callada
+  task rechazo_mem;
+    input [8*24-1:0] nombre;
+    input [15:0]     addr;
+    input [15:0]     n;
+    reg   [7:0]      b;
+    reg              ok;
+    integer          done_antes, starts_antes;
+    begin
+      done_antes   = n_done;
+      starts_antes = n_starts;
+      pedir_mem(addr, n);
+      repeat (4) @(negedge clock);
+      check_eq(nombre, n_done - done_antes, 1);
+      check_eq(nombre, {24'd0, w_err}, {24'd0, `DU_ERR_RANGO});
+      recv_byte(b, ok);
+      check_eq(nombre, {31'd0, ok}, 32'd0);
+      check_eq(nombre, n_starts - starts_antes, 0);
+    end
+  endtask
+
   reg [7:0] r_b;
   reg       r_ok;
 
@@ -282,6 +365,33 @@ module tb_du_dumper;
     llenar_latches(8'h81);
     llenar_mem(8'hC2, 2);
     verificar(8'h26);    // motivo ILLEGAL, estado HALTED
+
+    // 4) MEM_DATA (US-408). La DMEM de mentira de 3): dato = {C2, ~a, a, 77}, todo usado
+    verificar_mem(16'h0004, 16'd3);                 // palabras 1..3
+    verificar_mem(16'h03FC, 16'd1);                 // la ultima palabra: borde exacto
+    verificar_mem(16'h0000, 16'd256);               // toda la DMEM: la MEM_DATA mas larga (1028)
+    llenar_mem(8'hC3, 0);                           // nada usado: DUMP_MEM igual la manda
+    verificar_mem(16'h0100, 16'd2);
+
+    // Ejemplo de protocolo.md 8.9: [0x000] = 5, [0x004] = 0
+    //   A5 05 0C 00 | 00 00 02 00 | 05 00 00 00 | 00 00 00 00 | 0E
+    tb_mem[0] = 32'd5;
+    tb_mem[1] = 32'd0;
+    verificar_mem(16'h0000, 16'd2);
+    check_eq("8.9: longitud 0x000C", {16'd0, host_len}, 32'h000C);
+    // el checksum (0E) lo compara recv_frame con el XOR de lo recibido
+
+    // Rechazos: ERR_RANGO sin mandar nada
+    rechazo_mem("no alineada", 16'h0002, 16'd1);
+    rechazo_mem("n = 0", 16'h0000, 16'd0);
+    rechazo_mem("se pasa del final", 16'h03FC, 16'd2);   // protocolo.md 8.9
+    rechazo_mem("n = FFFF (desborde 16 b)", 16'h0004, 16'hFFFF);
+    rechazo_mem("257 palabras", 16'h0000, 16'd257);
+    rechazo_mem("dir fuera de DMEM", 16'h0400, 16'd1);
+
+    // Despues de un rechazo, un SNAPSHOT sale bien y con o_err en 0
+    llenar_mem(8'hC4, 1);
+    verificar(8'h02);
 
     check_eq("o_tx_start nunca dura 2 ciclos", n_start_largo, 0);
 
