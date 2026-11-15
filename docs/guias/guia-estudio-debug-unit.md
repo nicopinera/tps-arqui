@@ -749,19 +749,19 @@ Analogía: la FSM es el recepcionista que decide **cuándo** hay que mandar un i
 
 ## 31. Puertos
 
-| Puerto                                                            | Dir.    | Hacia / desde  | Qué significa                                                                      |
-| ----------------------------------------------------------------- | ------- | -------------- | ---------------------------------------------------------------------------------- |
-| `i_req_dump`                                                      | entrada | FSM            | pulso: "mandá un snapshot"                                                         |
-| `i_snap_estado`                                                   | entrada | FSM            | byte 0 del payload: `{motivo, estado de la DU}`; vale bien en el ciclo del pedido  |
-| `o_done`, `o_err`                                                 | salida  | FSM            | pulso "terminé" y error (siempre 0 en snapshot; existe por `DUMP_MEM`)             |
-| `i_ciclos`                                                        | entrada | `du_exec_ctrl` | ciclos ejecutados desde el último `LOAD`/`RESET` (`o_ciclos` de `du_exec_ctrl`)    |
-| `i_pc`                                                            | entrada | núcleo         | PC actual                                                                          |
-| `o_dbg_reg_addr` → `i_dbg_reg_data`                               | ambos   | núcleo         | "¿qué registro?" → su valor (combinacional)                                        |
-| `o_dbg_mem_addr` → `i_dbg_mem_data`, `i_dbg_mem_used`             | ambos   | núcleo         | "¿qué palabra de DMEM?" → su dato y si el programa la escribió                     |
-| `i_dbg_used_count`                                                | entrada | núcleo         | K: cuántas palabras escribió el programa (0..256)                                  |
-| `i_stall`, `i_flush_if_id`, `i_flush_id_ex`, `i_fwd_a`, `i_fwd_b` | entrada | núcleo         | señales de riesgo del ciclo (van al byte 9)                                        |
-| `i_if_id`, `i_id_ex`, `i_ex_mem`, `i_mem_wb`                      | entrada | núcleo         | los 4 latches como buses planos (13, 31, 19 y 18 bytes)                            |
-| `o_tx_start`, `o_tx_data`, `i_tx_done`                            | ambos   | `du_tx_mux` 1  | "mandá este byte", el byte, "la UART terminó"                                      |
+| Puerto                                                            | Dir.    | Hacia / desde  | Qué significa                                                                     |
+| ----------------------------------------------------------------- | ------- | -------------- | --------------------------------------------------------------------------------- |
+| `i_req_dump`                                                      | entrada | FSM            | pulso: "mandá un snapshot"                                                        |
+| `i_snap_estado`                                                   | entrada | FSM            | byte 0 del payload: `{motivo, estado de la DU}`; vale bien en el ciclo del pedido |
+| `o_done`, `o_err`                                                 | salida  | FSM            | pulso "terminé" y error (siempre 0 en snapshot; existe por `DUMP_MEM`)            |
+| `i_ciclos`                                                        | entrada | `du_exec_ctrl` | ciclos ejecutados desde el último `LOAD`/`RESET` (`o_ciclos` de `du_exec_ctrl`)   |
+| `i_pc`                                                            | entrada | núcleo         | PC actual                                                                         |
+| `o_dbg_reg_addr` → `i_dbg_reg_data`                               | ambos   | núcleo         | "¿qué registro?" → su valor (combinacional)                                       |
+| `o_dbg_mem_addr` → `i_dbg_mem_data`, `i_dbg_mem_used`             | ambos   | núcleo         | "¿qué palabra de DMEM?" → su dato y si el programa la escribió                    |
+| `i_dbg_used_count`                                                | entrada | núcleo         | K: cuántas palabras escribió el programa (0..256)                                 |
+| `i_stall`, `i_flush_if_id`, `i_flush_id_ex`, `i_fwd_a`, `i_fwd_b` | entrada | núcleo         | señales de riesgo del ciclo (van al byte 9)                                       |
+| `i_if_id`, `i_id_ex`, `i_ex_mem`, `i_mem_wb`                      | entrada | núcleo         | los 4 latches como buses planos (13, 31, 19 y 18 bytes)                           |
+| `o_tx_start`, `o_tx_data`, `i_tx_done`                            | ambos   | `du_tx_mux` 1  | "mandá este byte", el byte, "la UART terminó"                                     |
 
 Los buses de latches ya vienen ordenados por el núcleo ([`riscv_core.md` §4](../interfaces/riscv_core.md)): el byte `k` del bloque es `bus[8k+7 : 8k]`. Así el dumper no necesita saber qué campo hay en cada byte.
 
@@ -875,16 +875,17 @@ Buscar cuesta como mucho 256 ciclos **en todo el volcado** (el recorrido nunca v
 - **Contadores anchos.** `r_pos` tiene 16 bits porque la trama llega a 1762 bytes. `r_k` y `r_mem_addr` tienen 9 porque llegan a 256.
 - **Camino combinacional largo.** En `ENVIAR` el byte sale de `r_pos` → resta → `o_dbg_reg_addr` → banco de registros del núcleo → mux → UART, todo en un ciclo. En simulación no importa; si en la síntesis no cumple timing a 100 MHz, se registra el byte en `BUSCAR` (que siempre precede a `ENVIAR`).
 
-## Parte 5: `du_exec_ctrl`, el que mueve el núcleo (US-406)
+## Parte 5: `du_exec_ctrl`, el que mueve el núcleo (US-406, US-407)
 
 ## 39. Qué es y qué problema resuelve
 
 El enunciado pide dos modos: **continuo** (el programa corre hasta el final y después se ve el resultado) y **paso a paso** (se avanza de a un ciclo de clock, viendo el estado en cada paso). `du_exec_ctrl` es el único que mueve el núcleo, y lo hace con una sola señal: `i_enable`.
 
-| Pedido de la FSM | Qué hace                                                        | Cómo avisa que terminó                  |
-| ---------------- | --------------------------------------------------------------- | --------------------------------------- |
-| `i_req_step`     | `o_enable = 1` durante **exactamente un ciclo** (R-EJ-2)        | `o_step_done` (pulso), un ciclo después |
-| `i_req_run`      | `o_enable = 1` sostenido hasta que el núcleo levanta `o_halted` | `o_run_fin` (**nivel**)                 |
+| Pedido de la FSM | Qué hace                                                                               | Cómo avisa que terminó                  |
+| ---------------- | -------------------------------------------------------------------------------------- | --------------------------------------- |
+| `i_req_step`     | `o_enable = 1` durante **exactamente un ciclo** (R-EJ-2)                               | `o_step_done` (pulso), un ciclo después |
+| `i_req_run`      | `o_enable = 1` sostenido hasta que el núcleo levanta `o_halted`                        | `o_run_fin` (**nivel**)                 |
+| `i_req_abort`    | durante un RUN: `o_stop_fetch = 1` (con el enable en 1) hasta vaciar el pipeline (§47) | `o_run_fin`, igual que un RUN           |
 
 Además cuenta los ciclos ejecutados (`o_ciclos`), el número que viaja en los bytes 1–4 del snapshot.
 
@@ -904,18 +905,19 @@ du_cmd_fsm ◄──o_step_done / o_run_fin── du_exec_ctrl ◄──o_halted
 
 ## 41. Puertos
 
-| Puerto         | Dir.    | Hacia / desde | Qué significa                                                    |
-| -------------- | ------- | ------------- | ---------------------------------------------------------------- |
-| `i_req_run`    | entrada | FSM           | pulso: "arrancá a correr" (ya salió el ACK)                      |
-| `i_req_step`   | entrada | FSM           | pulso: "avanzá un ciclo"                                         |
-| `i_req_abort`  | entrada | FSM           | pulso de ABORT; sin uso hasta US-407                             |
-| `o_step_done`  | salida  | FSM           | pulso: terminó el ciclo del STEP; `i_halted` ya es el de después |
-| `o_run_fin`    | salida  | FSM           | nivel: el RUN terminó; baja con el próximo `i_req_run`           |
-| `i_load_done`  | entrada | `du_loader`   | pulso al final de `LOAD`/`RESET`: contador a 0                   |
-| `i_halted`     | entrada | núcleo        | `o_halted`: un HALT o una ilegal llegó a WB                      |
-| `o_enable`     | salida  | núcleo        | `i_enable`: STEP = 1 ciclo, RUN = hasta `o_halted`               |
-| `o_stop_fetch` | salida  | núcleo        | `i_stop_fetch` para el drenado de ABORT; siempre 0 hasta US-407  |
-| `o_ciclos`     | salida  | `du_dumper`   | ciclos ejecutados desde el último `LOAD`/`RESET` (32 bits)       |
+| Puerto         | Dir.    | Hacia / desde | Qué significa                                                                               |
+| -------------- | ------- | ------------- | ------------------------------------------------------------------------------------------- |
+| `i_req_run`    | entrada | FSM           | pulso: "arrancá a correr" (ya salió el ACK)                                                 |
+| `i_req_step`   | entrada | FSM           | pulso: "avanzá un ciclo"                                                                    |
+| `i_req_abort`  | entrada | FSM           | pulso de ABORT (solo llega en RUN): drenar el pipeline                                      |
+| `o_step_done`  | salida  | FSM           | pulso: terminó el ciclo del STEP; `i_halted` ya es el de después                            |
+| `o_run_fin`    | salida  | FSM           | nivel: el RUN terminó; baja con el próximo `i_req_run`                                      |
+| `i_load_done`  | entrada | `du_loader`   | pulso al final de `LOAD`/`RESET`: contador a 0                                              |
+| `i_halted`     | entrada | núcleo        | `o_halted`: un HALT o una ilegal llegó a WB                                                 |
+| `i_valid[3:0]` | entrada | núcleo        | bits `valid` de `{MEM/WB, EX/MEM, ID/EX, IF/ID}`; `0000` = pipeline vacío (fin del drenado) |
+| `o_enable`     | salida  | núcleo        | `i_enable`: STEP = 1 ciclo, RUN = hasta `o_halted`                                          |
+| `o_stop_fetch` | salida  | núcleo        | `i_stop_fetch`: 1 durante el drenado de ABORT (sale de un FF)                               |
+| `o_ciclos`     | salida  | `du_dumper`   | ciclos ejecutados desde el último `LOAD`/`RESET` (32 bits)                                  |
 
 ## 42. Los estados
 
@@ -927,15 +929,18 @@ stateDiagram-v2
     STEP --> IDLE : siempre (r_enable = 0, r_step_done = 1)
     RUN --> RUN : !i_halted (el enable sigue en 1)
     RUN --> IDLE : i_halted (r_enable = 0, r_run_fin = 1)
+    RUN --> DRAIN : i_req_abort y !i_halted (r_stop_fetch = 1)
+    DRAIN --> IDLE : i_valid == 0 o i_halted (r_enable = 0, r_stop_fetch = 0, r_run_fin = 1)
 ```
 
-| Estado | Qué hace                                          | Qué lo hace salir          | A dónde va     |
-| ------ | ------------------------------------------------- | -------------------------- | -------------- |
-| `IDLE` | núcleo congelado, espera un pedido                | `i_req_step` / `i_req_run` | `STEP` / `RUN` |
-| `STEP` | **un ciclo**: es el ciclo en que el núcleo avanza | nada: dura un ciclo        | `IDLE`         |
-| `RUN`  | el núcleo avanza en cada ciclo                    | `i_halted`                 | `IDLE`         |
+| Estado  | Qué hace                                          | Qué lo hace salir           | A dónde va       |
+| ------- | ------------------------------------------------- | --------------------------- | ---------------- |
+| `IDLE`  | núcleo congelado, espera un pedido                | `i_req_step` / `i_req_run`  | `STEP` / `RUN`   |
+| `STEP`  | **un ciclo**: es el ciclo en que el núcleo avanza | nada: dura un ciclo         | `IDLE`           |
+| `RUN`   | el núcleo avanza en cada ciclo                    | `i_halted` / `i_req_abort`  | `IDLE` / `DRAIN` |
+| `DRAIN` | avanza sin buscar instrucciones (ABORT, §47)      | `i_valid == 0` o `i_halted` | `IDLE`           |
 
-`r_step_done` vale 0 por defecto antes del `case` (patrón de pulso: solo la rama `STEP` lo pone en 1). `r_run_fin` no tiene default: es un nivel. El `default` del `case` vuelve a `IDLE`: `r_state` tiene 2 bits y el valor 3 no es ningún estado.
+`r_step_done` vale 0 por defecto antes del `case` (patrón de pulso: solo la rama `STEP` lo pone en 1). `r_run_fin` no tiene default: es un nivel. Con `DRAIN` los 4 códigos de `r_state` están usados; el `default` del `case` queda igual, por estilo (y para que la herramienta de síntesis no infiera un latch si algún día se agrega un estado).
 
 ## 43. Ejemplo ciclo a ciclo
 
@@ -977,6 +982,7 @@ else if (r_enable && !i_halted)  r_ciclos <= r_ciclos + 1;
 - El flanco en que el HALT llega a WB (F10) **sí** cuenta: en ese flanco el núcleo avanzó; `o_halted` sube como resultado de ese flanco.
 - El `+1` se escribe con el ancho del registro (`{{(NBIT_32-1){1'b0}}, 1'b1}`): Verilator con `-Wall` avisa si los dos lados de un `+` tienen anchos distintos.
 - 32 bits a 100 MHz dan la vuelta a los ~43 s. Una IMEM de 256 palabras limita el **largo** del programa, no el **tiempo**: un lazo corre para siempre si no tiene HALT (US-407). Se deja dar la vuelta.
+- Los ciclos del drenado de ABORT **sí** cuentan: son ciclos reales con enable, igual que los del drenado después de un HALT. Incluye uno de más: el flanco en que `du_exec_ctrl` ve `0000` todavía tiene el enable en 1 y el núcleo avanza vacío (§47).
 
 ## 45. Detalles técnicos
 
@@ -986,11 +992,57 @@ else if (r_enable && !i_halted)  r_ciclos <= r_ciclos + 1;
 - **Prioridad del contador.** `i_load_done` y un flanco con enable no coinciden en la práctica (no hay `LOAD`/`RESET` en `RUN`), pero el `if / else if` deja explícito que la limpieza gana.
 - **Qué verifica `tb_du_exec_ctrl`**: un flanco de enable por STEP, `o_step_done` dos ciclos después del pedido, STEP repetido = RUN (ciclos, PC, MEM/WB y palabras usadas), `o_run_fin` como nivel, y la terminación por ilegal en ambos modos. AC3 (latches con `valid = 0` al terminar) depende del núcleo real: se verifica en US-411.
 
-## 46. Errores comunes
+## 47. ABORT: el drenado del pipeline (US-407)
 
-1. `assign o_enable = (r_state == RUN) && !i_halted;`: combinacional, viola ADR-001.
-2. Bajar el enable en `IDLE` en vez de en `STEP`: dos ciclos de enable, el contador avanza 2.
-3. `o_step_done` en el mismo ciclo que el enable: `du_cmd_fsm` lee el `o_halted` viejo.
-4. `r_run_fin <= 0` por defecto (como un pulso): si el RUN termina mientras sale un `PING_INFO`, el fin se pierde y nunca sale el snapshot.
-5. No bajar `r_run_fin` con `i_req_run`: el segundo RUN termina apenas empieza.
-6. Contar con `i_req_step` en vez de `r_enable`: el pedido llega un ciclo antes de que el núcleo avance, y el RUN no se contaría.
+**El problema.** Un programa con un loop infinito (`loop: j loop`) nunca levanta `o_halted`: sin ABORT, la Debug Unit queda en `RUN` para siempre, la PC nunca recibe el snapshot y hay que reiniciar la placa (incumple NFR-6). El relleno con HALT (ADR-009) no sirve acá: el PC nunca llega a la zona rellena. ABORT es la salida manual (ADR-010).
+
+**Por qué no basta con bajar el enable.** El núcleo quedaría congelado con instrucciones a medio hacer en ID/EX, EX/MEM y MEM/WB (por ejemplo un `sw` que todavía no escribió). ADR-010 pide terminar igual que con un HALT: con el pipeline **vacío**. Abortar no es "frenar", es "cerrar la entrada y esperar a que salgan".
+
+**Conceptos.**
+
+- **Drenar (_drain_).** Dejar de meter instrucciones nuevas y dejar que las que ya están adentro terminen.
+- **`i_stop_fetch`** (entrada del núcleo, nivel). Con `i_enable = 1`: el PC no cambia, IF/ID e ID/EX reciben burbujas (se descarta la instrucción que estaba en ID) y lo que estaba en EX, MEM y WB termina. Es la misma lógica que usa el HALT: no hay una segunda forma de vaciar el pipeline.
+- **Burbuja.** Latch con `valid = 0`: una instrucción vacía que no escribe nada.
+- **Pipeline vacío.** El núcleo no tiene una salida "terminé de drenar". La Debug Unit lo deduce de los 4 bits `valid` de los buses de latches (`docs/interfaces/riscv_core.md`, sección 4): `IF/ID[96]`, `ID/EX[200]`, `EX/MEM[112]`, `MEM/WB[104]`. Por ahora entran a `debug_unit` por `i_latch_valid`; cuando los buses entren para `du_dumper` (US-405) se sacan adentro.
+
+**Cómo funciona.** Dos señales, cada una con su trabajo:
+
+| Señal          | `RUN` | `DRAIN` | Por qué                                                         |
+| -------------- | ----- | ------- | --------------------------------------------------------------- |
+| `r_enable`     | 1     | **1**   | el pipeline tiene que avanzar para que las instrucciones salgan |
+| `r_stop_fetch` | 0     | **1**   | no entra nada nuevo                                             |
+
+Al terminar el drenado bajan las dos juntas y sube `r_run_fin`. `du_cmd_fsm` ve el fin del RUN y, como tiene `r_abort = 1`, manda el snapshot con motivo `ABORTED` y pasa a `HALTED`. `stop_fetch` puede bajar sin peligro: desde `HALTED` no valen ni RUN ni STEP, y `LOAD`/`RESET` hacen `flush_all`.
+
+**Ejemplo ciclo a ciclo** (loop infinito, `tb_du_abort`):
+
+```text
+ciclo  i_req_abort  estado  enable  stop_fetch  valid {WB,MEM,EX,ID}   qué pasa
+  t        1         RUN      1        0         1111                  en el flanco: busca UNA más, pasa a DRAIN
+ t+1       0         DRAIN    1        1         1111                  flanco: burbujas en IF/ID e ID/EX
+ t+2       0         DRAIN    1        1         1100
+ t+3       0         DRAIN    1        1         1000
+ t+4       0         DRAIN    1        1         0000                  ve vacío: enable<=0, stop<=0, run_fin<=1
+ t+5       0         IDLE     0        0         0000                  du_cmd_fsm → snapshot ABORTED
+```
+
+Son como máximo 3 ciclos vaciando (con `stop_fetch` entran burbujas en IF/ID **e** ID/EX a la vez, así que solo quedan 3 instrucciones) más uno en el que `du_exec_ctrl` se entera. En `t` `stop_fetch` todavía vale 0 (sale de un FF): el núcleo busca una instrucción más, que se descarta en el flanco siguiente.
+
+**Implementación.**
+
+```verilog
+RUN:
+  if (i_halted)          begin r_state<=IDLE;  r_enable<=0; r_run_fin<=1; end
+  else if (i_req_abort)  begin r_state<=DRAIN; r_stop_fetch<=1; end   // r_enable sigue en 1
+DRAIN:
+  if (i_valid == 4'b0000 || i_halted)
+    begin r_state<=IDLE; r_enable<=0; r_stop_fetch<=0; r_run_fin<=1; end
+```
+
+**Detalles técnicos.**
+
+- **`|| i_halted` en `DRAIN` es obligatorio.** Si cuando llega el ABORT ya hay un HALT en EX, ese HALT llega a WB durante el drenado: `o_halted` sube, el núcleo ignora el enable y el `valid` de MEM/WB (el HALT) queda en 1 para siempre. Con solo `i_valid == 0`, el drenado se cuelga. El motivo sigue siendo `ABORTED` (lo decide `du_cmd_fsm` por su `r_abort`).
+- **`i_halted` antes que `i_req_abort` en `RUN`.** Si llegan en el mismo ciclo, se cierra como un RUN normal y no hay drenado (el núcleo ya paró). El snapshot sale igual con `ABORTED`.
+- **ABORT con `du_exec_ctrl` en `IDLE`** (el RUN terminó justo antes): la rama `IDLE` no mira `i_req_abort` y lo ignora. `du_cmd_fsm` ya ve `o_run_fin` y cierra; no se cuelga.
+- **Contador.** Los ciclos del drenado cuentan (§44), incluido el último, con el pipeline ya vacío.
+- **Qué verifica `tb_du_abort`**: `stop_fetch` y enable en 1 durante el drenado, 4 flancos con `stop_fetch`, latches en `0000`, PC congelado, contador = flancos con enable; HALT que llega durante el drenado (termina sin colgarse, con 2 flancos de `stop_fetch`); ABORT junto con `i_halted` (sin drenado); ABORT en `IDLE` (no hace nada); otro RUN + ABORT después de `LOAD`. `tb_du_cmd_fsm` prueba el snapshot `ABORTED` con el drenado real. El experimento "¿qué pasa sin HALT?" (`no_halt.asm`, IMEM sin relleno) necesita el núcleo real: US-411.
