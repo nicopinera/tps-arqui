@@ -1,12 +1,12 @@
 `include "du_defs.vh"
 
 // Debug Unit (US-403): interprete de comandos (du_cmd_fsm), respuestas cortas (du_resp_tx),
-// multiplexor de la UART de transmision (du_tx_mux) y carga del programa (du_loader, US-404).
+// multiplexor de la UART de transmision (du_tx_mux), carga del programa (du_loader, US-404) y
+// control de ejecucion (du_exec_ctrl, US-406).
 //
 // Se conecta a la UART del top: recibe los bytes de uart_rx y transmite por uart_tx.
-// Los submodulos que todavia no existen: sus pedidos (o_req_*) y respuestas (i_*_done) salen
-// como puertos para que el testbench los emule. Cada historia mete el suyo adentro y saca esos
-// puertos: du_dumper (US-405, canal 1 del mux) y du_exec_ctrl (US-406).
+// El submodulo que todavia no esta adentro: sus pedidos (o_req_*) y respuestas (i_*_done)
+// salen como puertos para que el testbench lo emule. du_dumper (US-405, canal 1 del mux).
 module debug_unit #(
     parameter CLK_FREQ_HZ       = 100_000_000,
     parameter RX_TIMEOUT_CYCLES = CLK_FREQ_HZ / 1000 * `DU_RX_TIMEOUT_MS,
@@ -34,16 +34,13 @@ module debug_unit #(
     output wire [DMEM_ADDR_BITS-1:0] o_dmem_addr,
     output wire        o_clear_used,
     output wire        o_flush_all,
-    output wire        o_load_done,  // TODO(US-406): pasa a du_exec_ctrl (contador de ciclos)
 
-    // TODO(US-406): du_exec_ctrl y nucleo
-    output wire        o_req_run,
-    output wire        o_req_step,
-    output wire        o_req_abort,
-    input  wire        i_step_done,
-    input  wire        i_run_fin,
-    input  wire        i_halted,
-    input  wire        i_illegal,
+    // Nucleo: ejecucion (du_exec_ctrl)
+    output wire        o_enable,     // i_enable del nucleo: STEP = 1 ciclo, RUN = hasta o_halted
+    output wire        o_stop_fetch, // i_stop_fetch del nucleo (ABORT, US-407)
+    input  wire        i_halted,     // o_halted del nucleo
+    input  wire        i_illegal,    // o_illegal del nucleo
+    output wire [31:0] o_ciclos,     // TODO(US-405): va a i_ciclos de du_dumper
 
     // TODO(US-405): du_dumper (transmite por el canal 1 del mux)
     output wire        o_req_dump,
@@ -66,6 +63,8 @@ module debug_unit #(
   wire [7:0] w_data_0;
   wire       w_req_load, w_load_byte, w_load_cancel, w_load_done, w_req_reset, w_reset_done;
   wire [7:0] w_load_data, w_load_err;
+  wire       w_load_done_ex;                       // du_loader -> du_exec_ctrl: ciclos a 0
+  wire       w_req_run, w_req_step, w_req_abort, w_step_done, w_run_fin;
 
   du_cmd_fsm #(
     .CLK_FREQ_HZ(CLK_FREQ_HZ), .RX_TIMEOUT_CYCLES(RX_TIMEOUT_CYCLES)
@@ -78,8 +77,8 @@ module debug_unit #(
     .o_req_load(w_req_load), .o_load_byte(w_load_byte), .o_load_data(w_load_data),
     .o_load_cancel(w_load_cancel), .i_load_done(w_load_done), .i_load_err(w_load_err),
     .o_req_reset(w_req_reset), .i_reset_done(w_reset_done),
-    .o_req_run(o_req_run), .o_req_step(o_req_step), .o_req_abort(o_req_abort),
-    .i_step_done(i_step_done), .i_run_fin(i_run_fin),
+    .o_req_run(w_req_run), .o_req_step(w_req_step), .o_req_abort(w_req_abort),
+    .i_step_done(w_step_done), .i_run_fin(w_run_fin),
     .i_halted(i_halted), .i_illegal(i_illegal),
     .o_req_dump(o_req_dump), .o_req_dump_mem(o_req_dump_mem),
     .o_dm_addr(o_dm_addr), .o_dm_n(o_dm_n),
@@ -97,7 +96,16 @@ module debug_unit #(
     .o_imem_we(o_imem_we), .o_imem_addr(o_imem_addr), .o_imem_wdata(o_imem_wdata),
     .o_dmem_we(o_dmem_we), .o_dmem_addr(o_dmem_addr),
     .o_clear_used(o_clear_used), .o_flush_all(o_flush_all),
-    .o_load_done(o_load_done)
+    .o_load_done(w_load_done_ex)
+  );
+
+  du_exec_ctrl u_exec (
+    .clock(clock), .i_reset(i_reset),
+    .i_req_run(w_req_run), .i_req_step(w_req_step), .i_req_abort(w_req_abort),
+    .o_step_done(w_step_done), .o_run_fin(w_run_fin),
+    .i_load_done(w_load_done_ex),
+    .i_halted(i_halted), .o_enable(o_enable), .o_stop_fetch(o_stop_fetch),
+    .o_ciclos(o_ciclos)
   );
 
   du_resp_tx u_resp (
