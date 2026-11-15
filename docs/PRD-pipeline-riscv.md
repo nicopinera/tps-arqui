@@ -1242,9 +1242,9 @@ treeView-beta
 
 **Nota de paralelismo:** la Debug Unit (US-403 a US-408) se desarrolla y se prueba contra el **núcleo stub** de US-402, y el software de control (US-409, US-410) contra `FakeTransport`. Así la pista B no espera a los Hitos 2 y 3: el núcleo real se integra recién en US-411, que antes de ir a la placa repite en simulación los testbenches de la Debug Unit con `riscv_core`.
 
-### Épica H4-E1: Comunicación y Recepción de Comandos
+#### Épica H4-E1: Comunicación y Recepción de Comandos
 
-#### US-401 — Adaptación de la UART del TP2 y Nuevo Top
+##### US-401 — Adaptación de la UART del TP2 y Nuevo Top
 
 - **Esfuerzo:** S (1,5 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-101, ADR-002
 - **Objetivo Funcional:** reutilizar la UART del TP2 a 19200 bps 8E1 (ADR-002), con `COUNT_MAX` parametrizado, validación de paridad y las mejoras pendientes que el propio informe del TP2 identificó.
@@ -1262,7 +1262,7 @@ treeView-beta
   - **AC4.** Un byte con paridad errónea (inyectado en simulación) activa `o_parity_err`.
 - **Testing Mínimo:** `tb_uart_loopback.v` con `COUNT_MAX` calculado y un caso de paridad errónea; prueba en placa con `tools/scripts/uart_echo_test.py`.
 
-#### US-402 — Infraestructura de Pruebas de la Pista B: Núcleo Stub y Modelo de UART de PC
+##### US-402 — Infraestructura de Pruebas de la Pista B: Núcleo Stub y Modelo de UART de PC
 
 - **Esfuerzo:** S (1 día) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-102, US-103
 - **Objetivo Funcional:** poder probar toda la Debug Unit en simulación sin depender del núcleo real ni de la placa.
@@ -1276,7 +1276,7 @@ treeView-beta
   - **AC3.** El modelo puede inyectar un byte con paridad errónea y una trama truncada.
 - **Testing Mínimo:** `tb_uart_host_model.v`.
 
-#### US-403 — Intérprete de Comandos de la Debug Unit
+##### US-403 — Intérprete de Comandos de la Debug Unit
 
 - **Esfuerzo:** M (2,5 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-104, US-401, US-402
 - **Objetivo Funcional:** recibir bytes de la UART, reconocer comandos, validarlos según el estado actual y despachar la acción al submódulo correspondiente.
@@ -1300,9 +1300,9 @@ treeView-beta
 - **Reglas de Negocio:** R-DU-1, R-DU-2, R-DU-5, R-DU-6.
 - **Testing Mínimo:** `tb_du_cmd_fsm.v` con `uart_host_model.vh` y `core_stub` (US-402).
 
-### Épica H4-E2: Carga y Volcado de Estado
+#### Épica H4-E2: Carga y Volcado de Estado
 
-#### US-404 — Carga y Reprogramación Dinámica del Programa
+##### US-404 — Carga y Reprogramación Dinámica del Programa
 
 - **Esfuerzo:** M (3 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-402, US-403, ADR-009
 - **Objetivo Funcional:** cumplir "la carga del programa debe llevarse a cabo a través de UART y sin resintetizar" y "permitir la reprogramación de manera dinámica", con la política de limpieza de ADR-009.
@@ -1326,7 +1326,7 @@ treeView-beta
 - **Reglas de Negocio:** R-RP-1, R-PR-3, R-DU-4, R-DU-6.
 - **Testing Mínimo:** `tb_du_loader.v` con `core_stub` (US-402), verificando lo que la Debug Unit escribe en la IMEM y la DMEM y las señales que activa. AC1, AC2 y AC4 necesitan ejecutar el programa: se verifican con el núcleo real en US-411.
 
-#### US-405 — Volcado de Registros, Latches y Memoria Usada
+##### US-405 — Volcado de Registros, Latches y Memoria Usada
 
 - **Esfuerzo:** M (5 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-403, US-103, ADR-008, ADR-017
 - **Objetivo Funcional:** cumplir "se deben enviar a la PC: el contenido de los 32 registros, de los latches intermedios y de la memoria de datos usada".
@@ -1348,28 +1348,10 @@ treeView-beta
   - **AC5.** Tiempo de volcado medido en simulación consistente con la sección 3.4.
 - **Reglas de Negocio:** R-DU-3, R-DU-4.
 - **Testing Mínimo:** `tb_du_dumper.v` con decodificador del snapshot en el testbench; en Python, `test_snapshot.py` (US-409) decodifica una captura real de la simulación.
-- **Archivos a crear:**
 
-```mermaid
-treeView-beta
-    "TP3/"
-        "hw/"
-            "rtl/"
-                "debug/"
-                    "du_dumper.v"
-                    "debug_unit.v — (instancia du_dumper)"
-            "tb/"
-                "debug/"
-                    "tb_du_dumper.v"
-        "tools/"
-            "tests/"
-                "fixtures/"
-                    "snapshot_sim.bin"
-```
+#### Épica H4-E3: Ejecución y Lectura de Memoria
 
-### Épica H4-E3: Ejecución y Lectura de Memoria
-
-#### US-406 — Modos de Ejecución Continuo y Paso a Paso
+##### US-406 — Modos de Ejecución Continuo y Paso a Paso
 
 - **Esfuerzo:** M (3 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-402, US-403, US-404, US-405, ADR-001
 - **Objetivo Funcional:** cumplir los dos modos de operación del enunciado controlando el núcleo exclusivamente con `i_enable`.
@@ -1388,22 +1370,8 @@ treeView-beta
   - **AC6.** Un programa que termina en una instrucción ilegal envía el snapshot final con motivo `ILLEGAL` en ambos modos.
 - **Reglas de Negocio:** R-EJ-1, R-EJ-2, R-EJ-4bis, R-EJ-5, R-EJ-7.
 - **Testing Mínimo:** `tb_du_exec_ctrl.v` con `core_stub` (US-402), comparando `RUN` contra `STEP` repetido. La misma comparación con el núcleo real y programas de la suite se hace en US-411.
-- **Archivos a crear:**
 
-```mermaid
-treeView-beta
-    "TP3/"
-        "hw/"
-            "rtl/"
-                "debug/"
-                    "du_exec_ctrl.v"
-                    "debug_unit.v — (instancia du_exec_ctrl)"
-            "tb/"
-                "debug/"
-                    "tb_du_exec_ctrl.v"
-```
-
-#### US-407 — Programas sin Instrucción de Parada y Comando ABORT
+##### US-407 — Programas sin Instrucción de Parada y Comando ABORT
 
 - **Esfuerzo:** S (1 día) · **Prioridad:** Alta · **Dependencias:** US-406, US-210 (solo para el experimento), ADR-010, ADR-018
 - **Objetivo Funcional:** responder en la práctica la pregunta "¿qué sucede si en mi memoria no se encuentra una instrucción de parada?" y garantizar que la placa nunca quede fuera de control.
@@ -1419,21 +1387,8 @@ treeView-beta
   - **AC2.** Con el núcleo real, `no_halt.asm` cargado normalmente termina solo gracias al relleno con HALT.
   - **AC3.** La simulación sin relleno muestra los dos casos del experimento (re-ejecución de memoria vieja y terminación `ILLEGAL` con memoria en cero), con capturas o logs para el informe.
 - **Testing Mínimo:** `tb_du_abort.v` con `core_stub`; prueba manual en placa en US-411.
-- **Archivos a crear:**
 
-```mermaid
-treeView-beta
-    "TP3/"
-        "hw/"
-            "rtl/"
-                "debug/"
-                    "du_exec_ctrl.v — (extensión)"
-            "tb/"
-                "debug/"
-                    "tb_du_abort.v"
-```
-
-#### US-408 — Comando `DUMP_MEM` (Lectura de un Rango de la DMEM)
+##### US-408 — Comando `DUMP_MEM` (Lectura de un Rango de la DMEM)
 
 - **Esfuerzo:** S (1 día) · **Prioridad:** Media · **Dependencias:** US-403, US-405, ADR-008
 - **Objetivo Funcional:** poder ver datos de la DMEM que el programa lee pero no escribe (y que por eso no aparecen en la "memoria usada" del snapshot).
@@ -1448,24 +1403,10 @@ treeView-beta
   - **AC3.** `DUMP_MEM` en `RUN` responde `NACK(ERR_ESTADO)`.
   - **AC4.** El ejemplo de bytes de `docs/protocolo.md` se reproduce exactamente.
 - **Testing Mínimo:** `tb_du_dump_mem.v` con `core_stub` y `uart_host_model`.
-- **Archivos a crear:**
 
-```mermaid
-treeView-beta
-    "TP3/"
-        "hw/"
-            "rtl/"
-                "debug/"
-                    "du_dumper.v — (extensión)"
-                    "du_cmd_fsm.v — (extensión)"
-            "tb/"
-                "debug/"
-                    "tb_du_dump_mem.v"
-```
+#### Épica H4-E4: Software de Control en la PC y Validación en Placa
 
-### Épica H4-E4: Software de Control en la PC y Validación en Placa
-
-#### US-409 — Codec del Protocolo y Transportes (Serie y Simulado)
+##### US-409 — Codec del Protocolo y Transportes (Serie y Simulado)
 
 - **Esfuerzo:** S (2 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-104, US-108, US-405, ADR-003, ADR-017
 - **Objetivo Funcional:** traducir comandos a bytes y bytes a objetos `Snapshot`, independizando al resto del software del puerto serie.
@@ -1505,7 +1446,7 @@ treeView-beta
                     "test_fake_transport.py"
 ```
 
-#### US-410 — Sesión de Depuración y CLI
+##### US-410 — Sesión de Depuración y CLI
 
 - **Esfuerzo:** S (2 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-409, US-106, US-107
 - **Objetivo Funcional:** ofrecer los casos de uso (cargar, correr, paso, volcar, leer memoria, abortar) como API reutilizable y como línea de comandos, base de la GUI y de las pruebas automáticas en placa.
@@ -1543,7 +1484,7 @@ treeView-beta
                     "test_diff.py"
 ```
 
-#### US-411 — Validación de Extremo a Extremo en Placa
+##### US-411 — Validación de Extremo a Extremo en Placa
 
 - **Esfuerzo:** M (3 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-404 a US-408, US-305, US-410
 - **Objetivo Funcional:** demostrar en la Basys 3 que todo el flujo funciona: ensamblar → cargar → ejecutar → volcar → comparar, para toda la suite.
@@ -1588,9 +1529,9 @@ treeView-beta
 
 **Mínimo viable si falta tiempo:** US-501 y US-502. US-504 puede reducirse a tablas sin resaltado; US-503 y US-505 son las primeras candidatas a recortar, en ese orden.
 
-### Épica H5-E1: Interfaz Base y Visualización del Pipeline
+#### Épica H5-E1: Interfaz Base y Visualización del Pipeline
 
-#### US-501 — Estructura de la Interfaz: Conexión, Programa y Controles
+##### US-501 — Estructura de la Interfaz: Conexión, Programa y Controles
 
 - **Esfuerzo:** M (3 días) · **Prioridad:** Alta · **Dependencias:** US-410, ADR-012
 - **Objetivo Funcional:** la pantalla principal desde la que se hace todo el flujo sin tocar la terminal.
@@ -1630,7 +1571,7 @@ treeView-beta
                 "checklist_ui.md"
 ```
 
-#### US-502 — Vista del Pipeline y Detalle de Latches
+##### US-502 — Vista del Pipeline y Detalle de Latches
 
 - **Esfuerzo:** M (3 días) · **Prioridad:** Alta · **Dependencias:** US-501, US-107
 - **Objetivo Funcional:** la pieza "creativa" central: ver de un vistazo qué instrucción está en cada etapa y qué mecanismos de riesgo actuaron en el ciclo.
@@ -1672,7 +1613,7 @@ treeView-beta
                         "latch_detail_view.py"
 ```
 
-#### US-503 — Carta de Pipeline (Instrucciones × Ciclos)
+##### US-503 — Carta de Pipeline (Instrucciones × Ciclos)
 
 - **Esfuerzo:** S (2 días) · **Prioridad:** Media · **Dependencias:** US-502, US-410 (`history.py`)
 - **Objetivo Funcional:** reproducir en la GUI la figura clásica de "Segmentado" del enunciado (instrucciones en filas, ciclos en columnas), construida a partir del historial de la sesión.
@@ -1701,9 +1642,9 @@ treeView-beta
                     "test_pipeline_chart.py"
 ```
 
-### Épica H5-E2: Estado Arquitectónico e Historial
+#### Épica H5-E2: Estado Arquitectónico e Historial
 
-#### US-504 — Vistas de Registros y Memoria con Resaltado de Cambios
+##### US-504 — Vistas de Registros y Memoria con Resaltado de Cambios
 
 - **Esfuerzo:** S (2 días) · **Prioridad:** Alta · **Dependencias:** US-501
 - **Objetivo Funcional:** mostrar los 32 registros y la memoria usada de forma legible, destacando qué cambió en el último paso.
@@ -1729,7 +1670,7 @@ treeView-beta
                         "memory_view.py"
 ```
 
-#### US-505 — Historial de Pasos, Exportación y Verificación contra Golden Model
+##### US-505 — Historial de Pasos, Exportación y Verificación contra Golden Model
 
 - **Esfuerzo:** M (3 días) · **Prioridad:** Media · **Dependencias:** US-502, US-504, US-108, US-410
 - **Objetivo Funcional:** permitir "volver atrás" para revisar ciclos anteriores (del lado de la PC) y verificar con un clic si el resultado de la placa es el esperado.
@@ -1771,9 +1712,9 @@ treeView-beta
 
 **Decisiones previas requeridas:** ADR-016 está en estado Propuesto con el criterio ya fijado; se aprueba dentro de este hito con los datos de US-601/602.
 
-### Épica H6-E1: Análisis y Ajuste de Timing
+#### Épica H6-E1: Análisis y Ajuste de Timing
 
-#### US-601 — Análisis del Camino Crítico y del Skew
+##### US-601 — Análisis del Camino Crítico y del Skew
 
 - **Esfuerzo:** S (2 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-411
 - **Objetivo Funcional:** responder "¿cuál es el camino crítico de mi sistema?" y "¿genera skew? ¿qué consecuencias tiene?" con evidencia de los reportes.
@@ -1801,7 +1742,7 @@ treeView-beta
                     "timing_*.rpt"
 ```
 
-#### US-602 — Frecuencia Óptima y Clock Wizard
+##### US-602 — Frecuencia Óptima y Clock Wizard
 
 - **Esfuerzo:** M (3 días) · **Prioridad:** Alta · **Dependencias:** US-601, US-411, ADR-016
 - **Objetivo Funcional:** "encontrar la frecuencia de funcionamiento óptima" y "aplicarla en el sistema", con el criterio fijado en ADR-016, y cerrar ese ADR.
@@ -1840,9 +1781,9 @@ treeView-beta
                 "ADR-016-frecuencia-generacion-reloj.md — (aprobado)"
 ```
 
-### Épica H6-E2: Métricas del Sistema
+#### Épica H6-E2: Métricas del Sistema
 
-#### US-603 — Métricas de Recursos, Potencia y Rendimiento
+##### US-603 — Métricas de Recursos, Potencia y Rendimiento
 
 - **Esfuerzo:** S (1,5 días) · **Prioridad:** Media · **Dependencias:** US-602
 - **Objetivo Funcional:** "generar métricas de funcionamiento utilizando las herramientas de Vivado", más métricas de rendimiento del procesador.
@@ -1870,9 +1811,9 @@ treeView-beta
                     "power.rpt"
 ```
 
-### Épica H6-E3: Documentación y Defensa
+#### Épica H6-E3: Documentación y Defensa
 
-#### US-604 — Informe Final
+##### US-604 — Informe Final
 
 - **Esfuerzo:** M (5 días) · **Prioridad:** Urgente (bloqueante) · **Dependencias:** US-601 a US-603
 - **Objetivo Funcional:** entregar el informe que documente el diseño, las decisiones y sus porqués (requisito explícito del enunciado) y responda todas las preguntas planteadas.
@@ -1909,7 +1850,7 @@ treeView-beta
                 "usuario.md"
 ```
 
-#### US-605 — Preparación de la Demostración y la Defensa
+##### US-605 — Preparación de la Demostración y la Defensa
 
 - **Esfuerzo:** S (1 día) · **Prioridad:** Alta · **Dependencias:** US-604, US-501, US-502, US-504, US-505
 - **Objetivo Funcional:** llegar a la defensa con un guion probado y un plan B.
