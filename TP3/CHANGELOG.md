@@ -57,6 +57,9 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `hw/rtl/debug/du_loader.v`: recibe `N` y las palabras de `LOAD` (little-endian), las escribe en la IMEM y verifica el checksum XOR. Al terminar recorre las 256 direcciones: HALT en la IMEM desde `N` (o en toda, con error o cancelación) y 0 en la DMEM; después pulsa `flush_all`, `clear_used` y `load_done`. `RESET` hace la misma limpieza sin tocar la IMEM (ADR-009, R-DU-4) (US-404).
 - `hw/tb/debug/tb_du_loader.v`: carga válida, `N = 256`, checksum incorrecto, cancelación en medio de la carga y durante la limpieza, `ERR_TAMANO` con `N = 0` y `N > 256`, `RESET` y cinco cargas seguidas, contra `core_stub` (AC3, AC5, AC7) (US-404).
 - `docs/guias/guia-estudio-debug-unit.md`: Parte 3 sobre `du_loader` (estados, registros, ejemplo ciclo a ciclo, errores comunes) (US-404).
+- `hw/rtl/debug/du_exec_ctrl.v`: modos `RUN` (enable sostenido hasta `o_halted`, fin como nivel `o_run_fin`) y `STEP` (un solo ciclo de enable, `o_step_done` un ciclo después); `i_enable` sale de un flip-flop (ADR-001, R-EJ-1, R-EJ-2) y contador de ciclos de 32 bits que solo suma cuando el núcleo avanza y vuelve a 0 con `load_done`. `ABORT` (`i_stop_fetch`) queda para US-407 (US-406).
+- `hw/tb/debug/tb_du_exec_ctrl.v`: con dos `core_stub` (fin por HALT y por ilegal) verifica un ciclo por STEP, STEP repetido = RUN (R-EJ-7), `o_run_fin` como nivel y la terminación por ilegal en ambos modos (AC1, AC2, AC6) (US-406).
+- `docs/guias/guia-estudio-debug-unit.md`: Parte 5 sobre `du_exec_ctrl` (estados, ejemplo ciclo a ciclo, contador, errores comunes) (US-406).
 
 ### Changed
 
@@ -73,4 +76,6 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `make setup` también instala `binutils-riscv64-unknown-elf` (solo para `make gnu-ref`) (US-106).
 - `debug_unit` instancia `du_loader`: se quitan los puertos `o_req_load`/`o_load_*`/`i_load_*`/`o_req_reset`/`i_reset_done` y se agregan los del núcleo (`o_imem_*`, `o_dmem_*`, `o_clear_used`, `o_flush_all`) y `o_load_done`, más los parámetros `IMEM_ADDR_BITS`/`DMEM_ADDR_BITS` (US-404).
 - `tb_du_cmd_fsm.v` usa el `du_loader` real con un `core_stub` en lugar del loader falso; además verifica la palabra cargada en la IMEM y el HALT después de un `LOAD` cortado (US-404).
+- `debug_unit` instancia `du_exec_ctrl`: se quitan `o_req_run`/`o_req_step`/`o_req_abort`/`i_step_done`/`i_run_fin` y `o_load_done` (ahora interno), y se agregan `o_enable`, `o_stop_fetch` y `o_ciclos` (hasta que entre `du_dumper`) (US-406).
+- `tb_du_cmd_fsm.v` usa el `du_exec_ctrl` real moviendo el `core_stub`; el fin del drenado de `ABORT` se emula levantando `i_halted` hasta US-407 (US-406).
 - PRD US-106: `ensamblar` es una función en vez de la clase `Assembler`, la `Imagen` suma `expansiones` y el fixture de GNU pasa a `tools/tests/assembler/fixtures/` (también en ADR-013) (US-106).
