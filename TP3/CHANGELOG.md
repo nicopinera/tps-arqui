@@ -75,11 +75,19 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `hw/rtl/core/mem_wb_reg.v`: latch MEM/WB con los campos de PRD §3.2, reset, enable y `DEBUG_TRACE`; no crea burbujas (US-209).
 - `hw/rtl/core/wb_stage.v`: mux `result_src` (ALU / memoria / PC+4), `o_wb_we = valid && reg_write` y `o_halt_retired`/`o_illegal_retired` (US-209).
 - `hw/tb/core/tb_mem_wb.v`: MEM → MEM/WB → WB con `sw`/`sb`/`sh` verificados por el puerto de la Debug Unit, los 5 loads con extensión, `add`, `jal`, store sin escritura en el banco, HALT e ilegal retirados un ciclo, burbuja, `i_enable = 0`, reset y `DEBUG_TRACE = 0` (US-209).
+- `hw/rtl/core/riscv_core.v`: núcleo completo con la interfaz de `riscv_core.md`: etapas y latches, enable efectivo (`i_enable && !o_halted`), `halt_fetch` pegajoso (se borra con una redirección de EX: HALT especulativo), `o_halted`/`o_illegal`, `i_flush_all`, `i_stop_fetch` (ABORT), flush básico, señales de riesgo (`o_stall = 0`, `fwd = 00` hasta el Hito 3) y buses planos de los latches con el layout del snapshot (US-210).
+- `asm/tests/h2/`: 8 programas (`r_type`, `i_arith`, `shifts`, `loads_stores`, `lui`, `branches`, `jumps`, `illegal`) con 3 `nop` entre instrucciones dependientes; después de cada salto tomado hay instrucciones que escribirían registros o memoria (US-210).
+- `hw/tb/core/tb_core_programs.v`: carga un programa como un `LOAD`, corre hasta `o_halted` y compara motivo, PC, registros y memoria usada con el `.expected` del golden model; pipeline vacío al terminar (AC2), nada posterior al HALT llega a EX (AC3), enable aleatorio con `+ENABLE_ALEATORIO` (AC4) (US-210).
+- `hw/tb/core/tb_core_control.v`: señales de riesgo del flush básico, layout de los buses de latches, ABORT (AC6), núcleo congelado con `o_halted`, `i_flush_all` (no borra bitmap ni DMEM) e `i_reset` (US-210).
+- `make sim-programs`: ensambla `asm/tests/h2`, genera el `.expected` con el golden model y corre cada programa con enable fijo y aleatorio; entra en `make check` y en el CI (US-210).
+- `make timing-core` (`hw/scripts/timing_core_ooc.tcl`): síntesis e implementación fuera de contexto de `riscv_core` a 100 MHz; deja `hw/reports/timing_core_ooc.rpt` y `util_core_ooc.rpt` (primer dato: WNS = +1,286 ns, WHS = +0,097 ns) (US-210).
 - `hw/rtl/core/dmem_bitmap.v`: bitmap de memoria usada y contador (ADR-008), separado de `data_mem`; marca con `o_core_we`/`o_core_addr` de `data_mem` (H2-E2).
 - `make synth-ooc` (`hw/scripts/synth_ooc.tcl`): síntesis fuera de contexto de cada módulo de `hw/rtl/core/` con Vivado en modo batch; deja en `build/synth/` el reporte de utilización de cada módulo y una tabla con LUTs, LUTRAM, FF, latches, BRAM y *critical warnings*, y falla si algún módulo infiere latches (H2-E1).
 
 ### Changed
 
+- `hw/scripts/sim.sh` y `make sim`: aceptan `EXPECTED=<ruta>` (`+EXPECTED`) y `ARGS="..."` (plusargs extra); `make sim-all` ya no corre `tb_core_programs`, que necesita un programa (US-210).
+- CI: el job de HDL instala `uv` y corre `make sim-programs` (US-210).
 - `data_mem.v`: el bitmap y el contador pasan a `dmem_bitmap.v`; `data_mem` saca la marca del store efectivo (`o_core_we`, `o_core_addr`) y pierde `i_clear_used`, `o_dbg_used` y `o_used_count`. Mismo comportamiento: `tb_data_mem` prueba los dos módulos conectados (H2-E2).
 - `python -m riscv_toolkit` usa argparse y despacha subcomandos; sin subcomando sigue mostrando la versión, y se agregó `--version` (US-107).
 - `identificar(palabra)` pasa del desensamblador a `isa/instrucciones.py` para que el golden model reconozca las mismas instrucciones legales (US-108).

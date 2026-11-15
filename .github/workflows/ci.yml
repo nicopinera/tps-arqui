@@ -39,12 +39,25 @@ jobs:
       - name: Testbenches (Icarus)
         run: make sim-all
 
+      - name: Instalar uv (ensamblador y golden model para sim-programs)
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: TP3/tools/uv.lock
+
+      - name: Programas en el nucleo contra el golden model (US-210)
+        run: |
+          cd tools && uv sync --locked && cd ..
+          make sim-programs
+
       - name: Guardar logs de simulacion
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: logs-simulacion
-          path: TP3/build/*.log
+          path: |
+            TP3/build/*.log
+            TP3/build/programs/*.log
 
   python:
     name: Python (ruff + mypy + pytest + pip-audit)

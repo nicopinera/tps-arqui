@@ -8,15 +8,20 @@ SHELL := /bin/bash
 TB    ?=
 WAVES ?= 0
 HEX   ?=
+EXPECTED ?=
+ARGS  ?=
 MOD   ?=
 VIVADO ?= vivado
 
 TOOLS_DIR := tools
 BUILD_DIR := build
-TB_NAMES  := $(sort $(basename $(notdir $(shell find hw/tb -type f -name 'tb_*.v' 2>/dev/null))))
+# tb_core_programs necesita un programa: lo corre sim-programs, no sim-all
+TB_NAMES  := $(filter-out tb_core_programs,$(sort $(basename $(notdir $(shell find hw/tb -type f -name 'tb_*.v' 2>/dev/null)))))
+PROG_DIR  := asm/tests/h2
+PROGRAMS  := $(sort $(basename $(notdir $(wildcard $(PROG_DIR)/*.asm))))
 UV_RUN := cd $(TOOLS_DIR) && uv run
 
-.PHONY: help setup lint sim sim-all synth-ooc test-py check-py gnu-ref check clean
+.PHONY: help setup lint sim sim-all sim-programs synth-ooc timing-core test-py check-py gnu-ref check clean
 
 help:
 	@echo "Objetivos:"
@@ -25,9 +30,15 @@ help:
 	@echo "  make sim TB=<tb>               Simula un testbench de hw/tb con Icarus (PASS/FAIL)"
 	@echo "       WAVES=1                     genera build/<tb>.vcd"
 	@echo "       HEX=<ruta>                  programa a cargar con \$$readmemh (+HEX)"
-	@echo "  make sim-all                   Corre todos los hw/tb/**/tb_*.v y resume el resultado"
+	@echo "       EXPECTED=<ruta>             estado final del golden model (+EXPECTED)"
+	@echo "       ARGS=\"+X +Y=1\"              plusargs extra"
+	@echo "  make sim-all                   Corre todos los hw/tb/**/tb_*.v (salvo tb_core_programs) y resume el resultado"
+	@echo "  make sim-programs              Ensambla asm/tests/h2, genera el .expected y corre cada programa en el nucleo,"
+	@echo "                                 con enable fijo y con enable aleatorio"
 	@echo "  make synth-ooc                 Sintesis fuera de contexto de hw/rtl/core con Vivado (recursos y latches)"
 	@echo "       MOD=\"alu data_mem\"        solo esos modulos (por defecto, todos)"
+	@echo "  make timing-core               Sintesis e implementacion fuera de contexto de riscv_core a 100 MHz"
+	@echo "                                 (deja WNS/WHS en hw/reports/)"
 	@echo "  make test-py                   Tests de Python con cobertura"
 	@echo "  make check-py                  ruff + mypy + pytest + pip-audit"
 	@echo "  make gnu-ref                   Regenera el .hex de referencia del ensamblador con GNU as (US-106)"
@@ -53,7 +64,7 @@ lint:
 	@bash hw/scripts/lint.sh
 
 sim:
-	@WAVES=$(WAVES) HEX=$(HEX) bash hw/scripts/sim.sh $(TB)
+	@WAVES=$(WAVES) HEX=$(HEX) EXPECTED=$(EXPECTED) ARGS="$(ARGS)" bash hw/scripts/sim.sh $(TB)
 
 sim-all:
 	@total=0; failed=0; \
@@ -71,6 +82,36 @@ sim-all:
 	if [ $$total -eq 0 ]; then echo "No se encontraron testbenches en hw/tb"; exit 1; fi; \
 	[ $$failed -eq 0 ]
 
+# Programas de asm/tests/h2 en el nucleo completo (US-210). Para cada uno: rvasm -> .hex,
+# rvsim --expect -> .expected (golden model) y tb_core_programs con enable fijo y con enable
+# aleatorio (AC4). Deja todo en build/programs/.
+sim-programs:
+	@mkdir -p $(BUILD_DIR)/programs
+	@total=0; failed=0; \
+	for p in $(PROGRAMS); do \
+		src=$(CURDIR)/$(PROG_DIR)/$$p.asm; out=$(CURDIR)/$(BUILD_DIR)/programs/$$p; \
+		if ! (cd $(TOOLS_DIR) && uv run python -m riscv_toolkit asm $$src -o $$out.hex > /dev/null 2>&1 \
+				&& uv run python -m riscv_toolkit sim $$src --expect $$out.expected > /dev/null 2>&1); then \
+			total=$$((total + 1)); failed=$$((failed + 1)); \
+			printf '  FAIL  %-14s no ensambla o no termina en el golden model\n' $$p; continue; \
+		fi; \
+		for modo in fijo aleatorio; do \
+			total=$$((total + 1)); \
+			if [ $$modo = aleatorio ]; then extra="+ENABLE_ALEATORIO"; else extra=""; fi; \
+			if QUIET=1 HEX=$$out.hex EXPECTED=$$out.expected ARGS="$$extra" \
+					bash hw/scripts/sim.sh tb_core_programs > /dev/null 2>&1; then \
+				printf '  PASS  %-14s enable %s\n' $$p $$modo; \
+			else \
+				failed=$$((failed + 1)); \
+				cp $(BUILD_DIR)/tb_core_programs.log $$out.$$modo.log; \
+				printf '  FAIL  %-14s enable %s   (ver %s)\n' $$p $$modo $(BUILD_DIR)/programs/$$p.$$modo.log; \
+			fi; \
+		done; \
+	done; \
+	echo; \
+	echo "Programas: $$((total - failed)) de $$total corridas pasaron"; \
+	[ $$total -gt 0 ] && [ $$failed -eq 0 ]
+
 # Sintesis fuera de contexto: LUTs, LUTRAM, FF, BRAM y latches por modulo (sin timing).
 # Necesita Vivado 2025.2 en el PATH (o VIVADO=<ruta al ejecutable>). Deja build/synth/.
 synth-ooc:
@@ -79,6 +120,16 @@ synth-ooc:
 		-source ../../hw/scripts/synth_ooc.tcl -tclargs $(MOD) > vivado.log 2>&1; \
 		status=$$?; sed -n '/^Sintesis fuera de contexto/,$$p' vivado.log; \
 		[ $$status -eq 0 ] || echo "Vivado termino con error: ver $(BUILD_DIR)/synth/vivado.log"; \
+		exit $$status
+
+# Timing del nucleo fuera de contexto a 100 MHz (US-210 AC5). Deja los reportes en hw/reports/
+# (se versionan para seguir la evolucion de WNS/WHS) y los temporales en build/timing/.
+timing-core:
+	@mkdir -p $(BUILD_DIR)/timing
+	@cd $(BUILD_DIR)/timing && $(VIVADO) -mode batch -nojournal -nolog -notrace \
+		-source ../../hw/scripts/timing_core_ooc.tcl > vivado.log 2>&1; \
+		status=$$?; sed -n '/^riscv_core fuera de contexto/,$$p' vivado.log; \
+		[ $$status -eq 0 ] || echo "Vivado termino con error: ver $(BUILD_DIR)/timing/vivado.log"; \
 		exit $$status
 
 # --- Python ------------------------------------------------------------------------------
@@ -107,7 +158,7 @@ gnu-ref:
 
 # --- Todo --------------------------------------------------------------------------------
 
-check: lint sim-all check-py
+check: lint sim-all sim-programs check-py
 
 clean:
 	rm -rf $(BUILD_DIR)
