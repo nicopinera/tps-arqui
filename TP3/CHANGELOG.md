@@ -71,6 +71,10 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `hw/rtl/core/ex_mem_reg.v`: latch EX/MEM con los campos de PRD §3.2 (`store_data` = rs2 forwardeado), reset, enable y `DEBUG_TRACE`; no crea burbujas (US-208).
 - `hw/tb/core/tb_ex_stage.v`: AC1–AC5 (R, I con imm negativo, dirección de load/store, `lui`, `beq`/`bne` adelante y atrás, `jalr` impar, los 4 valores de `fwd_a`/`fwd_b`, branch y `jalr` con `valid = 0`), EX/MEM con enable, reset y `DEBUG_TRACE = 0` (US-208).
 - `hw/tb/core/tb_branch_cmp.v`: iguales, distintos por un bit en cada posición y aleatorios (US-208).
+- `hw/rtl/core/mem_stage.v`: conecta `store_align`, `data_mem`, `dmem_bitmap` y `load_extend`, con los puertos de la Debug Unit de la DMEM (limpieza, borrado del bitmap, lectura con bit de usada y contador) (US-209).
+- `hw/rtl/core/mem_wb_reg.v`: latch MEM/WB con los campos de PRD §3.2, reset, enable y `DEBUG_TRACE`; no crea burbujas (US-209).
+- `hw/rtl/core/wb_stage.v`: mux `result_src` (ALU / memoria / PC+4), `o_wb_we = valid && reg_write` y `o_halt_retired`/`o_illegal_retired` (US-209).
+- `hw/tb/core/tb_mem_wb.v`: MEM → MEM/WB → WB con `sw`/`sb`/`sh` verificados por el puerto de la Debug Unit, los 5 loads con extensión, `add`, `jal`, store sin escritura en el banco, HALT e ilegal retirados un ciclo, burbuja, `i_enable = 0`, reset y `DEBUG_TRACE = 0` (US-209).
 - `hw/rtl/core/dmem_bitmap.v`: bitmap de memoria usada y contador (ADR-008), separado de `data_mem`; marca con `o_core_we`/`o_core_addr` de `data_mem` (H2-E2).
 - `make synth-ooc` (`hw/scripts/synth_ooc.tcl`): síntesis fuera de contexto de cada módulo de `hw/rtl/core/` con Vivado en modo batch; deja en `build/synth/` el reporte de utilización de cada módulo y una tabla con LUTs, LUTRAM, FF, latches, BRAM y *critical warnings*, y falla si algún módulo infiere latches (H2-E1).
 
