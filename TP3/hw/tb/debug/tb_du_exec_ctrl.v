@@ -41,7 +41,8 @@ module tb_du_exec_ctrl;
     .i_req_run(r_req_run && !r_sel), .i_req_step(r_req_step && !r_sel), .i_req_abort(1'b0),
     .o_step_done(a_step_done), .o_run_fin(a_run_fin),
     .i_load_done(r_load),
-    .i_halted(a_halted), .o_enable(a_enable), .o_stop_fetch(a_stop),
+    .i_halted(a_halted), .i_valid(4'b0000), // este tb no usa ABORT (ver tb_du_abort)
+    .o_enable(a_enable), .o_stop_fetch(a_stop),
     .o_ciclos(a_ciclos)
   );
 
@@ -68,7 +69,8 @@ module tb_du_exec_ctrl;
     .i_req_run(r_req_run && r_sel), .i_req_step(r_req_step && r_sel), .i_req_abort(1'b0),
     .o_step_done(b_step_done), .o_run_fin(b_run_fin),
     .i_load_done(r_load),
-    .i_halted(b_halted), .o_enable(b_enable), .o_stop_fetch(b_stop),
+    .i_halted(b_halted), .i_valid(4'b0000), // este tb no usa ABORT (ver tb_du_abort)
+    .o_enable(b_enable), .o_stop_fetch(b_stop),
     .o_ciclos(b_ciclos)
   );
 

@@ -4,10 +4,10 @@
 //   host model -> uart_rx -> debug_unit -> uart_tx -> host model
 // du_loader (US-404) y du_exec_ctrl (US-406) son los reales, adentro de debug_unit, y mueven
 // un core_stub. El o_halted / o_illegal que ve la Debug Unit lo maneja el test (cfg_halted,
-// cfg_illegal) para elegir en que STEP o en que momento del RUN termina el programa.
+// cfg_illegal) para elegir en que STEP o en que momento del RUN termina el programa. ABORT
+// drena de verdad: los valid de los latches del stub van a i_latch_valid (US-407).
 // Lo que todavia no existe lo emula el testbench:
-//   ABORT          4 ciclos despues del pedido el test levanta cfg_halted (fin del drenado)
-//   dumper falso   otra instancia de du_resp_tx en el canal 1 del mux: manda una trama
+//   dumper falso  otra instancia de du_resp_tx en el canal 1 del mux: manda una trama
 //                  SNAPSHOT (03) con el byte de estado como payload, o MEM_DATA (05)
 //
 //   AC1  PING responde PING_INFO en cualquier estado
@@ -37,6 +37,11 @@ module tb_du_cmd_fsm;
   wire [7:0]  w_imem_addr, w_dmem_addr;
   wire [31:0] w_imem_wdata;
   wire        w_enable, w_stop_fetch;
+  wire [103:0] w_if_id;
+  wire [247:0] w_id_ex;
+  wire [151:0] w_ex_mem;
+  wire [143:0] w_mem_wb;
+  wire [3:0]   w_valid = {w_mem_wb[104], w_ex_mem[112], w_id_ex[200], w_if_id[96]};
   wire        w_req_dump, w_req_dump_mem;
   wire [15:0] w_dm_addr, w_dm_n;
   wire [7:0]  w_snap_estado;
@@ -66,7 +71,7 @@ module tb_du_cmd_fsm;
     .o_dmem_we(w_dmem_we), .o_dmem_addr(w_dmem_addr),
     .o_clear_used(w_clear_used), .o_flush_all(w_flush_all),
     .o_enable(w_enable), .o_stop_fetch(w_stop_fetch),
-    .i_halted(cfg_halted), .i_illegal(cfg_illegal), .o_ciclos(),
+    .i_halted(cfg_halted), .i_illegal(cfg_illegal), .i_latch_valid(w_valid), .o_ciclos(),
     .o_req_dump(w_req_dump), .o_req_dump_mem(w_req_dump_mem),
     .o_dm_addr(w_dm_addr), .o_dm_n(w_dm_n), .o_snap_estado(w_snap_estado),
     .i_dump_done(w_dump_done), .i_dump_err(w_dump_err),
@@ -92,7 +97,7 @@ module tb_du_cmd_fsm;
     .i_dbg_reg_addr(5'd0), .o_dbg_reg_data(),
     .i_dbg_mem_addr(8'd0), .o_dbg_mem_data(), .o_dbg_mem_used(), .o_dbg_used_count(),
     .o_stall(), .o_flush_if_id(), .o_flush_id_ex(), .o_fwd_a(), .o_fwd_b(),
-    .o_if_id(), .o_id_ex(), .o_ex_mem(), .o_mem_wb()
+    .o_if_id(w_if_id), .o_id_ex(w_id_ex), .o_ex_mem(w_ex_mem), .o_mem_wb(w_mem_wb)
   );
 
   // --- Lo que pasa entre du_cmd_fsm y du_loader (senales internas de debug_unit) -----------
@@ -106,24 +111,11 @@ module tb_du_cmd_fsm;
       n_huerfanos = n_huerfanos + 1;
   end
 
-  // --- Pedidos a du_exec_ctrl y ABORT emulado ------------------------------------------------
-  // shortcut: du_exec_ctrl todavia no drena con i_stop_fetch (US-407); el fin del drenado se
-  // emula levantando cfg_halted, y du_cmd_fsm pone el motivo ABORTED por su r_abort.
-  integer abort_cnt = 0;
+  // --- Pedidos a du_exec_ctrl ---------------------------------------------------------------
   integer n_req_run = 0;
   always @(posedge clock)
-  begin
     if (u_du.w_req_run)
       n_req_run = n_req_run + 1;
-    if (u_du.w_req_abort)
-      abort_cnt = 4;                   // drenado del pipeline
-    else if (abort_cnt > 0)
-    begin
-      abort_cnt = abort_cnt - 1;
-      if (abort_cnt == 0)
-        cfg_halted = 1'b1;
-    end
-  end
 
   // --- Dumper falso (du_dumper, US-405): trama corta por el canal 1 ----------------------------
   reg        r_dp_send = 1'b0, r_dp_err = 1'b0;
@@ -460,7 +452,8 @@ module tb_du_cmd_fsm;
     correr;
     enviar(`DU_CMD_ABORT, 0);
     verificar("ABORT", `DU_TIPO_SNAPSHOT, 1, 8'h36, `DU_ESTADO_HALTED);
-    cfg_halted = 1'b0;
+    check_eq("ABORT: latches vacios", {28'd0, w_valid}, 32'd0);
+    check_eq("ABORT: stop_fetch baja", {31'd0, w_stop_fetch}, 32'd0);
 
     // Otro RUN despues del ABORT: el i_run_fin viejo no lo termina en el primer ciclo
     enviar(`DU_CMD_RESET, 0);
@@ -470,7 +463,7 @@ module tb_du_cmd_fsm;
     check_eq("RUN tras ABORT sigue corriendo", {28'd0, w_estado}, {28'd0, `DU_ESTADO_RUN});
     enviar(`DU_CMD_ABORT, 0);
     verificar("ABORT", `DU_TIPO_SNAPSHOT, 1, 8'h36, `DU_ESTADO_HALTED);
-    cfg_halted = 1'b0;
+    check_eq("ABORT 2: latches vacios", {28'd0, w_valid}, 32'd0);
 
     // LOAD desde HALTED borra el motivo y vuelve a READY
     cargar;
