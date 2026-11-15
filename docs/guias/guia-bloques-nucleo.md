@@ -134,7 +134,7 @@ wire [ADDR_BITS-1:0] w_word_addr = i_pc[ADDR_BITS+BYTE_OFFSET_BITS-1:BYTE_OFFSET
 
 ### Memoria de datos y Bitmap
 
-En el mismo archivo se implementan la memoria de datos propia y el bitmap, el cual tiene un bit por palabra, que indica si esa palabra fue escrita al menos una vez y un contador que cuenta cuántas palabras distintas se escribieron.
+En dmem_bitmap se implementan el bitmap, el cual tiene un bit por palabra, que indica si esa palabra fue escrita al menos una vez y un contador que cuenta cuántas palabras distintas se escribieron. La señal que indica que se escribio un dato y en que direccion la recibe de la memoria de datos
 
 ### 6.2 Escritura (memoria de datos + store align)
 
@@ -325,3 +325,61 @@ end
 ```
 
 Ademas hay que decidir si se esta ante un congelamiento (osea los valores tienen que mantenerse) esto se hace evaluando i_enable e i_stall: si i_enable = 0, o si i_stall esta activado y no hay flush, no se cambia ni el valid ni la instruccion. Con flush se carga igual aunque haya stall, porque mantener dejaria en ID una instruccion del camino equivocado. Si se carga y es una burbuja (flush o i_valid = 0) se carga un NOP (de relleno, es no valido) y sino la instruccion y se dice valida
+
+## 9. Latch ID/EX (US-207)
+
+### 9.1 `DEBUG_TRACE`
+
+En el funcionamiento normal luego de ID, las siguientes etapas nunca trabajan con la instruccion como tal sino con sus distintas partes, pero para poder debugear y saber que instruccion habia en cada etapa es necesario propagar la instruccion. DEBUG_TRACE permite decidir si se desea guardar la instruccion.
+
+```verilog
+// id_ex_reg.v:83-84
+localparam [31:0] INSTR_BURBUJA = (DEBUG_TRACE != 0) ? INSTR_NOP : 32'h0000_0000;
+wire       [31:0] w_instr = (DEBUG_TRACE != 0) ? i_instr : 32'h0000_0000;
+```
+
+### 9.2 Condiciones para poner una burbuja en EX
+
+1.  el valid desactivado implica que la instruccion que venia de la etapa anterior es una burbuja
+2.  el flush activado indica que no se tiene que ejecutar la instruccion actual, porque el programa toma otro flujo de ejecucion (decidido en EX, osea branch tomado o jalr)
+3.  bubble indica que la burbuja nace acá, porque IF/ID está holdeando una instrucción válida (load-use). (siguiendo el ejemplo de antes con el lw y el add, seria el add). Hay que dejar que pase un ciclo en EX y justamente lo que activa este mecanismo es esto.
+
+```verilog
+wire        w_burbuja = i_flush || i_bubble || !i_valid;
+```
+
+### 9.3 Sin stall: diferencia con IF/ID
+
+A diferencia del registro anterior, no hay condicion que afecte a la decision de propagar o no la instruccion (salvo el enable obviamente), lo que si se afecta es que instruccion propagar y el valid con el mismo criterio que en ese latch. Si es una burbuja, se carga un nop o 0 dependiendo del debug trace y se pone el valid a 0, en caso contrario se propaga la instruccion y el valid en 1
+
+```verilog
+// id_ex_reg.v:147-155
+always @(posedge clock) begin
+    if (i_reset) begin
+        o_instr <= INSTR_BURBUJA;
+        o_valid <= 1'b0;
+    end else if (i_enable) begin
+        o_instr <= w_burbuja ? INSTR_BURBUJA : w_instr;
+        o_valid <= !w_burbuja;
+    end
+end
+```
+
+### 9.4 La burbuja anula el control, no los datos
+
+Con una burbuja, ID/EX pone en 0 todas las señales de control y carga los datos (`pc`, operandos, `imm`, `rs1`, `rs2`, `rd`, ...) igual que siempre.
+
+```verilog
+// id_ex_reg.v:104-113 (datos) y 132-142 (control), resumido
+o_pc        <= i_pc;                             // datos: se cargan siempre
+o_rd        <= i_rd;
+...
+o_reg_write <= w_burbuja ? 1'b0 : i_reg_write;   // control: en 0 si es burbuja
+o_branch    <= w_burbuja ? 1'b0 : i_branch;
+o_halt      <= w_burbuja ? 1'b0 : i_halt;
+...
+```
+
+No hace falta anular los datos, porque sin control ningún bloque los usa, y anularlos sería un mux más por cada bit. Además, el snapshot muestra qué instrucción se descartó: después de un flush, ID/EX queda con valid = 0 pero con el pc y el rd de la instrucción que se mató.
+
+Ademas al anular las señales de control se protege los datos de la burbuja. Una burbuja por flush conserva el rd de la instrucción descartada (por ejemplo, x1). Si la forwarding unit comparara solo registros, vería ese rd = x1 en EX/MEM o MEM/WB y le pasaría basura a la instrucción en EX. No pasa porque el forwarding también pide reg_write = 1, y en la burbuja vale 0.
