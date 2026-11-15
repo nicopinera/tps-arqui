@@ -383,3 +383,64 @@ o_halt      <= w_burbuja ? 1'b0 : i_halt;
 No hace falta anular los datos, porque sin control ningún bloque los usa, y anularlos sería un mux más por cada bit. Además, el snapshot muestra qué instrucción se descartó: después de un flush, ID/EX queda con valid = 0 pero con el pc y el rd de la instrucción que se mató.
 
 Ademas al anular las señales de control se protege los datos de la burbuja. Una burbuja por flush conserva el rd de la instrucción descartada (por ejemplo, x1). Si la forwarding unit comparara solo registros, vería ese rd = x1 en EX/MEM o MEM/WB y le pasaría basura a la instrucción en EX. No pasa porque el forwarding también pide reg_write = 1, y en la burbuja vale 0.
+
+## 10. Etapa EX y latch EX/MEM (US-208)
+
+`ex_stage` es combinacional e instancia `alu_control`, `alu` y `branch_cmp`. Calcula el resultado de la instrucción y decide si EX redirige el PC. `pc_plus4`, `rd` y las señales de control de MEM y WB no pasan por la etapa: van de ID/EX a EX/MEM directo.
+
+### 10.1 `store_data` sale antes del mux `alu_src`
+
+```verilog
+// ex_stage.v:79-80
+assign w_alu_b      = i_alu_src ? i_imm : r_op_b;
+assign o_store_data = r_op_b;
+```
+
+Un store usa los dos operandos para cosas distintas: la ALU calcula la dirección con rs1 + imm, y el dato a guardar es rs2. Por eso el mux 2 a 1 tiene la posibilidad de seleccionar el operando B o el inmedianto, y a su vez el operando B pasa directamente al registro EX/MEM
+
+### 10.3 `branch_cmp` en paralelo con la ALU
+
+branch_cmp compara los operandos forwardeados en paralelo a la ALU. La decisión de saltar se arma aparte en redirect:
+
+```verilog
+// ex_stage.v:107 y 113
+wire w_branch_taken = i_branch && ((i_funct3 == F3_BEQ) ? w_eq : !w_eq);
+assign o_redirect   = i_valid && (w_branch_taken || i_jalr);
+```
+
+- `beq` salta con `eq` y `bne` con `!eq`. `control_unit` marca como ilegal cualquier otro `funct3` de branch mediante la señal `i_branch`, así que no hace falta mirar más.
+- `i_valid`: una burbuja nunca redirige. En la práctica ID/EX ya puso `branch = jalr = 0` en la burbuja, y esto es una segunda protección.
+
+### 10.4 Destinos: sumador propio para branches, ALU para `jalr`
+
+```verilog
+// ex_stage.v:110-114
+wire [31:0] w_branch_target = i_pc + i_imm;
+wire [31:0] w_jalr_target   = o_alu_result & JALR_MASK;   // JALR_MASK = ~1
+assign o_redirect_pc = i_jalr ? w_jalr_target : w_branch_target;
+```
+
+en un branch el destino es `pc + imm_B`. La ALU no puede calcularlo porque el PC no entra en ninguna de sus entradas: A es siempre rs1 y B es rs2 o el inmediato. En vez de agregar un mux en A para que pueda tener el PC, hay un sumador propio, que calcula el destino en paralelo con el comparador.
+
+### 10.5 Por qué `jalr` limpia solo el bit 0: la extensión C
+
+La especificación define el destino de `jalr` como `(rs1 + imm) & ~1`. Solo el bit 0, aunque nuestras instrucciones vayan de 4 en 4.
+
+La razón es la **extensión C** (_Compressed_). Es una extensión estándar de RISCV que agrega versiones de 16 bits de las instrucciones más usadas, para que el código ocupe menos. Con C, un programa mezcla instrucciones de 16 y 32 bits, y una instrucción puede empezar en una dirección múltiplo de 2:
+
+```
+0x00  add  (32 bits)
+0x04  c.mv (16 bits)
+0x06  lw   (32 bits)   ← múltiplo de 2, no de 4
+```
+
+El procesador sabe cuál es cuál por los 2 bits más bajos: `11` es una instrucción de 32 bits (todas las nuestras, incluido HALT `0001011`) y cualquier otro valor es una de 16.
+
+RV32I está pensada para no cambiar cuando se agrega C, y por eso tiene detalles que sin C parecen raros:
+
+- `jalr` hace `& ~1`, lo mínimo para que el destino sea par;
+- los inmediatos B y J (`formatos.md`) tienen el bit 0 implícito en 0, pero codifican el bit 1: los offsets están en unidades de 2 bytes.
+
+En nuestro caso como usamos solamente instrucciones del 32 bits, la IMEM ignora `pc[1:0]` (explicado en la seccion 6.2), así que con PC = `0x102` lee la palabra de `0x100`, y las instrucciones que se ejecutan son las mismas.
+
+Pero fue agregado para respetar la especificacion, ademas para que lo que muestra el hardware en los snapshots (el PC y registros como x1) coincida con el golden model, que sigue la spec.
