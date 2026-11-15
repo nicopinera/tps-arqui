@@ -784,7 +784,9 @@ La FSM **no sabe nada de secciones**: no hay un estado "REGISTROS" ni "LATCHES".
 | `r_pos`      |   16 | qué byte de la trama va saliendo: 0 = `A5`, 1 = tipo, 2-3 = longitud, 4… = payload, último = checksum. Con K = 256 son 1762 bytes |
 | `r_xor`      |    8 | checksum al vuelo (todo lo mandado menos el `A5`)                                                                                 |
 | `r_estado`   |    8 | copia de `i_snap_estado` al pedido                                                                                                |
-| `r_k`        |    9 | copia de K al pedido: de él salen la longitud y los 2 bytes de K                                                                  |
+| `r_k`        |    9 | copia de K al pedido: de él salen los 2 bytes de K                                                                                |
+| `r_len`      |   16 | longitud del payload, calculada **una vez** al pedido (`221 + 6K` o `4 + 4n`): bytes 2 y 3 de la trama (§38)                       |
+| `r_pos_checksum` | 16 | `r_len + 4`: en qué `r_pos` va el checksum, también calculada al pedido (§38)                                                  |
 | `r_latches`  |  648 | copia de los 4 latches al pedido: `{MEM/WB, EX/MEM, ID/EX, IF/ID}`                                                                |
 | `r_mem_addr` |    9 | palabra de DMEM que se está mandando o buscando; el bit 8 en 1 (= 256) significa "se pasó del final"                              |
 | `r_sub`      |    3 | byte dentro de la entrada de memoria: 0-1 = dirección, 2-5 = dato                                                                 |
@@ -839,8 +841,8 @@ Después, una cadena de `if / else if` donde **cada condición pregunta "¿estoy
 
 | `r_pos` / `w_off`   | Sección   | Byte que sale                                           |
 | ------------------- | --------- | ------------------------------------------------------- |
-| `r_pos` = `len + 4` | checksum  | `r_xor` (se pregunta primero: su posición depende de K) |
-| `r_pos` 0..3        | sobre     | `A5`, `03`, `len[7:0]`, `len[15:8]`                     |
+| `r_pos` = `r_pos_checksum` | checksum  | `r_xor` (se pregunta primero: su posición depende de K) |
+| `r_pos` 0..3        | sobre     | `A5`, `03`, `r_len[7:0]`, `r_len[15:8]`                 |
 | `w_off` 0           | estado    | `r_estado`                                              |
 | `w_off` 1..4        | ciclos    | byte `w_rel` de `i_ciclos`                              |
 | `w_off` 5..8        | PC        | byte `w_rel` de `i_pc`                                  |
@@ -942,6 +944,9 @@ En `MEM_DATA` **la posición alcanza** para saber todo (no hay saltos): con `w_r
 - **De `w_rel_X` solo se usan los bits bajos.** Fuera de su sección valen cualquier cosa, y Verilator avisaría de los bits altos sin usar; por eso esos cables van entre un `lint_off UNUSEDSIGNAL` puntual.
 - **Contadores anchos.** `r_pos` tiene 16 bits porque la trama llega a 1762 bytes. `r_k` y `r_mem_addr` tienen 9 porque llegan a 256.
 - **Camino combinacional largo.** En `ENVIAR` el byte sale de `r_pos` → resta → `o_dbg_reg_addr` → banco de registros del núcleo → mux → UART, todo en un ciclo. En simulación no importa; si en la síntesis no cumple timing a 100 MHz, se registra el byte en `BUSCAR` (que siempre precede a `ENVIAR`).
+- **Longitud y posición del checksum en registros (`r_len`, `r_pos_checksum`).** La primera síntesis OOC (`hw/scripts/synth_du_ooc.tcl`) dio como camino crítico `r_k → ×6 → +221 → mux de modo → +4 → ¿== r_pos? → o_tx_data → XOR → r_xor`: 12 niveles, 9,09 ns de 10. Pero K y `n` no cambian en todo el volcado, así que esa cuenta daba lo mismo en cada ciclo. Ahora se hace **una vez, en el ciclo del pedido**, y se guarda; el camino de cada byte queda en `r_pos → comparación → o_tx_data → XOR`. Dos detalles:
+  - Hacen falta **los dos** registros: si solo se registra la posición del checksum, los bytes 2-3 (la longitud) siguen saliendo de la cuenta lenta y el camino largo sigue existiendo.
+  - Se calculan con las **entradas** (`i_dbg_used_count`, `i_dm_n`), no con `r_k`/`r_dm_n`, que recién toman el valor nuevo en ese flanco. Y tienen que estar listos para `r_pos = 0`: como la tabla pregunta primero "¿es el checksum?", un `r_pos_checksum` viejo en 0 haría salir `r_xor` en lugar del `A5`.
 
 ## Parte 5: `du_exec_ctrl`, el que mueve el núcleo (US-406, US-407)
 
