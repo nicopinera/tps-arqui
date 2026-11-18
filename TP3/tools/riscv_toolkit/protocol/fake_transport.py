@@ -12,10 +12,11 @@ Diferencias con la placa (por eso el snapshot sale con `simulado = True`):
   el resto de los campos en 0). En los demás estados el pipeline está vacío.
 - `RUN` corre de una, dentro de `write`: si el programa no termina en `max_instr`
   instrucciones queda en `RUN` hasta un `ABORT`, como un loop infinito en la placa.
-- Sin timeouts: un comando con argumentos incompletos espera al próximo `write`. Un `LOAD` con
-  `N` inválido descarta todo lo recibido (en la placa: hasta 100 ms de silencio, §7.2).
+- Sin timeouts de recepción: un comando con argumentos incompletos espera al próximo `write`.
+  Un `LOAD` con `N` inválido descarta todo lo recibido (la placa: hasta 100 ms de silencio, §7.2).
 """
 
+import time
 from collections import deque
 
 from riscv_toolkit.iss.golden_model import GoldenModel
@@ -71,7 +72,13 @@ class FakeTransport:
         self._procesar()
 
     def read(self, n: int, timeout: float | None) -> bytes:
-        """Lo que haya respondido hasta ahora; nunca espera (no hay otro hilo que responda)."""
+        """Lo que haya respondido hasta ahora.
+
+        Si no hay nada, nadie más va a responder (no hay otro hilo): duerme `timeout` como la
+        placa que no contesta, así quien espera en un bucle (`RUN` sin fin) no gira en vacío.
+        """
+        if not self._salida and timeout:
+            time.sleep(timeout)
         datos = bytes(self._salida[:n])
         del self._salida[:n]
         return datos
