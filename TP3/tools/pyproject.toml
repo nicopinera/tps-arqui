@@ -9,6 +9,7 @@ authors = [
 ]
 requires-python = ">=3.13"
 dependencies = [
+    "flet[desktop]==1.0.5",
     "pyserial>=3.5",
 ]
 
