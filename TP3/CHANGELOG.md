@@ -75,9 +75,18 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `protocol/transport.py` (interfaz `Transport` como `typing.Protocol`), `serial_transport.py` (`pyserial` a 19200 8E1, detección de la Basys 3 por VID/PID `0403:6010`) y `fake_transport.py` (la Debug Unit respondida por el golden model, con las reglas de R-DU-1 y `simulado = True`) (US-409, AC4–AC6).
 - `tests/protocol/`: `test_codec.py`, `test_snapshot.py` (ejemplos §8.5 y §8.7, y la captura real `fixtures/snapshot_sim.bin`), `test_fake_transport.py` (RUN igual al golden model en los programas de `tests/iss/fixtures` y con `ILLEGAL`) y `test_serial_transport.py` (configuración del puerto con `serial` falso; solo `serial_transport.py` importa `serial`) (US-409).
 - `tb_du_cmd_fsm.v` guarda el payload del snapshot de `RUN → ILLEGAL` en `build/snapshot_sim.bin` (K = 256, 1757 B); la copia versionada está en `tools/tests/protocol/fixtures/` (US-409, AC2).
+- `tools/riscv_toolkit/session/debug_session.py`: `DebugSession(transport, timeouts)` con `conectar` (PING con 3 reintentos y chequeo de `PROTO_VERSION`), `ping`, `load`, `reset`, `step`, `dump`, `dump_mem`, `run` y `abort`; `NACK` como `ErrorNackDU` con mensaje legible que nombra el estado (lo averigua con un `DUMP` si hace falta), `ErrorRespuesta`, `ErrorVersion`; timeouts del protocolo §7.4 (`Timeouts`) y espera de `RUN` sin límite en lecturas cortas para que Ctrl+C la corte; ignora `NACK(PARIDAD)` durante `RUN`, descarta el `NACK` de un `ABORT` que llegó tarde, y no manda `LOAD`/`DUMP_MEM` a una DU en `RUN` (US-410, AC2, AC3).
+- `session/history.py` (`SnapshotHistory`: snapshots de la sesión con cursor) y `session/diff.py` (`diff(a, b) -> CambiosEstado` con PC, registros y memoria que cambiaron) (US-410).
+- CLI `rvdbg` como subcomando `dbg` (`cli/rvdbg.py`): acciones `ping`, `load`, `run`, `step [N]`, `dump`, `dump-mem`, `reset`, `abort` y `shell` (modo interactivo con la misma sesión); opciones `--port`, `--fake` y `--json`; `run` y `step` aceptan `--load`; Ctrl+C durante `run` manda `ABORT` (US-410, AC1–AC5).
+- `asm/demos/fibonacci.asm` y `asm/special/infinite_loop.asm` (US-410).
+- `tests/session/` (`test_debug_session.py` con `FakeTransport` y con transportes que inyectan errores, `test_history.py`, `test_diff.py`) y `tests/cli/test_rvdbg.py` (US-410).
+- `tools/scripts/verify_board.py`: por cada programa, LOAD → RUN → compara registros, memoria usada y motivo contra el golden model; `--step` corre todo con STEP y lo compara con RUN; carga los programas seguidos sin RESET; reporte Markdown con commit y SHA-256 del bitstream (`--reporte`, `--bitstream`); `--fake` para correrlo sin placa. Probado con `tests/scripts/test_verify_board.py` (US-411, AC1–AC4; falta la corrida en placa).
 
 ### Changed
 
+- `FakeTransport.read` duerme el `timeout` pedido cuando no hay nada para leer, como una placa que no contesta, para que la espera de `RUN` no gire en vacío (US-410).
+- `rvsim`: `volcado(regs, mem_usada)` pasa a ser público y lo usa también `rvdbg` (US-410).
+- `docs/guias/guia-riscv-toolkit.md`: secciones de `session/`, la CLI `dbg` y `verify_board.py` (US-410, US-411).
 - `python -m riscv_toolkit` usa argparse y despacha subcomandos; sin subcomando sigue mostrando la versión, y se agregó `--version` (US-107).
 - `identificar(palabra)` pasa del desensamblador a `isa/instrucciones.py` para que el golden model reconozca las mismas instrucciones legales (US-108).
 - Módulos UART: correcciones para dejar el lint en cero, sin cambio de comportamiento (constantes con el ancho de los contadores, `default` en las máquinas de estado, señal sin usar eliminada en `baudrate_gen`) (US-102).
