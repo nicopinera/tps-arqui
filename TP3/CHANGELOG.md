@@ -69,6 +69,12 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `docs/guias/guia-estudio-debug-unit.md`: §37 sobre la trama `MEM_DATA` (US-408).
 - `docs/guias/guia-caso-timing-debug-unit.md`: caso de estudio de la síntesis OOC de la DU (primer reporte, camino crítico por la longitud recalculada, el cambio a `r_len`/`r_pos_checksum`, antes y después: WNS 0,859 → 1,873 ns, 12 → 7 niveles de lógica).
 - `hw/scripts/synth_du_ooc.tcl` y `hw/constraints/du_ooc.xdc`: síntesis e implementación _out-of-context_ de `debug_unit` a 100 MHz en la xc7a35t, con reportes de utilización y timing en `hw/reports/du_ooc_*.rpt` (ADR-016).
+- `docs/guias/guia-riscv-toolkit.md`: mapa del software de PC (`isa`, `assembler`, `disasm`, `iss`, `protocol/comandos.py`, `cli`, `scripts`), cómo se conectan y cómo se prueban.
+- `tools/riscv_toolkit/protocol/codec.py`: `encode_cmd`, `encode_load`, `encode_dump_mem`, `encode_trama` y `checksum` (XOR); `FrameReader` arma tramas de bytes en pedazos y valida `A5`, tipo, longitud por tipo y checksum, con excepciones específicas (`ErrorChecksum`, `ErrorLongitud`, `ErrorTipo`, `ErrorTramaTruncada`, `ErrorPayload`) que descartan la trama y dejan seguir con la siguiente (US-409, AC1, AC3).
+- `protocol/snapshot.py`: `Snapshot`, `LatchIFID`, `LatchIDEX`, `LatchEXMEM`, `LatchMEMWB`, `RiesgosCiclo` y `MemRange` (`@dataclass(frozen=True)`), con `from_bytes` y `to_bytes` según ADR-017 (US-409, AC2).
+- `protocol/transport.py` (interfaz `Transport` como `typing.Protocol`), `serial_transport.py` (`pyserial` a 19200 8E1, detección de la Basys 3 por VID/PID `0403:6010`) y `fake_transport.py` (la Debug Unit respondida por el golden model, con las reglas de R-DU-1 y `simulado = True`) (US-409, AC4–AC6).
+- `tests/protocol/`: `test_codec.py`, `test_snapshot.py` (ejemplos §8.5 y §8.7, y la captura real `fixtures/snapshot_sim.bin`), `test_fake_transport.py` (RUN igual al golden model en los programas de `tests/iss/fixtures` y con `ILLEGAL`) y `test_serial_transport.py` (configuración del puerto con `serial` falso; solo `serial_transport.py` importa `serial`) (US-409).
+- `tb_du_cmd_fsm.v` guarda el payload del snapshot de `RUN → ILLEGAL` en `build/snapshot_sim.bin` (K = 256, 1757 B); la copia versionada está en `tools/tests/protocol/fixtures/` (US-409, AC2).
 
 ### Changed
 
