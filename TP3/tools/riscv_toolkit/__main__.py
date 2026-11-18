@@ -3,7 +3,7 @@
 import argparse
 from collections.abc import Callable
 
-from riscv_toolkit.cli import rvasm, rvsim
+from riscv_toolkit.cli import rvasm, rvdbg, rvsim
 
 # El proyecto no se instala (pyproject: `package = false`), así que no hay metadata de la que
 # leer la versión. shortcut: duplicada con `version` de pyproject.toml; mantenerlas iguales.
@@ -13,8 +13,8 @@ VERSION = "0.1.0"
 def main(argv: list[str] | None = None) -> int:
     """Corre el subcomando de `argv` (por defecto, el de la línea de comandos).
 
-    Sin subcomando muestra la versión. Hoy existen `asm` y `sim`; `dbg` y `gui` se agregan
-    en sus historias, cada uno con su `agregar_subcomando`.
+    Sin subcomando muestra la versión. Hoy existen `asm`, `sim` y `dbg`; `gui` se agrega en
+    su historia, con su `agregar_subcomando`.
     """
     parser = argparse.ArgumentParser(
         prog="python -m riscv_toolkit",
@@ -24,6 +24,7 @@ def main(argv: list[str] | None = None) -> int:
     subcomandos = parser.add_subparsers(title="subcomandos")
     rvasm.agregar_subcomando(subcomandos)
     rvsim.agregar_subcomando(subcomandos)
+    rvdbg.agregar_subcomando(subcomandos)
 
     args = parser.parse_args(argv)
     if not hasattr(args, "ejecutar"):
