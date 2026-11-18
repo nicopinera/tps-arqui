@@ -9,7 +9,7 @@ Mapa de todo el código Python del TP3 (`TP3/tools/`): qué hace cada paquete, c
 | Expresiones regulares  | [guia-regex.md](guia-regex.md) (las usa el lexer)        |
 | Protocolo con la placa | [`docs/protocolo.md`](../protocolo.md), ADR-003, ADR-017 |
 
-> **Estado.** Cubre lo hecho hasta US-409: `isa`, `assembler`, `disasm`, `iss`, `protocol/` (constantes, codec, snapshot y transportes), `cli` (`asm` y `sim`) y `scripts`. La sesión de depuración (US-410) y la GUI (Hito 5) se agregan cuando existan (§13).
+> **Estado.** Cubre lo hecho hasta US-411: `isa`, `assembler`, `disasm`, `iss`, `protocol/` (constantes, codec, snapshot y transportes), `session/` (la sesión de depuración), `cli` (`asm`, `sim` y `dbg`) y `scripts` (incluido `verify_board.py`). La GUI (Hito 5) se agrega cuando exista (§15).
 
 ---
 
@@ -23,7 +23,10 @@ El procesador en la FPGA solo entiende **palabras de 32 bits** en su IMEM y solo
 | Pasar de una palabra a texto (para mostrar qué hay en cada etapa) | `disasm/`                                         |
 | Saber qué **tendría** que dar un programa, sin hardware           | `iss/` (golden model)                             |
 | Que la PC y la Debug Unit usen los mismos números de protocolo    | `protocol/comandos.py` + `scripts/gen_du_defs.py` |
-| Usar todo eso desde la terminal                                   | `cli/` (`asm`, `sim`)                             |
+| Hablar con la Debug Unit por la UART (bytes ↔ objetos)            | `protocol/` (codec, snapshot, transportes)        |
+| Los casos de uso (cargar, correr, paso, volcar) como API          | `session/` (`DebugSession`)                       |
+| Usar todo eso desde la terminal                                   | `cli/` (`asm`, `sim`, `dbg`)                      |
+| Verificar la suite en la placa contra el golden model             | `scripts/verify_board.py`                         |
 
 ### El recorrido de un programa, hoy
 
@@ -31,12 +34,16 @@ El procesador en la FPGA solo entiende **palabras de 32 bits** en su IMEM y solo
                     ┌──────────── riscv_toolkit ─────────────┐
  prog.asm ──► ensamblar() ──► Imagen ──┬──► a_hex / a_bin / a_lst ──► .hex (tb), .bin, .lst
                                        │
-                                       └──► GoldenModel.run() ──► EstadoArquitectonico
-                                                                    ├──► pantalla (rvsim --dump)
-                                                                    └──► .expected (tb, a futuro)
+                                       ├──► GoldenModel.run() ──► EstadoArquitectonico
+                                       │                            ├──► pantalla (rvsim --dump)
+                                       │                            └──► .expected (tb, a futuro)
+                                       │
+                                       └──► DebugSession.load / run / step (US-410)
+                                              └──► codec ──► Transport ──► UART ──► placa
+                                                      ◄── Snapshot ◄── FrameReader ◄──┘
 ```
 
-Hoy el camino **termina en la PC**: ningún módulo del toolkit le habla todavía a la placa (el único que abre el puerto serie es `scripts/uart_echo_test.py`, una prueba de eco). Eso es justamente lo que agrega US-409.
+Hasta US-408 el camino **terminaba en la PC**. Desde US-409 y US-410 llega a la placa: `protocol/` traduce objetos a bytes (§12), `session/` arma los casos de uso (§13) y `verify_board.py` compara la placa contra el golden model (§14).
 
 **Analogía con un sistema real.** Es lo mismo que trae cualquier SDK de microcontrolador (por ejemplo el de un ESP32 o un STM32): un _assembler/compiler_, un _disassembler_ (`objdump`), un simulador de la ISA y un programa que habla con el _debugger_ por USB. Acá están todos hechos a mano y reducidos a las 33 instrucciones del TP.
 
@@ -56,9 +63,10 @@ TP3/tools/
 │   ├── assembler/          .asm → Imagen, y la Imagen a .hex/.bin/.lst
 │   ├── disasm/             palabra → texto
 │   ├── iss/                golden model y formato .expected
-│   ├── protocol/           constantes del protocolo con la Debug Unit
-│   └── cli/                subcomandos asm y sim
-├── scripts/                utilidades sueltas: gen_du_defs, uart_echo_test
+│   ├── protocol/           protocolo con la Debug Unit: constantes, codec, snapshot, transportes
+│   ├── session/            DebugSession, historial de snapshots y diff (US-410)
+│   └── cli/                subcomandos asm, sim y dbg
+├── scripts/                utilidades sueltas: gen_du_defs, uart_echo_test, verify_board
 └── tests/                  un subdirectorio por paquete, mismo nombre
 ```
 
@@ -91,7 +99,9 @@ def agregar_subcomando(subcomandos) -> None:   # registra "asm" y sus opciones
 def ejecutar(args) -> int:                       # hace el trabajo y devuelve el código de salida
 ```
 
-`__main__.py` solo llama a `args.ejecutar(args)`. Agregar `dbg` (US-410) o `gui` es sumar un módulo con esas dos funciones y una línea en `main()`.
+`__main__.py` solo llama a `args.ejecutar(args)`. Así se sumó `dbg` (US-410), y así se va a sumar `gui`: un módulo con esas dos funciones y una línea en `main()`.
+
+Los programas de assembly que no son tests unitarios viven fuera de `tools/`, en `TP3/asm/` (la carpeta de la suite, US-30x): hoy tiene `demos/fibonacci.asm` y `special/infinite_loop.asm`.
 
 ---
 
@@ -105,6 +115,9 @@ flowchart LR
     dis["disasm/"]
     iss["iss/<br/>(golden model)"]
     cli["cli/"]
+    proto["protocol/<br/>(codec, snapshot, transportes)"]
+    ses["session/<br/>(DebugSession)"]
+    vb["scripts/verify_board.py"]
     gen["scripts/gen_du_defs.py"]
     vh["hw/rtl/debug/du_defs.vh"]
 
@@ -116,6 +129,13 @@ flowchart LR
     protocol --> iss
     asm --> cli
     iss --> cli
+    protocol --> proto
+    iss -. "FakeTransport" .-> proto
+    proto --> ses
+    ses --> cli
+    dis --> cli
+    ses --> vb
+    iss --> vb
     protocol --> gen --> vh
 ```
 
@@ -361,6 +381,7 @@ Ojo con esto, confunde: hay un `Motivo` en `iss/golden_model.py` (`HALTED`, `ILL
 | --------------------------------------------- | ----------------------------------- | ---------------------------------------------------------------------- |
 | `uv run python -m riscv_toolkit asm prog.asm` | ensambla y escribe `prog.hex`       | también `-o archivo`, `-o -` (pantalla), `--format hex\|bin\|lst`      |
 | `uv run python -m riscv_toolkit sim prog.asm` | ensambla y corre en el golden model | `--dump` (registros y memoria), `--expect f.expected`, `--max-instr N` |
+| `uv run python -m riscv_toolkit dbg <acción>` | maneja la placa por la UART (§13)   | `--port`, `--fake`, `--json`; acciones `ping`, `load`, `run`, `step`…  |
 
 Convenciones de ambos, como cualquier herramienta Unix:
 
@@ -373,6 +394,7 @@ Convenciones de ambos, como cualquier herramienta Unix:
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `scripts/gen_du_defs.py`    | regenera `du_defs.vh` (§8)                                                                                                                                                       |
 | `scripts/uart_echo_test.py` | prueba de eco de la UART en la placa (US-401): manda bytes al azar a 19200 8E1 y verifica que vuelvan. Manda de a bloques porque el TX de la placa es 0,15 % más lento que el RX |
+| `scripts/verify_board.py`   | corre la suite en la placa y la compara contra el golden model (US-411, §14)                                                                                                    |
 
 Se corren como módulos (`uv run python -m scripts.gen_du_defs`) para que encuentren `riscv_toolkit` sin instalarlo.
 
@@ -480,7 +502,7 @@ snap.mem_usada       # {dirección en bytes: palabra}
 `Transport` es un `typing.Protocol`: una clase lo cumple si tiene los métodos, sin heredar (_duck typing_ que mypy verifica). La sesión recibe "algo que es un `Transport`" y no sabe si es la placa o el fake.
 
 - **`SerialTransport`** es el único módulo que importa `serial` (lo verifica un test). Abre a 19200 bps, paridad par, 1 stop. `write` espera a que los bytes salgan (`flush`), así el timeout de la respuesta no empieza a contar mientras todavía se manda un `LOAD` largo.
-- **`FakeTransport`** procesa los comandos dentro de `write` con las mismas reglas de estado que la DU (R-DU-1) y deja las respuestas para `read`. Diferencias con la placa: un `STEP` es una instrucción (no un ciclo), no hay riesgos, los latches son una aproximación (IF/ID = la próxima, ID/EX…MEM/WB = las tres anteriores) y un `RUN` que no termina en `max_instr` queda en `RUN` hasta un `ABORT`. Por eso su `simulado = True`, que pasa al `Snapshot` (`from_bytes(payload, simulado=transport.simulado)`).
+- **`FakeTransport`** procesa los comandos dentro de `write` con las mismas reglas de estado que la DU (R-DU-1) y deja las respuestas para `read`. Diferencias con la placa: un `STEP` es una instrucción (no un ciclo), no hay riesgos, los latches son una aproximación (IF/ID = la próxima, ID/EX…MEM/WB = las tres anteriores) y un `RUN` que no termina en `max_instr` queda en `RUN` hasta un `ABORT`. Si no hay nada para leer, `read` duerme el `timeout` pedido, como una placa que no contesta: así quien espera en un bucle (el `RUN` de la sesión) no gira en vacío. Por eso su `simulado = True`, que pasa al `Snapshot` (`from_bytes(payload, simulado=transport.simulado)`).
 
 ### 12.6 Errores comunes
 
@@ -491,16 +513,143 @@ snap.mem_usada       # {dirección en bytes: palabra}
 
 ---
 
-## 13. Lo que viene
+## 13. `session/` y `dbg`: los casos de uso (US-410)
 
-| US     | Paquete            | Qué agrega                                                                 |
-| ------ | ------------------ | -------------------------------------------------------------------------- |
-| US-410 | `session/`, `cli/` | `DebugSession` (ACK/NACK como excepciones, timeouts) y el subcomando `dbg` |
-| Hito 5 | `gui/`             | la GUI en Flet                                                             |
+### 13.1 Problema
+
+Con `protocol/` ya se puede hablar con la placa, pero cada uso repetiría lo mismo: codificar el comando, mandarlo, leer una trama, ver si es un `NACK`, si es del tipo que corresponde, decodificarla… La GUI, la CLI y `verify_board.py` tendrían tres copias, cada una con sus bugs. `DebugSession` lo escribe **una vez**:
+
+```python
+with DebugSession(SerialTransport()) as sesion:   # o FakeTransport()
+    sesion.conectar()                 # PING con reintentos + chequeo de versión
+    sesion.load(imagen.palabras)
+    snap = sesion.step()              # Snapshot, o una excepción con mensaje legible
+```
+
+Es una **fachada** (_facade_): una clase con métodos simples que esconde varias piezas (codec, `FrameReader`, transporte, timeouts).
+
+### 13.2 Cada método es una transacción
+
+| Método                  | Manda       | Espera                              | Devuelve   |
+| ----------------------- | ----------- | ----------------------------------- | ---------- |
+| `conectar()` / `ping()` | `?`         | `PING_INFO`                         | la versión |
+| `load(palabras)`        | `L N … XOR` | `ACK`                               | —          |
+| `reset()`               | `X`         | `ACK`                               | —          |
+| `step()` / `dump()`     | `S` / `D`   | `SNAPSHOT`                          | `Snapshot` |
+| `run()`                 | `R`         | `ACK` y después el `SNAPSHOT` final | `Snapshot` |
+| `abort()`               | `A`         | `SNAPSHOT` (motivo `ABORTED`)       | `Snapshot` |
+| `dump_mem(addr, n)`     | `M addr n`  | `MEM_DATA`                          | `MemRange` |
+
+Si llega otra cosa, el método **no devuelve**: lanza una excepción.
+
+| Excepción        | Cuándo                                                                        |
+| ---------------- | ----------------------------------------------------------------------------- |
+| `ErrorNackDU`    | la DU respondió `NACK`; trae `.comando`, `.codigo` y `.estado`                |
+| `ErrorRespuesta` | llegó una trama válida pero de otro tipo (la sesión quedó desincronizada)     |
+| `ErrorVersion`   | la placa habla otra `PROTO_VERSION`: bitstream y toolkit de commits distintos |
+| `TimeoutError`   | la placa no respondió a tiempo (AC3)                                          |
+| `ErrorTrama`     | llegó basura (del codec, §12.3); ya se descartó                               |
+
+**Por qué excepciones y no un código de retorno:** quien llama no puede "olvidarse" de revisar el `NACK`. Si no lo atrapa, el programa se corta con el mensaje.
+
+### 13.3 Mensajes legibles (AC2)
+
+Un `NACK(ERR_ESTADO)` solo trae el código, no el estado. Para decir "_No se puede ejecutar STEP: el procesador está detenido (HALTED). Cargá o reseteá el programa._", la sesión averigua el estado:
+
+- si el rechazado es `LOAD`, `RESET`, `DUMP` o `DUMP_MEM`, el estado es **`RUN`**: es el único que los rechaza (tabla §4.1 del protocolo);
+- si es `STEP`, `RUN` o `ABORT` hay varios posibles, y entonces **pregunta con un `DUMP`**, que no ejecuta nada y no se guarda en el historial.
+
+`mensaje_nack(comando, codigo, estado)` arma el texto; los otros códigos (`CHECKSUM`, `RANGO`…) tienen una frase fija que dice qué pasó y qué hacer.
+
+### 13.4 Timeouts y la espera de `RUN`
+
+`Timeouts` agrupa los tiempos del protocolo §7.4: `respuesta = 1 s` (ACK/NACK, PING, MEM_DATA), `snapshot = 2 s` (STEP, DUMP, ABORT), `run = None` (sin límite, ADR-010) y `sondeo = 0,2 s`.
+
+El `RUN` no tiene un timeout corto, porque un programa puede tardar lo que quiera. Pero un `read` bloqueado sin límite puede no dejar pasar el **Ctrl+C** (`KeyboardInterrupt`): en Windows, pyserial bloqueado a veces lo ignora. Por eso `run()` espera en un bucle de lecturas cortas (`sondeo`). Entre una y otra, Python revisa las señales y el Ctrl+C corta la espera. La DU sigue en `RUN`, y quien llamó decide mandar `abort()`; la CLI lo hace sola (AC5).
+
+Dos detalles del protocolo que `run()` y `abort()` resuelven:
+
+- **`NACK(ERR_PARIDAD)` durante `RUN`.** Un byte con ruido no corta la ejecución (§7.2): `run()` lo ignora y sigue esperando el snapshot.
+- **Carrera de `ABORT`.** Si el programa terminó solo justo antes del `ABORT`, llegan el snapshot final (HALTED) y después un `NACK(ESTADO)` por el `ABORT`. `abort()` devuelve el snapshot y **consume** el `NACK`, para que no quede como respuesta del próximo comando.
+
+### 13.5 Qué se reintenta y qué no
+
+Solo el `PING` de `conectar()`, hasta 3 veces: recién abierto el puerto puede haber basura en la línea. Los demás comandos **no son idempotentes**: repetir un `STEP` avanza dos ciclos, y repetir un `LOAD` borra lo que corría. Ante un error se informa y decide quien llama.
+
+### 13.6 Una guarda: no mandar argumentos a una DU que corre
+
+En `RUN`, la DU rechaza el byte `L` sin leer los argumentos (§4.1) y toma los que siguen (N, palabras, checksum) como **comandos sueltos**. Un `0x41` dentro de una palabra sería un `ABORT`. Por eso `load()` y `dump_mem()` primero se fijan en el estado: si es `RUN` lanzan `ErrorNackDU` sin mandar nada, y si es desconocido lo preguntan antes.
+
+### 13.7 `SnapshotHistory` y `diff`
+
+- **`sesion.historial`** guarda cada snapshot recibido desde el último `LOAD`/`RESET`, con un **cursor**, como el atrás y adelante de un navegador: `agregar` (el cursor salta al último), `anterior`, `siguiente`, `ir_a(i)`, `actual`. La GUI lo usa para volver a ver un ciclo sin pedírselo a la placa.
+- **`diff(a, b) -> CambiosEstado`** dice qué cambió entre dos snapshots: `pc`, `regs` y `memoria`, como `{posición: (antes, después)}`. Una palabra que no está en `mem_usada` vale 0, porque la DMEM arranca en 0. Los latches no se comparan: cambian en todos los ciclos. `bool(cambios)` es `False` si no cambió nada.
+
+### 13.8 La CLI `dbg` (rvdbg)
+
+```bash
+cd TP3/tools
+uv run python -m riscv_toolkit dbg ping
+uv run python -m riscv_toolkit dbg load ../asm/demos/fibonacci.asm
+uv run python -m riscv_toolkit dbg run                      # Ctrl+C → ABORT
+uv run python -m riscv_toolkit dbg step 5
+uv run python -m riscv_toolkit dbg dump-mem 0x0 12
+uv run python -m riscv_toolkit dbg --json dump              # para scripts
+uv run python -m riscv_toolkit dbg --fake run --load ../asm/demos/fibonacci.asm
+uv run python -m riscv_toolkit dbg --fake shell             # modo interactivo
+```
+
+- **Opciones antes de la acción:** `--port COM5`, `--fake`, `--json`.
+- **`--fake` y los procesos.** Con la placa, el estado vive en el hardware entre una invocación y otra. El `FakeTransport` vive en memoria y muere con el proceso: `dbg --fake load x && dbg --fake run` no anda (el segundo arranca en IDLE). Por eso `run` y `step` aceptan **`--load ARCHIVO`**, y existe `shell`.
+- **`shell`** reusa los **mismos** subparsers de argparse: lee un renglón, lo parte con `shlex` y lo despacha a la misma función que usa la línea de comandos. Hay una sola implementación de cada acción.
+- **`--json`** imprime un objeto por acción: `{"ok": true, ...datos}` o `{"ok": false, "error": "..."}`. Un snapshot sale con `dataclasses.asdict`, con `estado` y `motivo` por nombre y `mem_usada` como lista de `{"addr", "dato"}` (JSON no admite claves enteras).
+- **Salida de texto:** resumen (estado, motivo, ciclos, PC), registros y memoria (la misma función `volcado` que `rvsim --dump`), los cuatro latches con su instrucción desensamblada o `(burbuja)`, y los riesgos del ciclo si hay.
+- **Códigos de salida:** 0 si la acción anduvo, 1 ante cualquier error (NACK, timeout, archivo, puerto). Los errores van a stderr como `error: ...`.
 
 ---
 
-## 14. Preguntas de autoevaluación
+## 14. `scripts/verify_board.py`: la suite en la placa (US-411)
+
+```bash
+cd TP3/tools
+uv run python -m scripts.verify_board                                # toda TP3/asm/
+uv run python -m scripts.verify_board ../asm/demos --step            # también ciclo a ciclo
+uv run python -m scripts.verify_board --bitstream ../build/top.bit \
+    --reporte ../../docs/informe/datos/resultados_placa.md
+uv run python -m scripts.verify_board --fake tests/iss/fixtures ../asm   # sin placa
+```
+
+Para cada `.asm`:
+
+1. ensambla y lo corre en el **golden model**. Si ahí no termina (`infinite_loop.asm`) queda **OMITIDO**;
+2. **`LOAD` → `RUN`** en la placa y compara el snapshot final contra el golden model: registros, memoria usada (con claves: una palabra escrita de más es un bug aunque valga 0) y motivo;
+3. con `--step`: **`LOAD` → `STEP`…** hasta `HALTED`, y compara contra el resultado de `RUN` con `diff` (AC2). Corta a los `4·instrucciones + 10` pasos: el pipeline necesita más ciclos que instrucciones (llenado, stalls, flushes), pero no tantos.
+
+**No compara el PC**: en la placa queda congelado unos ciclos después del HALT, y en el golden model queda en el HALT.
+
+| AC  | Cómo lo cubre                                                                                                       |
+| --- | ------------------------------------------------------------------------------------------------------------------- |
+| AC1 | la fila "Pasan en RUN (North Star)" del reporte                                                                     |
+| AC2 | `--step`                                                                                                            |
+| AC3 | los programas se cargan uno tras otro **sin `RESET`**: con 5 o más, la corrida misma es la prueba de reprogramación |
+| AC4 | el reporte guarda el commit (`git describe --dirty`) y, con `--bitstream`, el SHA-256 del `.bit`                    |
+
+Un programa que falla, o que se cuelga (`--timeout-run`, 10 s por defecto; manda `ABORT` para dejar la placa lista), no corta la suite: se anota **FALLA** con el detalle y se sigue con el siguiente. Sale con 0 solo si no hubo fallas.
+
+Con `--fake` todo el script se prueba sin placa: es lo que hace `tests/scripts/test_verify_board.py`.
+
+---
+
+## 15. Lo que viene
+
+| US     | Qué falta                                                                                                                                |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| US-411 | la parte de hardware: integrar `riscv_core` (Hito 3) en `top.v`, repetir los testbenches de US-404…407 y correr `verify_board` en placa |
+| Hito 5 | `gui/`: la GUI en Flet, sobre `DebugSession`, `historial` y `diff`                                                                        |
+
+---
+
+## 16. Preguntas de autoevaluación
 
 1. ¿Por qué el golden model recibe `imagen.palabras` y no el texto `.asm` ni la `Imagen` entera? ¿Qué se gana con esa separación?
 2. Si cambiás el valor de `Comando.DUMP_MEM` en `comandos.py` y no hacés nada más, ¿qué falla primero y por qué es mejor que falle ahí y no en la placa?
@@ -509,3 +658,7 @@ snap.mem_usada       # {dirección en bytes: palabra}
 5. ¿Qué diferencia hay entre el `.hex` y el `.bin` de la misma `Imagen`, y quién consume cada uno?
 6. ¿Por qué `FrameReader` valida la longitud apenas tiene la cabecera, antes de esperar el payload? ¿Qué pasaría si no lo hiciera y llegara `A5 03 FF FF`?
 7. ¿Por qué `encode_load` rechaza N = 0 en la PC, pero `encode_dump_mem` deja pasar un rango que se sale de la DMEM?
+8. ¿Por qué `DebugSession.run()` espera el snapshot en lecturas de 0,2 s en vez de un solo `read` sin timeout, si igual no tiene límite?
+9. `conectar()` reintenta el `PING` pero `step()` no se reintenta nunca. ¿Qué propiedad tiene uno y no el otro, y qué pasaría si se reintentara un `STEP` que en realidad sí llegó?
+10. ¿Por qué `load()` se niega a mandar la trama si la DU está en `RUN`, si la DU igual la rechazaría con un `NACK`?
+11. `rvdbg --fake load x.asm && rvdbg --fake run` falla, pero con la placa real funciona. ¿Por qué?
