@@ -1462,7 +1462,6 @@ treeView-beta
   - **AC3.** 5 reprogramaciones consecutivas correctas.
   - **AC4.** El bitstream usado se guarda con su hash de commit para poder reproducir la prueba.
   - **AC5.** Los testbenches de US-404 a US-407 pasan en simulación con el núcleo real.
-- **Testing Mínimo:** el propio script.
 
 ---
 
