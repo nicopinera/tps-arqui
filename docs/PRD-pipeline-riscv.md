@@ -1444,26 +1444,6 @@ treeView-beta
   - **AC4.** `--json` produce salida parseable usada por `verify_board.py`.
   - **AC5.** Ctrl+C durante `rvdbg run` sobre `infinite_loop.asm` envía `ABORT` y muestra el snapshot con motivo `ABORTED`.
 - **Testing Mínimo:** `test_debug_session.py` con `FakeTransport` y con un transporte que inyecta errores; `test_history.py` y `test_diff.py`.
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "TP3/"
-        "tools/"
-            "riscv_toolkit/"
-                "session/"
-                    "debug_session.py"
-                    "history.py"
-                    "diff.py"
-                "cli/"
-                    "main.py"
-            "riscv_toolkit/__main__.py — (subcomando dbg)"
-            "tests/"
-                "session/"
-                    "test_debug_session.py"
-                    "test_history.py"
-                    "test_diff.py"
-```
 
 ##### US-411 — Validación de Extremo a Extremo en Placa
 
@@ -1483,20 +1463,6 @@ treeView-beta
   - **AC4.** El bitstream usado se guarda con su hash de commit para poder reproducir la prueba.
   - **AC5.** Los testbenches de US-404 a US-407 pasan en simulación con el núcleo real.
 - **Testing Mínimo:** el propio script.
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "tps-arqui/"
-        "TP3/"
-            "tools/"
-                "scripts/"
-                    "verify_board.py"
-        "docs/"
-            "informe/"
-                "datos/"
-                    "resultados_placa.md"
-```
 
 ---
 
