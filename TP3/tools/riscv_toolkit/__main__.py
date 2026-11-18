@@ -13,8 +13,7 @@ VERSION = "0.1.0"
 def main(argv: list[str] | None = None) -> int:
     """Corre el subcomando de `argv` (por defecto, el de la línea de comandos).
 
-    Sin subcomando muestra la versión. Hoy existen `asm`, `sim` y `dbg`; `gui` se agrega en
-    su historia, con su `agregar_subcomando`.
+    Sin subcomando muestra la versión. Subcomandos: `asm`, `sim`, `dbg` y `ui` (la GUI).
     """
     parser = argparse.ArgumentParser(
         prog="python -m riscv_toolkit",
@@ -25,6 +24,8 @@ def main(argv: list[str] | None = None) -> int:
     rvasm.agregar_subcomando(subcomandos)
     rvsim.agregar_subcomando(subcomandos)
     rvdbg.agregar_subcomando(subcomandos)
+    gui = subcomandos.add_parser("ui", help="interfaz gráfica (Flet)")
+    gui.set_defaults(ejecutar=_ui)
 
     args = parser.parse_args(argv)
     if not hasattr(args, "ejecutar"):
@@ -32,6 +33,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     ejecutar: Callable[[argparse.Namespace], int] = args.ejecutar
     return ejecutar(args)
+
+
+def _ui(_args: argparse.Namespace) -> int:
+    # Importar Flet tarda ~0,3 s: solo cuando se pide la GUI, no en cada `asm` o `dbg`.
+    from riscv_toolkit.ui import app
+
+    return app.main()
 
 
 if __name__ == "__main__":
