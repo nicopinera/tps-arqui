@@ -1,0 +1,71 @@
+"""Estado de la GUI, independiente de Flet (US-501, ADR-012).
+
+Acá se decide qué se puede hacer; las vistas solo copian el resultado a los controles. Así la
+regla vive en un solo lugar, se prueba con pytest sin abrir ventanas, y los botones y los
+atajos de teclado no pueden contradecirse (AC3). No importa Flet (PRD §4.3).
+"""
+
+from dataclasses import dataclass
+from enum import Enum, auto
+
+from riscv_toolkit.protocol.comandos import EstadoDU
+
+
+class Accion(Enum):
+    """Los controles de ejecución. "Paso N veces" usa la misma regla que PASO."""
+
+    CARGAR = auto()
+    CORRER = auto()
+    PASO = auto()
+    ABORTAR = auto()
+    RESET = auto()
+
+
+@dataclass(frozen=True)
+class EstadoUI:
+    """Lo que la GUI sabe en un momento dado. Inmutable: cada cambio arma uno nuevo."""
+
+    conectado: bool = False
+    # Estado de la DU según la última respuesta; None si todavía no se sabe (recién conectado).
+    estado_du: EstadoDU | None = None
+    # Hay un programa ensamblado sin errores y el texto no cambió desde entonces (AC2).
+    imagen_valida: bool = False
+    # Hay una operación en curso en el worker: STEP, LOAD, el RUN mismo, … (paso 3).
+    ocupado: bool = False
+
+
+def acciones_habilitadas(estado: EstadoUI) -> frozenset[Accion]:
+    """Las acciones que se pueden pedir ahora: espejo de R-DU-1 (protocolo §4.1).
+
+    | Estado de la DU         | Habilitadas                                     |
+    | ----------------------- | ----------------------------------------------- |
+    | IDLE, HALTED            | CARGAR, RESET                                   |
+    | READY, STEPPING         | CARGAR, CORRER, PASO, RESET                     |
+    | RUN                     | ABORTAR                                         |
+    | LOADING, DUMPING, None  | ninguna (transitorios, o todavía no se sabe)    |
+
+    Además:
+    - Desconectado: ninguna.
+    - CARGAR exige `imagen_valida` (AC2).
+    - `ocupado`: ninguna, salvo ABORTAR en RUN. Durante un RUN el worker está ocupado
+      esperando el snapshot final, y Abortar es justo lo que tiene que poder apretarse (AC4).
+    """
+    if not estado.conectado:
+        return frozenset()
+    # Antes que `ocupado`: en RUN el worker siempre está ocupado esperando, y ABORT es la
+    # única salida.
+    if estado.estado_du is EstadoDU.RUN:
+        return frozenset({Accion.ABORTAR})
+    if estado.ocupado:
+        return frozenset()
+
+    match estado.estado_du:
+        case EstadoDU.IDLE | EstadoDU.HALTED:
+            acciones = {Accion.CARGAR, Accion.RESET}
+        case EstadoDU.READY | EstadoDU.STEPPING:
+            acciones = {Accion.CARGAR, Accion.CORRER, Accion.PASO, Accion.RESET}
+        case _:  # LOADING, DUMPING o None
+            return frozenset()
+    if not estado.imagen_valida:
+        acciones.discard(Accion.CARGAR)
+    return frozenset(acciones)
