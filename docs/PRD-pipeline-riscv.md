@@ -1426,25 +1426,6 @@ treeView-beta
   - **AC5.** Solo `serial_transport.py` importa `serial`.
   - **AC6.** `SerialTransport` abre el puerto a 19200 bps, paridad par, 1 stop, 8 bits (ADR-002).
 - **Testing Mínimo:** `test_codec.py`, `test_snapshot.py`, `test_fake_transport.py`.
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "TP3/"
-        "tools/"
-            "riscv_toolkit/"
-                "protocol/"
-                    "codec.py"
-                    "snapshot.py"
-                    "transport.py"
-                    "serial_transport.py"
-                    "fake_transport.py"
-            "tests/"
-                "protocol/"
-                    "test_codec.py"
-                    "test_snapshot.py"
-                    "test_fake_transport.py"
-```
 
 ##### US-410 — Sesión de Depuración y CLI
 
