@@ -1497,25 +1497,6 @@ treeView-beta
   - **AC5.** La línea del programa correspondiente a la instrucción en IF (o en WB, configurable) se resalta en el editor tras cada paso (usa `mapa_lineas` de US-106).
   - **AC6.** Un programa que termina en una instrucción ilegal muestra el motivo `ILLEGAL` y resalta la línea de esa instrucción.
 - **Testing Mínimo:** manual guiado con checklist en `docs/manual/checklist_ui.md`; pruebas automáticas de la lógica de habilitación de botones si el framework lo permite.
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "tps-arqui/"
-        "TP3/"
-            "tools/"
-                "riscv_toolkit/"
-                    "ui/"
-                        "app.py"
-                        "state.py — (estado de la UI, independiente del framework)"
-                        "views/"
-                            "connection_bar.py"
-                            "editor_view.py"
-                            "controls_view.py"
-        "docs/"
-            "manual/"
-                "checklist_ui.md"
-```
 
 ##### US-502 — Vista del Pipeline y Detalle de Latches
 
@@ -1546,18 +1527,6 @@ treeView-beta
   - **AC4.** Todos los campos de los 4 latches son visibles con su nombre.
   - **AC5.** La columna IF muestra la instrucción correcta también justo después de un salto tomado (la del destino).
 - **Testing Mínimo:** manual con los programas de `asm/tests/hazards/`; captura de pantalla de cada caso para el informe; test unitario del mapeo columna → instrucción.
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "TP3/"
-        "tools/"
-            "riscv_toolkit/"
-                "ui/"
-                    "views/"
-                        "pipeline_view.py"
-                        "latch_detail_view.py"
-```
 
 ##### US-503 — Carta de Pipeline (Instrucciones × Ciclos)
 
@@ -1573,20 +1542,6 @@ treeView-beta
   - **AC2.** La carta del programa de 10 instrucciones de US-103 AC4 coincide con la dibujada a mano.
   - **AC3.** Una instrucción dentro de un loop aparece en filas distintas por cada iteración.
 - **Testing Mínimo:** test unitario que arma la carta desde un historial sintético; captura para el informe.
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "TP3/"
-        "tools/"
-            "riscv_toolkit/"
-                "ui/"
-                    "views/"
-                        "pipeline_chart_view.py"
-            "tests/"
-                "ui/"
-                    "test_pipeline_chart.py"
-```
 
 #### Épica H5-E2: Estado Arquitectónico e Historial
 
@@ -1603,18 +1558,6 @@ treeView-beta
   - **AC2.** Un `sb` resalta la palabra afectada y el byte cambiado.
   - **AC3.** La vista de memoria muestra solo la memoria usada por defecto, y un rango pedido con `DUMP_MEM` se muestra aparte, marcado como "leído a pedido".
 - **Testing Mínimo:** manual (el test de `diff.py` ya existe desde US-410).
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "TP3/"
-        "tools/"
-            "riscv_toolkit/"
-                "ui/"
-                    "views/"
-                        "registers_view.py"
-                        "memory_view.py"
-```
 
 ##### US-505 — Historial de Pasos, Exportación y Verificación contra Golden Model
 
@@ -1630,23 +1573,6 @@ treeView-beta
   - **AC2.** Una sesión exportada se reabre y se navega igual que en vivo.
   - **AC3.** Verificar sobre un programa correcto indica coincidencia; alterando a mano un valor en un snapshot de prueba, muestra la diferencia.
 - **Testing Mínimo:** `test_export_import.py` (la navegación del historial ya se prueba en `test_history.py`, US-410); manual para la vista.
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "TP3/"
-        "tools/"
-            "riscv_toolkit/"
-                "ui/"
-                    "views/"
-                        "timeline_view.py"
-                        "verify_view.py"
-                "session/"
-                    "export.py"
-            "tests/"
-                "session/"
-                    "test_export_import.py"
-```
 
 ---
 
