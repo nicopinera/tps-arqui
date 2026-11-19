@@ -25,6 +25,7 @@ def main(argv: list[str] | None = None) -> int:
     rvsim.agregar_subcomando(subcomandos)
     rvdbg.agregar_subcomando(subcomandos)
     gui = subcomandos.add_parser("ui", help="interfaz gráfica (Flet)")
+    gui.add_argument("--fake", action="store_true", help="arrancar en modo simulado (sin placa)")
     gui.set_defaults(ejecutar=_ui)
 
     args = parser.parse_args(argv)
@@ -35,11 +36,11 @@ def main(argv: list[str] | None = None) -> int:
     return ejecutar(args)
 
 
-def _ui(_args: argparse.Namespace) -> int:
+def _ui(args: argparse.Namespace) -> int:
     # Importar Flet tarda ~0,3 s: solo cuando se pide la GUI, no en cada `asm` o `dbg`.
     from riscv_toolkit.ui import app
 
-    return app.main()
+    return app.main(fake=args.fake)
 
 
 if __name__ == "__main__":
