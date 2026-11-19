@@ -14,7 +14,7 @@
 //
 // - Senales de riesgo: en cada ciclo del lazo, o_flush_if_id/o_flush_id_ex coinciden con el
 //   jal en ID y el beq en EX; o_fwd_a/o_fwd_b coinciden con el forwarding calculado a partir de
-//   los buses de los latches; o_stall = 0 (hasta US-302).
+//   los buses de los latches; o_stall = 0 (el lazo no tiene loads).
 // - Layout de los buses de latches (riscv_core.md 4): campos del addi, el beq y el sw.
 // - AC6 (ABORT): con i_stop_fetch = 1 el pipeline queda vacio en 3 ciclos o menos, el PC no
 //   cambia y la instruccion que estaba en ID no escribe; lo que estaba en EX, MEM y WB si.
@@ -23,6 +23,9 @@
 // - i_flush_all (con i_enable = 0): PC, latches, banco y o_halted en 0; no toca el bitmap ni
 //   la DMEM. i_reset ademas borra el bitmap.
 // - La IMEM se carga por i_imem_we con i_enable = 0.
+// - Load-use (US-302): cantidad exacta de ciclos con o_stall = 1 en programas chicos (1 si la
+//   instruccion siguiente usa el registro cargado; 0 si hay una en el medio, si no lo lee o si
+//   es x0).
 module tb_core_control;
     `include "tb_utils.vh"
 
@@ -43,6 +46,16 @@ module tb_core_control;
     localparam [31:0] W_ADDI5 = 32'h0050_0113;  // addi x2, x0, 5
     localparam [31:0] W_NOP = 32'h0000_0013;
     localparam [31:0] W_SW = 32'h0020_2823;  // sw x2, 0x10(x0)
+    // Load-use
+    localparam [31:0] W_LW_X1 = 32'h0001_2083;  // lw x1, 0(x2)
+    localparam [31:0] W_ADD_X1 = 32'h0040_81B3;  // add x3, x1, x4
+    localparam [31:0] W_INDEP = 32'h0010_0293;  // addi x5, x0, 1
+    localparam [31:0] W_LUI_X1 = 32'h1234_50B7;  // lui x1, 0x12345
+    localparam [31:0] W_SW_X1 = 32'h0011_2223;  // sw x1, 4(x2)
+    localparam [31:0] W_LW_X0 = 32'h0001_2003;  // lw x0, 0(x2)
+    localparam [31:0] W_ADD_X0 = 32'h0000_02B3;  // add x5, x0, x0
+    localparam [31:0] W_LW_X5 = 32'h0001_2283;  // lw x5, 0(x2)
+    localparam [31:0] W_ADDI_IMM5 = 32'h0051_8393;  // addi x7, x3, 5: los bits de rs2 valen 5
 
     // Bits de los buses (riscv_core.md 4)
     localparam IF_ID_VALID = 96;
@@ -95,6 +108,7 @@ module tb_core_control;
 
     integer              k;
     integer              n_addi;
+    integer              n_stalls;
     integer              ciclos;
     reg                  r_visto_beq;
     reg                  r_visto_jal;
@@ -181,6 +195,29 @@ module tb_core_control;
         end
     endtask
 
+    // Carga un programa, lo corre hasta o_halted y verifica cuantos ciclos tuvo o_stall = 1.
+    task contar_stalls;
+        input [255:0] nombre;
+        input [31:0] p0, p1, p2, p3;
+        input integer esperado;
+        begin
+            cargar(p0, p1, p2, p3, HALT_WORD, HALT_WORD);
+            r_flush_all = 1'b1;
+            ciclo;
+            r_flush_all = 1'b0;
+            r_enable    = 1'b1;
+            n_stalls    = 0;
+            ciclos      = 0;
+            while (!w_halted && ciclos < 100) begin
+                #1 if (w_stall) n_stalls = n_stalls + 1;
+                ciclo;
+                ciclos = ciclos + 1;
+            end
+            r_enable = 1'b0;
+            check_eq(nombre, n_stalls, esperado);
+        end
+    endtask
+
     task leer_reg;
         input [4:0] n;
         begin
@@ -210,7 +247,7 @@ module tb_core_control;
         for (ciclos = 0; ciclos < CICLOS_LAZO; ciclos = ciclos + 1) begin
             #1;
             // Senales de riesgo del ciclo
-            check_eq("o_stall = 0", {31'd0, w_stall}, 32'd0);
+            check_eq("o_stall = 0 (sin loads)", {31'd0, w_stall}, 32'd0);
             check_eq("o_fwd_a segun los latches", {30'd0, w_fwd_a}, {30'd0, fwd_esperado(w_id_ex[164:160])});
             check_eq("o_fwd_b segun los latches", {30'd0, w_fwd_b}, {30'd0, fwd_esperado(w_id_ex[172:168])});
             check_eq("flush_id_ex = beq en EX", {31'd0, w_flush_id_ex},
@@ -380,6 +417,17 @@ module tb_core_control;
         check_eq("vuelve a terminar", {31'd0, w_halted}, 32'd1);
         leer_reg(5'd2);
         check_eq("vuelve a calcular x2", w_dbg_reg_data, 32'd5);
+
+        // =====================================================================================
+        // Load-use (US-302): ciclos de stall
+        // =====================================================================================
+        contar_stalls("lw x1 + add x3,x1: 1 stall", W_LW_X1, W_ADD_X1, HALT_WORD, HALT_WORD, 1);
+        contar_stalls("lw + indep + add: 0 stalls", W_LW_X1, W_INDEP, W_ADD_X1, HALT_WORD, 0);
+        contar_stalls("lw x1 + lui x1: 0 stalls", W_LW_X1, W_LUI_X1, HALT_WORD, HALT_WORD, 0);
+        contar_stalls("lw x1 + sw x1: 1 stall", W_LW_X1, W_SW_X1, HALT_WORD, HALT_WORD, 1);
+        contar_stalls("lw x0 + add x0,x0: 0 stalls", W_LW_X0, W_ADD_X0, HALT_WORD, HALT_WORD, 0);
+        contar_stalls("lw x5 + addi (imm 5): 0", W_LW_X5, W_ADDI_IMM5, HALT_WORD, HALT_WORD, 0);
+        contar_stalls("lw x1 + add + add: 1 stall", W_LW_X1, W_ADD_X1, W_ADD_X1, HALT_WORD, 1);
 
         tb_finish;
     end
