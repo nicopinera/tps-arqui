@@ -66,6 +66,12 @@ files = ["riscv_toolkit", "scripts", "tests"]
 explicit_package_bases = true
 mypy_path = "."
 
+# Flet 1.0 deja varios métodos sin anotar (`focus`, `window.destroy`, `NumbersOnlyInputFilter`):
+# en la GUI se permite llamarlos. El resto del código sigue en strict.
+[[tool.mypy.overrides]]
+module = ["riscv_toolkit.ui.*"]
+disallow_untyped_calls = false
+
 # --- pytest y cobertura ------------------------------------------------------------------
 
 [tool.pytest.ini_options]
