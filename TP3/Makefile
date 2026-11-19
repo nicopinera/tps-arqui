@@ -95,18 +95,18 @@ sim-programs:
 		if ! (cd $(TOOLS_DIR) && uv run python -m riscv_toolkit asm $$src -o $$out.hex > /dev/null 2>&1 \
 				&& uv run python -m riscv_toolkit sim $$src --expect $$out.expected > /dev/null 2>&1); then \
 			total=$$((total + 1)); failed=$$((failed + 1)); \
-			printf '  FAIL  %-26s no ensambla o no termina en el golden model\n' $$p; continue; \
+			printf '  FAIL  %-28s no ensambla o no termina en el golden model\n' $$p; continue; \
 		fi; \
 		for modo in fijo aleatorio; do \
 			total=$$((total + 1)); \
 			if [ $$modo = aleatorio ]; then extra="+ENABLE_ALEATORIO"; else extra=""; fi; \
 			if QUIET=1 HEX=$$out.hex EXPECTED=$$out.expected ARGS="$$extra" \
 					bash hw/scripts/sim.sh tb_core_programs > /dev/null 2>&1; then \
-				printf '  PASS  %-26s enable %s\n' $$p $$modo; \
+				printf '  PASS  %-28s enable %s\n' $$p $$modo; \
 			else \
 				failed=$$((failed + 1)); \
 				cp $(BUILD_DIR)/tb_core_programs.log $$out.$$modo.log; \
-				printf '  FAIL  %-26s enable %s   (ver %s)\n' $$p $$modo $(BUILD_DIR)/programs/$$p.$$modo.log; \
+				printf '  FAIL  %-28s enable %s   (ver %s)\n' $$p $$modo $(BUILD_DIR)/programs/$$p.$$modo.log; \
 			fi; \
 		done; \
 	done; \
