@@ -28,6 +28,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, fields, replace
 
 from riscv_toolkit.disasm.disassembler import desensamblar
+from riscv_toolkit.isa.formatos import decode_j
 from riscv_toolkit.isa.instrucciones import HALT_OPCODE, HALT_WORD, identificar
 from riscv_toolkit.protocol.comandos import EstadoDU
 from riscv_toolkit.protocol.snapshot import (
@@ -59,6 +60,7 @@ class Columna:
     anulada: bool = False  # flush: no va a terminar (se tacha)
     congelada: bool = False  # stall: el ciclo que viene sigue acá
     marcas: tuple[str, ...] = ()  # forwarding: "A ← EX/MEM" en EX, "→ A" en la fuente
+    palabra: int | None = None  # la instrucción en binario (None: burbuja o desconocida)
 
 
 def _columna(etapa: str, valid: bool, pc: int, instr: int) -> Columna:
@@ -70,6 +72,7 @@ def _columna(etapa: str, valid: bool, pc: int, instr: int) -> Columna:
         pc=pc,
         texto=desensamblar(instr, pc),
         burbuja=False,
+        palabra=instr,
         halt=halt,
         ilegal=not halt and identificar(instr) is None,
     )
@@ -148,3 +151,73 @@ def campos_latch(latch: Latch) -> list[tuple[str, str, str]]:
             hexa, decimal = f"0x{valor:x}", str(valor)
         filas.append((f.name, hexa, decimal))
     return filas
+
+
+# --- "Qué pasó en este ciclo" (debajo de las etapas) ----------------------------------------
+
+_JAL = 0b1101111
+_MASCARA = 0xFFFFFFFF
+
+
+def destino_salto(snapshot: Snapshot) -> int | None:
+    """A dónde salta lo que provoca el flush de este ciclo; None si no hay salto o es jalr.
+
+    - flush de ID/EX: un branch tomado (o `jalr`) en EX: `pc + imm` de ID/EX.
+    - solo flush de IF/ID: un `jal` en ID: `pc + imm` de IF/ID.
+    `jalr` va a `(rs1 + imm) & ~1` con rs1 quizás adelantado: no se puede deducir del latch.
+    """
+    r, idex, ifid = snapshot.riesgos, snapshot.id_ex, snapshot.if_id
+    if r.flush_id_ex:
+        return None if idex.jalr else (idex.pc + idex.imm) & _MASCARA
+    if r.flush_if_id and ifid.instr & 0x7F == _JAL:
+        return (ifid.pc + decode_j(ifid.instr).imm) & _MASCARA
+    return None
+
+
+def senales(snapshot: Snapshot) -> list[tuple[str, bool]]:
+    """Las salidas de la Hazard Unit y la Forwarding Unit, como chips: (texto, activa)."""
+    r = snapshot.riesgos
+    return [
+        (f"stall = {int(r.stall)}", r.stall),
+        (f"flush_if_id = {int(r.flush_if_id)}", r.flush_if_id),
+        (f"flush_id_ex = {int(r.flush_id_ex)}", r.flush_id_ex),
+        (f"fwd_a = {r.fwd_a:02b}", r.fwd_a != 0),
+        (f"fwd_b = {r.fwd_b:02b}", r.fwd_b != 0),
+    ]
+
+
+def explicar(snapshot: Snapshot, columnas: list[Columna]) -> list[str]:
+    """Una oración por cosa que pasó en el ciclo, armada con las señales del snapshot."""
+    c = {col.etapa: col for col in columnas}
+    r = snapshot.riesgos
+    frases = []
+    if snapshot.motivo is not None:
+        frases.append(f"Terminó: {snapshot.motivo.name}. El núcleo está congelado.")
+    if r.stall:
+        frases.append(
+            f"Load-use: «{c['EX'].texto}» está en EX y todavía no leyó la memoria, y "
+            f"«{c['ID'].texto}» en ID necesita ese dato. IF e ID se congelan (el ciclo que "
+            "viene muestran lo mismo) y entra una burbuja a EX."
+        )
+    destino = destino_salto(snapshot)
+    hacia = f" → 0x{destino:x}" if destino is not None else ""
+    if r.flush_id_ex:
+        frases.append(
+            f"«{c['EX'].texto}» en EX salta (tomado{hacia}): lo que entró detrás, "
+            f"«{c['ID'].texto}» en ID y «{c['IF'].texto}» en IF, se descarta (flush)."
+        )
+    elif r.flush_if_id:
+        frases.append(
+            f"«{c['ID'].texto}» salta desde ID{hacia}: se descarta «{c['IF'].texto}», "
+            "que se buscó de más (flush de IF/ID)."
+        )
+    for operando, fwd, campo in (("A", r.fwd_a, "rs1_data"), ("B", r.fwd_b, "rs2_data")):
+        if fwd in _FUENTE_FWD:
+            etapa, latch = _FUENTE_FWD[fwd]
+            frases.append(
+                f"Forwarding {operando}: EX toma el operando de {latch} («{c[etapa].texto}», "
+                f"que todavía no escribió el registro). El {campo} de ID/EX es un valor viejo."
+            )
+    if not frases:
+        frases.append("Sin riesgos: cada instrucción avanza una etapa.")
+    return frases
