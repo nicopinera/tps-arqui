@@ -18,7 +18,7 @@ BUILD_DIR := build
 # tb_core_programs necesita un programa: lo corre sim-programs, no sim-all
 TB_NAMES  := $(filter-out tb_core_programs,$(sort $(basename $(notdir $(shell find hw/tb -type f -name 'tb_*.v' 2>/dev/null)))))
 # Programas que corre sim-programs, como <carpeta>/<nombre> relativo a asm/tests
-PROG_DIRS := h2 hazards
+PROG_DIRS := h2 hazards instr
 PROGRAMS  := $(sort $(patsubst asm/tests/%.asm,%,$(foreach d,$(PROG_DIRS),$(wildcard asm/tests/$(d)/*.asm))))
 UV_RUN := cd $(TOOLS_DIR) && uv run
 
@@ -34,7 +34,7 @@ help:
 	@echo "       EXPECTED=<ruta>             estado final del golden model (+EXPECTED)"
 	@echo "       ARGS=\"+X +Y=1\"              plusargs extra"
 	@echo "  make sim-all                   Corre todos los hw/tb/**/tb_*.v (salvo tb_core_programs) y resume el resultado"
-	@echo "  make sim-programs              Ensambla asm/tests/{h2,hazards}, genera el .expected y corre cada programa en el nucleo,"
+	@echo "  make sim-programs              Ensambla asm/tests/{h2,hazards,instr}, genera el .expected y corre cada programa en el nucleo,"
 	@echo "                                 con enable fijo y con enable aleatorio"
 	@echo "  make synth-ooc                 Sintesis fuera de contexto de hw/rtl/core con Vivado (recursos y latches)"
 	@echo "       MOD=\"alu data_mem\"        solo esos modulos (por defecto, todos)"
@@ -83,7 +83,7 @@ sim-all:
 	if [ $$total -eq 0 ]; then echo "No se encontraron testbenches en hw/tb"; exit 1; fi; \
 	[ $$failed -eq 0 ]
 
-# Programas de asm/tests/h2 y asm/tests/hazards en el nucleo completo (US-210, US-301). Para cada uno: rvasm -> .hex,
+# Programas de asm/tests/{h2,hazards,instr} en el nucleo completo (US-210, US-301, US-304). Para cada uno: rvasm -> .hex,
 # rvsim --expect -> .expected (golden model) y tb_core_programs con enable fijo y con enable
 # aleatorio (AC4). Deja todo en build/programs/.
 sim-programs:
