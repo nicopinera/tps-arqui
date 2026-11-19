@@ -31,21 +31,20 @@ from pathlib import Path
 
 from riscv_toolkit.assembler.assembler import ensamblar
 from riscv_toolkit.assembler.errores import ErrorEnsamblado
-from riscv_toolkit.iss.golden_model import EstadoArquitectonico, GoldenModel
+from riscv_toolkit.iss.golden_model import GoldenModel
 from riscv_toolkit.iss.golden_model import Motivo as MotivoISS
 from riscv_toolkit.protocol.codec import ErrorTrama
-from riscv_toolkit.protocol.comandos import EstadoDU, Motivo
+from riscv_toolkit.protocol.comandos import EstadoDU
 from riscv_toolkit.protocol.fake_transport import FakeTransport
 from riscv_toolkit.protocol.serial_transport import ErrorPuerto, SerialTransport
 from riscv_toolkit.protocol.snapshot import Snapshot
 from riscv_toolkit.protocol.transport import Transport
 from riscv_toolkit.session.debug_session import DebugSession, ErrorSesion, Timeouts
 from riscv_toolkit.session.diff import diff
+from riscv_toolkit.session.verificar import MAX_INSTR, comparar, nombre_motivo
 
 SUITE = Path(__file__).resolve().parents[2] / "asm"  # TP3/asm/
-_MAX_INSTR = 100_000  # como rvsim: más es un loop infinito
 _TIMEOUT_RUN_S = 10.0  # un programa de la suite termina en microsegundos; más es un cuelgue
-_MOTIVOS = {MotivoISS.HALTED: Motivo.HALTED, MotivoISS.ILLEGAL: Motivo.ILLEGAL}
 
 PASA, FALLA, OMITIDO = "PASA", "FALLA", "OMITIDO"
 
@@ -64,43 +63,19 @@ class Resultado:
 # --- Comparaciones -------------------------------------------------------------------------
 
 
-def comparar(snap: Snapshot, esperado: EstadoArquitectonico) -> list[str]:
-    """Diferencias entre el snapshot de la placa y el golden model (vacía si coinciden)."""
-    diferencias = []
-    motivo = _MOTIVOS.get(esperado.motivo)
-    if snap.motivo is not motivo:
-        diferencias.append(f"motivo {_nombre(snap.motivo)} (esperado {_nombre(motivo)})")
-    for n, (real, ideal) in enumerate(zip(snap.regs, esperado.regs, strict=True)):
-        if real != ideal:
-            diferencias.append(f"x{n} = 0x{real:08x} (esperado 0x{ideal:08x})")
-    # La memoria usada se compara con claves: una palabra escrita de más o de menos es un bug
-    # del registro de palabras usadas, aunque valga 0.
-    for d in sorted(snap.mem_usada.keys() | esperado.mem_usada.keys()):
-        real_m, ideal_m = snap.mem_usada.get(d), esperado.mem_usada.get(d)
-        if real_m != ideal_m:
-            diferencias.append(f"[0x{d:03x}] = {_palabra(real_m)} (esperado {_palabra(ideal_m)})")
-    return diferencias
-
-
 def comparar_step_run(por_step: Snapshot, por_run: Snapshot) -> list[str]:
     """Diferencias entre el final por STEP y el final por RUN (AC2)."""
     diferencias = []
     if por_step.motivo is not por_run.motivo:
-        diferencias.append(f"motivo {_nombre(por_step.motivo)} (RUN: {_nombre(por_run.motivo)})")
+        diferencias.append(
+            f"motivo {nombre_motivo(por_step.motivo)} (RUN: {nombre_motivo(por_run.motivo)})"
+        )
     cambios = diff(por_run, por_step)
     diferencias += [f"x{n} = 0x{s:08x} (RUN: 0x{r:08x})" for n, (r, s) in cambios.regs.items()]
     diferencias += [
         f"[0x{d:03x}] = 0x{s:08x} (RUN: 0x{r:08x})" for d, (r, s) in cambios.memoria.items()
     ]
     return diferencias
-
-
-def _nombre(motivo: Motivo | None) -> str:
-    return motivo.name if motivo is not None else "ninguno"
-
-
-def _palabra(valor: int | None) -> str:
-    return "no escrita" if valor is None else f"0x{valor:08x}"
 
 
 # --- Corrida -------------------------------------------------------------------------------
@@ -114,7 +89,7 @@ def verificar_programa(sesion: DebugSession, archivo: Path, con_step: bool) -> l
     except (OSError, ErrorEnsamblado) as error:
         return [Resultado(nombre, "RUN", FALLA, detalle=f"no ensambla: {error}")]
     modelo = GoldenModel(imagen.palabras)
-    if modelo.run(_MAX_INSTR) is MotivoISS.TIMEOUT:
+    if modelo.run(MAX_INSTR) is MotivoISS.TIMEOUT:
         return [Resultado(nombre, "RUN", OMITIDO, detalle="no termina en el golden model")]
     esperado = modelo.estado_final()
 
@@ -179,10 +154,17 @@ def verificar_suite(
 
 
 def programas(rutas: Iterable[Path]) -> list[Path]:
-    """Los .asm de `rutas`: archivos tal cual, carpetas recorridas en orden."""
+    """Los .asm de `rutas`: archivos tal cual, carpetas recorridas en orden.
+
+    Al recorrer una carpeta se saltean las `errores/`: son ejemplos que no ensamblan a
+    propósito (para ver cómo los marca la GUI).
+    """
     archivos: list[Path] = []
     for ruta in rutas:
-        archivos += sorted(ruta.rglob("*.asm")) if ruta.is_dir() else [ruta]
+        if ruta.is_dir():
+            archivos += sorted(a for a in ruta.rglob("*.asm") if "errores" not in a.parts)
+        else:
+            archivos.append(ruta)
     return archivos
 
 
