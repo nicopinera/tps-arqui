@@ -5,10 +5,12 @@ regla vive en un solo lugar, se prueba con pytest sin abrir ventanas, y los boto
 atajos de teclado no pueden contradecirse (AC3). No importa Flet (PRD §4.3).
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum, auto
 
-from riscv_toolkit.protocol.comandos import EstadoDU
+from riscv_toolkit.protocol.comandos import EstadoDU, Motivo
+from riscv_toolkit.protocol.snapshot import Snapshot
 
 
 class Accion(Enum):
@@ -69,3 +71,64 @@ def acciones_habilitadas(estado: EstadoUI) -> frozenset[Accion]:
     if not estado.imagen_valida:
         acciones.discard(Accion.CARGAR)
     return frozenset(acciones)
+
+
+# --- Línea en ejecución (AC5 y AC6) --------------------------------------------------------
+
+
+class Etapa(Enum):
+    """Qué instrucción se sigue en el listado: la que entra (IF) o la que termina (WB)."""
+
+    IF = auto()
+    WB = auto()
+
+
+def pc_resaltado(snapshot: Snapshot, etapa: Etapa) -> int | None:
+    """PC de la instrucción a resaltar, o None si no hay ninguna (burbuja o ya terminó).
+
+    - IF: el registro PC, que es lo que se está buscando en ese ciclo.
+    - WB: la del latch MEM/WB (`pc_plus4 - 4`), si no es burbuja.
+    - Terminó por ILLEGAL (AC6): la instrucción ilegal, sin importar la etapa elegida. Si
+      todavía está en MEM/WB se toma de ahí; si no, del PC (el golden model se queda en ella).
+    - Terminó por HALT o ABORT: ninguna.
+    """
+    wb = snapshot.mem_wb
+    if snapshot.motivo is Motivo.ILLEGAL:
+        # shortcut: en la placa el PC puede quedar unos ciclos más adelante si MEM/WB ya se
+        # vació; verificar con el núcleo real (Hito 3) y, si hace falta, que la DU lo guarde.
+        return wb.pc_plus4 - 4 if wb.valid and wb.illegal else snapshot.pc
+    if snapshot.motivo is not None:
+        return None
+    if etapa is Etapa.IF:
+        return snapshot.pc
+    return wb.pc_plus4 - 4 if wb.valid else None
+
+
+def contar_riesgos(snapshots: Iterable[Snapshot]) -> tuple[int, int]:
+    """(stalls, flushes) acumulados. Un ciclo con flush en IF/ID y en ID/EX cuenta uno.
+
+    Solo tiene sentido paso a paso: de un RUN llega únicamente el snapshot final.
+    """
+    stalls = flushes = 0
+    for s in snapshots:
+        stalls += s.riesgos.stall
+        flushes += s.riesgos.flush_if_id or s.riesgos.flush_id_ex
+    return stalls, flushes
+
+
+# --- Posiciones en el texto del editor -----------------------------------------------------
+
+
+def linea_de(texto: str, offset: int) -> int:
+    """Número de línea (desde 1) del carácter en `offset`."""
+    return texto.count("\n", 0, offset) + 1
+
+
+def rango_de_linea(texto: str, linea: int) -> tuple[int, int]:
+    """(inicio, fin) de la línea `linea` (desde 1), sin el salto final. Fuera de rango: el
+    final del texto, para que ir a una línea que ya no existe no rompa nada."""
+    lineas = texto.split("\n")
+    if not 1 <= linea <= len(lineas):
+        return len(texto), len(texto)
+    inicio = sum(len(anterior) + 1 for anterior in lineas[: linea - 1])
+    return inicio, inicio + len(lineas[linea - 1])
