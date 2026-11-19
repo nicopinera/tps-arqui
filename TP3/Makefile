@@ -22,7 +22,7 @@ PROG_DIRS := h2 hazards instr
 PROGRAMS  := $(sort $(patsubst asm/tests/%.asm,%,$(foreach d,$(PROG_DIRS),$(wildcard asm/tests/$(d)/*.asm))))
 UV_RUN := cd $(TOOLS_DIR) && uv run
 
-.PHONY: help setup lint sim sim-all sim-programs synth-ooc timing-core test-py check-py gnu-ref check clean
+.PHONY: help setup lint sim sim-all sim-programs verify synth-ooc timing-core test-py check-py gnu-ref check clean
 
 help:
 	@echo "Objetivos:"
@@ -36,6 +36,8 @@ help:
 	@echo "  make sim-all                   Corre todos los hw/tb/**/tb_*.v (salvo tb_core_programs) y resume el resultado"
 	@echo "  make sim-programs              Ensambla asm/tests/{h2,hazards,instr}, genera el .expected y corre cada programa en el nucleo,"
 	@echo "                                 con enable fijo y con enable aleatorio"
+	@echo "  make verify                    Verificacion cruzada (US-305): toda asm/ en el nucleo contra el golden model,"
+	@echo "                                 con la tabla de ciclos/CPI en docs/informe/datos/cpi.csv"
 	@echo "  make synth-ooc                 Sintesis fuera de contexto de hw/rtl/core con Vivado (recursos y latches)"
 	@echo "       MOD=\"alu data_mem\"        solo esos modulos (por defecto, todos)"
 	@echo "  make timing-core               Sintesis e implementacion fuera de contexto de riscv_core a 100 MHz"
@@ -43,7 +45,7 @@ help:
 	@echo "  make test-py                   Tests de Python con cobertura"
 	@echo "  make check-py                  ruff + mypy + pytest + pip-audit"
 	@echo "  make gnu-ref                   Regenera el .hex de referencia del ensamblador con GNU as (US-106)"
-	@echo "  make check                     Todo: lint + sim-all + check-py (lo mismo que corre el CI)"
+	@echo "  make check                     Todo: lint + sim-all + sim-programs + verify + check-py (lo mismo que corre el CI)"
 	@echo "  make clean                     Borra build/ y las caches de Python"
 
 # --- Instalacion de herramientas ---------------------------------------------------------
@@ -114,6 +116,12 @@ sim-programs:
 	echo "Programas: $$((total - failed)) de $$total corridas pasaron"; \
 	[ $$total -gt 0 ] && [ $$failed -eq 0 ]
 
+# Verificacion cruzada (US-305): ensambla cada programa de asm/, lo corre en el golden model y en
+# tb_core_programs y compara el volcado final (registros, memoria usada, firma, motivo, PC).
+# Muestra la tabla de ciclos, CPI, stalls y flushes y la guarda en docs/informe/datos/cpi.csv.
+verify:
+	@$(UV_RUN) python -m scripts.verify_rtl
+
 # Sintesis fuera de contexto: LUTs, LUTRAM, FF, BRAM y latches por modulo (sin timing).
 # Necesita Vivado 2025.2 en el PATH (o VIVADO=<ruta al ejecutable>). Deja build/synth/.
 synth-ooc:
@@ -160,7 +168,7 @@ gnu-ref:
 
 # --- Todo --------------------------------------------------------------------------------
 
-check: lint sim-all sim-programs check-py
+check: lint sim-all sim-programs verify check-py
 
 clean:
 	rm -rf $(BUILD_DIR)

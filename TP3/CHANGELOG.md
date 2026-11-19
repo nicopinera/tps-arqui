@@ -94,6 +94,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `asm/demos/`: `suma_arreglo`, `fibonacci`, `copia_cadena`, `burbuja` y `subrutina` (jal/ret con pila) (US-304).
 - `asm/special/`: `no_halt`, `infinite_loop` (para ABORT) e `illegal` (US-304).
 - `tools/tests/test_asm_suite.py`: ensambla y corre todo `asm/` en el golden model; verifica la firma, el resultado de cada demo y special, que `tests/instr/` cubra las 33 instrucciones y que haya un programa por caso de riesgo (US-304).
+- `tools/scripts/verify_rtl.py` y `make verify`: verificación cruzada de todo `asm/` en el núcleo contra el golden model (motivo, PC, registros, memoria usada, firma e instrucciones retiradas); muestra cada diferencia con el valor esperado y el obtenido, imprime la tabla de ciclos, CPI, stalls y flushes y la guarda en `docs/informe/datos/cpi.csv`; termina con código 1 si algún programa falla. `make check` y el CI también la corren (US-305).
+- `tb_core_programs`: cuenta ciclos, instrucciones retiradas, stalls y flushes e imprime un volcado final (`VOLCADO <clave> <valor>`) que parsea `verify_rtl.py` (US-305).
 - `hw/rtl/core/dmem_bitmap.v`: bitmap de memoria usada y contador (ADR-008), separado de `data_mem`; marca con `o_core_we`/`o_core_addr` de `data_mem` (H2-E2).
 - `make synth-ooc` (`hw/scripts/synth_ooc.tcl`): síntesis fuera de contexto de cada módulo de `hw/rtl/core/` con Vivado en modo batch; deja en `build/synth/` el reporte de utilización de cada módulo y una tabla con LUTs, LUTRAM, FF, latches, BRAM y *critical warnings*, y falla si algún módulo infiere latches (H2-E1).
 
