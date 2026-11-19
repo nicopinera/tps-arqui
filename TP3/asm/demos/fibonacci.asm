@@ -1,4 +1,4 @@
-# Fibonacci iterativo (US-410, demo): guarda F(0) … F(11) en la DMEM desde 0x000.
+# Fibonacci iterativo: guarda F(0) … F(11) en la DMEM desde 0x000.
 # Esperado: [0x000..0x02C] = 0 1 1 2 3 5 8 13 21 34 55 89; x1 = F(12) = 144, x2 = F(13) = 233.
         addi x1, x0, 0          # a = F(n)
         addi x2, x0, 1          # b = F(n+1)
