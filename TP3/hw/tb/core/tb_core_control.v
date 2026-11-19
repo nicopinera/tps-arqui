@@ -26,6 +26,10 @@
 // - Load-use (US-302): cantidad exacta de ciclos con o_stall = 1 en programas chicos (1 si la
 //   instruccion siguiente usa el registro cargado; 0 si hay una en el medio, si no lo lee o si
 //   es x0).
+// - Branch no tomado (US-303 AC2): tarda los mismos ciclos que el programa con nop en lugar de
+//   los branches, sin flushes.
+// - ABORT con un branch tomado en EX en el mismo ciclo (US-303 AC10): se descarta lo
+//   especulativo, el PC no cambia y no entra ninguna instruccion del destino.
 module tb_core_control;
     `include "tb_utils.vh"
 
@@ -56,6 +60,15 @@ module tb_core_control;
     localparam [31:0] W_ADD_X0 = 32'h0000_02B3;  // add x5, x0, x0
     localparam [31:0] W_LW_X5 = 32'h0001_2283;  // lw x5, 0(x2)
     localparam [31:0] W_ADDI_IMM5 = 32'h0051_8393;  // addi x7, x3, 5: los bits de rs2 valen 5
+    // Branch no tomado
+    localparam [31:0] W_ADDI_X1_1 = 32'h0010_0093;  // addi x1, x0, 1
+    localparam [31:0] W_BEQ_NT = 32'h0000_8663;  // beq x1, x0, fin (no tomado)
+    localparam [31:0] W_BNE_NT = 32'h0010_9463;  // bne x1, x1, fin (no tomado)
+    localparam [31:0] W_ADDI_X2_2 = 32'h0020_0113;  // addi x2, x0, 2
+    // ABORT con branch tomado: el destino (0x14) es distinto del PC que tiene IF (0x0c)
+    localparam [31:0] W_BEQ_LEJOS = 32'h0000_0863;  // beq x0, x0, +16 (0x04 -> 0x14)
+    localparam [31:0] W_X31 = 32'h0010_0F93;  // addi x31, x0, 1
+    localparam [31:0] W_X30 = 32'h0010_0F13;  // addi x30, x0, 1 (el destino)
 
     // Bits de los buses (riscv_core.md 4)
     localparam IF_ID_VALID = 96;
@@ -109,6 +122,9 @@ module tb_core_control;
     integer              k;
     integer              n_addi;
     integer              n_stalls;
+    integer              n_flushes;
+    integer              ciclos_branch;
+    integer              ciclos_nop;
     integer              ciclos;
     reg                  r_visto_beq;
     reg                  r_visto_jal;
@@ -215,6 +231,27 @@ module tb_core_control;
             end
             r_enable = 1'b0;
             check_eq(nombre, n_stalls, esperado);
+        end
+    endtask
+
+    // Carga un programa, lo corre hasta o_halted y cuenta ciclos y ciclos con flush.
+    task contar_ciclos;
+        input [31:0] p0, p1, p2, p3, p4;
+        output integer total;
+        begin
+            cargar(p0, p1, p2, p3, p4, HALT_WORD);
+            r_flush_all = 1'b1;
+            ciclo;
+            r_flush_all = 1'b0;
+            r_enable    = 1'b1;
+            n_flushes   = 0;
+            total       = 0;
+            while (!w_halted && total < 100) begin
+                #1 if (w_flush_if_id || w_flush_id_ex) n_flushes = n_flushes + 1;
+                ciclo;
+                total = total + 1;
+            end
+            r_enable = 1'b0;
         end
     endtask
 
@@ -428,6 +465,57 @@ module tb_core_control;
         contar_stalls("lw x0 + add x0,x0: 0 stalls", W_LW_X0, W_ADD_X0, HALT_WORD, HALT_WORD, 0);
         contar_stalls("lw x5 + addi (imm 5): 0", W_LW_X5, W_ADDI_IMM5, HALT_WORD, HALT_WORD, 0);
         contar_stalls("lw x1 + add + add: 1 stall", W_LW_X1, W_ADD_X1, W_ADD_X1, HALT_WORD, 1);
+
+        // =====================================================================================
+        // US-303 AC2: un branch no tomado no cuesta ciclos
+        // =====================================================================================
+        contar_ciclos(W_ADDI_X1_1, W_BEQ_NT, W_BNE_NT, W_ADDI_X2_2, HALT_WORD, ciclos_branch);
+        check_eq("AC2 no tomado: sin flushes", n_flushes, 0);
+        leer_reg(5'd2);
+        check_eq("AC2 no tomado: sigue de largo", w_dbg_reg_data, 32'd2);
+        contar_ciclos(W_ADDI_X1_1, W_NOP, W_NOP, W_ADDI_X2_2, HALT_WORD, ciclos_nop);
+        check_eq("AC2 mismos ciclos que con nop", ciclos_branch, ciclos_nop);
+
+        // =====================================================================================
+        // US-303 AC10: ABORT con un branch tomado en EX en el mismo ciclo
+        // =====================================================================================
+        // 0x00 addi x1, x0, 0 / 0x04 beq x0, x0, 0x14 / 0x08-0x10 addi x31 / 0x14 addi x30
+        cargar(W_ADDI0, W_BEQ_LEJOS, W_X31, W_X31, W_X31, W_X30);
+        r_flush_all = 1'b1;
+        ciclo;
+        r_flush_all = 1'b0;
+        r_enable = 1'b1;
+        // Espera a que el beq este en EX (IF tiene 0x0c; el destino es 0x14)
+        ciclos   = 0;
+        while (!(w_id_ex[ID_EX_VALID] && w_id_ex[247:216] == W_BEQ_LEJOS) && ciclos < 20) begin
+            ciclo;
+            ciclos = ciclos + 1;
+        end
+        #1;
+        check_eq("AC10 beq en EX redirige", {31'd0, w_flush_id_ex}, 32'd1);
+        check_eq("AC10 IF tiene 0x0c", w_pc, 32'h0C);
+        r_antes_pc   = w_pc;
+        r_stop_fetch = 1'b1;
+        ciclos       = 0;
+        while (w_valids != 4'b0000 && ciclos < 10) begin
+            ciclo;
+            ciclos = ciclos + 1;
+            check_eq("AC10 el PC no cambia", w_pc, r_antes_pc);
+            check_eq("AC10 no entra el destino", {31'd0, w_if_id[IF_ID_VALID]}, 32'd0);
+        end
+        check_eq("AC10 pipeline vacio", {28'd0, w_valids}, 32'd0);
+        check_eq("AC10 drenado en 3 ciclos o menos", {31'd0, ciclos <= MAX_DRENADO}, 32'd1);
+        for (k = 0; k < CICLOS_CONGELADO; k = k + 1) begin
+            ciclo;
+            check_eq("AC10 sigue sin buscar", {31'd0, w_if_id[IF_ID_VALID]}, 32'd0);
+        end
+        check_eq("AC10 PC quieto", w_pc, r_antes_pc);
+        leer_reg(5'd31);
+        check_eq("AC10 x31 nunca se escribio", w_dbg_reg_data, 32'h0);
+        leer_reg(5'd30);
+        check_eq("AC10 el destino no se ejecuto", w_dbg_reg_data, 32'h0);
+        r_stop_fetch = 1'b0;
+        r_enable     = 1'b0;
 
         tb_finish;
     end

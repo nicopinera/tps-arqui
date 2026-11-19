@@ -1,13 +1,14 @@
 `timescale 1ns / 1ps
 
-// Testbench de la etapa IF y el latch IF/ID (US-206, AC1 a AC6).
+// Testbench de la etapa IF y el latch IF/ID (US-206; interfaz de US-303).
 //
 // - La IMEM se precarga por el puerto de la Debug Unit con un patron distinto por palabra, asi
 //   cada instruccion en IF/ID dice de que direccion vino.
-// - El flush de IF/ID se arma como lo va a hacer riscv_core en el Hito 2 (flush basico):
-//   flush_if_id = redirect_ex || redirect_jal. r_flush agrega un flush suelto para el AC3.
-// - Ademas de los AC: halt_fetch (PC congelado y burbujas, salvo redireccion de EX), reset con
-//   i_enable = 0 y la vuelta de la IMEM fuera de rango (ADR-008).
+// - El testbench hace de hazard unit: maneja pc_sel, StallF, StallD y FlushD a mano. La
+//   prioridad entre eventos la prueba tb_hazard_unit.
+// - Casos: secuencial, load-use (StallF + StallD), FlushD solo, pc_sel = EX y = JAL, busqueda
+//   detenida (StallF solo: HALT/ABORT), StallF con pc_sel = EX y FlushD (ABORT con redireccion),
+//   i_enable = 0, vuelta de la IMEM fuera de rango y reset sin enable.
 //
 // Los estimulos se cambian en el flanco de bajada y se verifica despues del flanco de subida.
 module tb_if_stage;
@@ -18,17 +19,21 @@ module tb_if_stage;
     localparam PERIODO = 10;
     localparam [31:0] NOP = 32'h0000_0013;
     localparam CICLOS_SIN_ENABLE = 50;
+    localparam [1:0] PC_SEL_PLUS4 = 2'b00;
+    localparam [1:0] PC_SEL_JAL = 2'b01;
+    localparam [1:0] PC_SEL_EX = 2'b10;
 
     reg                  clock = 1'b0;
     reg                  r_reset = 1'b1;
     reg                  r_enable = 1'b0;
-    reg                  r_stall = 1'b0;
-    reg                  r_halt_fetch = 1'b0;
-    reg                  r_flush = 1'b0;
-    reg                  r_redirect_ex = 1'b0;
-    reg  [         31:0] r_redirect_ex_pc = 0;
-    reg                  r_redirect_jal = 1'b0;
+    // Lo que manda la hazard unit
+    reg  [          1:0] r_pc_sel = PC_SEL_PLUS4;
+    reg                  r_stall_f = 1'b0;
+    reg                  r_stall_d = 1'b0;
+    reg                  r_flush_d = 1'b0;
+    reg  [         31:0] r_ex_pc = 0;
     reg  [         31:0] r_jal_pc = 0;
+    // Carga de la IMEM
     reg                  r_imem_we = 1'b0;
     reg  [ADDR_BITS-1:0] r_imem_addr = 0;
     reg  [         31:0] r_imem_wdata = 0;
@@ -44,10 +49,7 @@ module tb_if_stage;
     wire [         31:0] w_instr_d;
     wire                 w_valid_d;
 
-    // Flush basico del Hito 2, mas un flush suelto
-    wire                 w_flush_if_id = r_flush || r_redirect_ex || r_redirect_jal;
-
-    // Copia del estado para el AC4
+    // Copia del estado para el chequeo de enable
     reg  [         31:0] r_pc_antes;
     reg  [        103:0] r_if_id_antes;
 
@@ -57,30 +59,28 @@ module tb_if_stage;
     if_stage #(
         .IMEM_DEPTH(IMEM_DEPTH)
     ) u_if_stage (
-        .clock           (clock),
-        .i_reset         (r_reset),
-        .i_enable        (r_enable),
-        .i_stall         (r_stall),
-        .i_halt_fetch    (r_halt_fetch),
-        .i_redirect_ex   (r_redirect_ex),
-        .i_redirect_ex_pc(r_redirect_ex_pc),
-        .i_redirect_jal  (r_redirect_jal),
-        .i_jal_pc        (r_jal_pc),
-        .o_pc            (w_pc_f),
-        .o_pc_plus4      (w_pc_plus4_f),
-        .o_instr         (w_instr_f),
-        .o_valid         (w_valid_f),
-        .i_imem_we       (r_imem_we),
-        .i_imem_addr     (r_imem_addr),
-        .i_imem_wdata    (r_imem_wdata)
+        .clock       (clock),
+        .i_reset     (r_reset),
+        .i_enable    (r_enable),
+        .i_stall_f   (r_stall_f),
+        .i_pc_sel    (r_pc_sel),
+        .i_ex_pc     (r_ex_pc),
+        .i_jal_pc    (r_jal_pc),
+        .o_pc        (w_pc_f),
+        .o_pc_plus4  (w_pc_plus4_f),
+        .o_instr     (w_instr_f),
+        .o_valid     (w_valid_f),
+        .i_imem_we   (r_imem_we),
+        .i_imem_addr (r_imem_addr),
+        .i_imem_wdata(r_imem_wdata)
     );
 
     if_id_reg u_if_id_reg (
         .clock     (clock),
         .i_reset   (r_reset),
         .i_enable  (r_enable),
-        .i_flush   (w_flush_if_id),
-        .i_stall   (r_stall),
+        .i_flush   (r_flush_d),
+        .i_stall   (r_stall_d),
         .i_pc      (w_pc_f),
         .i_pc_plus4(w_pc_plus4_f),
         .i_instr   (w_instr_f),
@@ -106,6 +106,16 @@ module tb_if_stage;
         begin
             @(posedge clock);
             @(negedge clock);
+        end
+    endtask
+
+    // Vuelve las senales de la hazard unit a "nada que hacer".
+    task sin_eventos;
+        begin
+            r_pc_sel  = PC_SEL_PLUS4;
+            r_stall_f = 1'b0;
+            r_stall_d = 1'b0;
+            r_flush_d = 1'b0;
         end
     endtask
 
@@ -146,146 +156,119 @@ module tb_if_stage;
         check_eq("reset: PC = 0", w_pc_f, 32'h0000_0000);
         ver_burbuja("reset: IF/ID vacio");
 
-        // ---- AC1: sin stalls ni saltos, una instruccion por ciclo (0, 4, 8, ...) ----
+        // ---- Secuencial: una instruccion por ciclo (0, 4, 8, ...) ----
         r_reset  = 1'b0;
         r_enable = 1'b1;
         for (k = 0; k < 10; k = k + 1) begin
             ciclo;
-            ver_instr("AC1 IF/ID secuencial", 4 * k);
-            check_eq("AC1 PC avanza", w_pc_f, 4 * k + 4);
+            ver_instr("IF/ID secuencial", 4 * k);
+            check_eq("PC avanza", w_pc_f, 4 * k + 4);
         end
         // PC = 0x28, IF/ID = 0x24
 
-        // ---- AC2: con stall, PC e IF/ID se mantienen ----
-        r_stall = 1'b1;
+        // ---- Load-use: StallF + StallD, PC e IF/ID se mantienen ----
+        r_stall_f = 1'b1;
+        r_stall_d = 1'b1;
         repeat (3) begin
             ciclo;
-            check_eq("AC2 PC se mantiene", w_pc_f, 32'h0000_0028);
-            ver_instr("AC2 IF/ID se mantiene", 32'h0000_0024);
+            check_eq("load-use: PC se mantiene", w_pc_f, 32'h0000_0028);
+            ver_instr("load-use: IF/ID se mantiene", 32'h0000_0024);
         end
-        r_stall = 1'b0;
+        sin_eventos;
         ciclo;
-        ver_instr("AC2 sigue despues del stall", 32'h0000_0028);
+        ver_instr("sigue despues del stall", 32'h0000_0028);
 
-        // ---- AC3: flush suelto -> burbuja en IF/ID en el ciclo siguiente ----
-        // El flush solo no detiene el PC: la siguiente se busca normalmente.
-        r_flush = 1'b1;
+        // ---- FlushD solo: burbuja en IF/ID, el PC sigue ----
+        r_flush_d = 1'b1;
         ciclo;
-        ver_burbuja("AC3 flush -> burbuja");
-        check_eq("AC3 el PC sigue", w_pc_f, 32'h0000_0030);
-        r_flush = 1'b0;
+        ver_burbuja("FlushD -> burbuja");
+        check_eq("FlushD: el PC sigue", w_pc_f, 32'h0000_0030);
+        sin_eventos;
         ciclo;
-        ver_instr("AC3 despues del flush", 32'h0000_0030);
+        ver_instr("despues del flush", 32'h0000_0030);
         // PC = 0x34
 
-        // ---- AC5: redireccion de EX ----
-        r_redirect_ex    = 1'b1;
-        r_redirect_ex_pc = 32'h0000_0100;
+        // ---- pc_sel = EX con FlushD (redireccion de EX) ----
+        r_pc_sel  = PC_SEL_EX;
+        r_ex_pc   = 32'h0000_0100;
+        r_jal_pc  = 32'h0000_0200;  // no se usa
+        r_flush_d = 1'b1;
         ciclo;
-        ver_burbuja("AC5 EX: lo de IF es burbuja");
-        check_eq("AC5 EX: PC = destino", w_pc_f, 32'h0000_0100);
-        r_redirect_ex = 1'b0;
+        ver_burbuja("EX: lo de IF es burbuja");
+        check_eq("EX: PC = destino de EX", w_pc_f, 32'h0000_0100);
+        sin_eventos;
         ciclo;
-        ver_instr("AC5 EX: busca el destino", 32'h0000_0100);
+        ver_instr("EX: busca el destino", 32'h0000_0100);
 
-        // ---- AC5: redireccion de ID (jal), hacia atras ----
-        r_redirect_jal = 1'b1;
-        r_jal_pc       = 32'h0000_0020;
+        // ---- pc_sel = JAL con FlushD (jal en ID), hacia atras ----
+        r_pc_sel  = PC_SEL_JAL;
+        r_jal_pc  = 32'h0000_0020;
+        r_ex_pc   = 32'h0000_0300;  // no se usa
+        r_flush_d = 1'b1;
         ciclo;
-        ver_burbuja("AC5 jal: lo de IF es burbuja");
-        check_eq("AC5 jal: PC = destino", w_pc_f, 32'h0000_0020);
-        r_redirect_jal = 1'b0;
+        ver_burbuja("jal: lo de IF es burbuja");
+        check_eq("jal: PC = destino del jal", w_pc_f, 32'h0000_0020);
+        sin_eventos;
         ciclo;
-        ver_instr("AC5 jal: busca el destino", 32'h0000_0020);
+        ver_instr("jal: busca el destino", 32'h0000_0020);
 
-        // ---- AC6: EX y jal en el mismo ciclo -> gana EX ----
-        r_redirect_ex    = 1'b1;
-        r_redirect_ex_pc = 32'h0000_0080;
-        r_redirect_jal   = 1'b1;
-        r_jal_pc         = 32'h0000_0200;
+        // ---- pc_sel = 11: no lo genera la hazard unit, se toma como + 4 ----
+        r_pc_sel = 2'b11;
         ciclo;
-        ver_burbuja("AC6 burbuja");
-        check_eq("AC6 gana EX", w_pc_f, 32'h0000_0080);
-        r_redirect_ex  = 1'b0;
-        r_redirect_jal = 1'b0;
+        check_eq("pc_sel = 11: + 4", w_pc_f, 32'h0000_0028);
+        sin_eventos;
         ciclo;
-        ver_instr("AC6 busca el destino de EX", 32'h0000_0080);
-        // PC = 0x84
+        // PC = 0x2c, IF/ID = 0x28
 
-        // ---- Redireccion de EX durante un stall: el PC se redirige igual y gana el flush ----
-        r_stall          = 1'b1;
-        r_redirect_ex    = 1'b1;
-        r_redirect_ex_pc = 32'h0000_0040;
-        ciclo;
-        check_eq("stall + EX: PC = destino", w_pc_f, 32'h0000_0040);
-        ver_burbuja("stall + EX: flush le gana");
-        r_stall       = 1'b0;
-        r_redirect_ex = 1'b0;
-        ciclo;
-        ver_instr("stall + EX: busca el destino", 32'h0000_0040);
-        // PC = 0x44
-
-        // ---- halt_fetch: PC congelado y burbujas en IF/ID ----
-        r_halt_fetch = 1'b1;
+        // ---- StallF solo (HALT o ABORT): PC congelado y burbujas en IF/ID ----
+        r_stall_f = 1'b1;
         repeat (3) begin
             ciclo;
-            check_eq("halt_fetch: PC congelado", w_pc_f, 32'h0000_0044);
-            ver_burbuja("halt_fetch: burbujas");
+            check_eq("StallF: PC congelado", w_pc_f, 32'h0000_002C);
+            ver_burbuja("StallF: burbujas");
+            check_eq("StallF: IF no valida", {31'd0, w_valid_f}, 32'd0);
         end
-        // Un jal no mueve el PC con halt_fetch (es el caso de ABORT)
-        r_redirect_jal = 1'b1;
-        r_jal_pc       = 32'h0000_0010;
+        // StallF con pc_sel = EX (ABORT con redireccion de EX): el PC no cambia
+        r_pc_sel  = PC_SEL_EX;
+        r_ex_pc   = 32'h0000_0060;
+        r_flush_d = 1'b1;
         ciclo;
-        check_eq("halt_fetch + jal: PC quieto", w_pc_f, 32'h0000_0044);
-        r_redirect_jal = 1'b0;
-        // Una redireccion de EX si lo mueve (el HALT era especulativo)
-        r_redirect_ex    = 1'b1;
-        r_redirect_ex_pc = 32'h0000_0060;
+        check_eq("StallF + EX: PC quieto", w_pc_f, 32'h0000_002C);
+        ver_burbuja("StallF + EX: burbuja");
+        sin_eventos;
         ciclo;
-        check_eq("halt_fetch + EX: PC = destino", w_pc_f, 32'h0000_0060);
-        ver_burbuja("halt_fetch + EX: burbuja");
-        r_redirect_ex = 1'b0;
-        ciclo;
-        check_eq("halt_fetch + EX: despues, quieto", w_pc_f, 32'h0000_0060);
-        ver_burbuja("halt_fetch: sigue con burbujas");
-        r_halt_fetch = 1'b0;
-        ciclo;
-        ver_instr("sin halt_fetch: busca de nuevo", 32'h0000_0060);
-        // PC = 0x64
+        ver_instr("sin StallF: busca de nuevo", 32'h0000_002C);
+        // PC = 0x30
 
-        // ---- AC4: con i_enable = 0 nada cambia, haga lo que haga el resto ----
+        // ---- Con i_enable = 0 nada cambia, haga lo que haga la hazard unit ----
         r_enable      = 1'b0;
         r_pc_antes    = w_pc_f;
         r_if_id_antes = {w_valid_d, w_instr_d, w_pc_plus4_d, w_pc_d};
         for (k = 0; k < CICLOS_SIN_ENABLE; k = k + 1) begin
-            r_stall          = $random(semilla);
-            r_halt_fetch     = $random(semilla);
-            r_flush          = $random(semilla);
-            r_redirect_ex    = $random(semilla);
-            r_redirect_ex_pc = {$random(semilla)} & 32'hFFFF_FFFC;
-            r_redirect_jal   = $random(semilla);
-            r_jal_pc         = {$random(semilla)} & 32'hFFFF_FFFC;
+            r_pc_sel  = $random(semilla);
+            r_stall_f = $random(semilla);
+            r_stall_d = $random(semilla);
+            r_flush_d = $random(semilla);
+            r_ex_pc   = {$random(semilla)} & 32'hFFFF_FFFC;
+            r_jal_pc  = {$random(semilla)} & 32'hFFFF_FFFC;
             ciclo;
-            check_eq("AC4 PC quieto", w_pc_f, r_pc_antes);
-            check_eq("AC4 IF/ID pc", w_pc_d, r_if_id_antes[31:0]);
-            check_eq("AC4 IF/ID pc_plus4", w_pc_plus4_d, r_if_id_antes[63:32]);
-            check_eq("AC4 IF/ID instr", w_instr_d, r_if_id_antes[95:64]);
-            check_eq("AC4 IF/ID valid", {31'd0, w_valid_d}, {31'd0, r_if_id_antes[96]});
+            check_eq("enable 0: PC quieto", w_pc_f, r_pc_antes);
+            check_eq("enable 0: IF/ID pc", w_pc_d, r_if_id_antes[31:0]);
+            check_eq("enable 0: IF/ID pc_plus4", w_pc_plus4_d, r_if_id_antes[63:32]);
+            check_eq("enable 0: IF/ID instr", w_instr_d, r_if_id_antes[95:64]);
+            check_eq("enable 0: IF/ID valid", {31'd0, w_valid_d}, {31'd0, r_if_id_antes[96]});
         end
-        r_stall        = 1'b0;
-        r_halt_fetch   = 1'b0;
-        r_flush        = 1'b0;
-        r_redirect_ex  = 1'b0;
-        r_redirect_jal = 1'b0;
-        r_enable       = 1'b1;
+        sin_eventos;
+        r_enable = 1'b1;
         ciclo;
-        ver_instr("AC4 sigue donde estaba", 32'h0000_0064);
+        ver_instr("enable 0: sigue donde estaba", 32'h0000_0030);
 
-        // ---- La IMEM da la vuelta fuera de rango (ADR-008) ----
-        r_redirect_ex    = 1'b1;
-        r_redirect_ex_pc = 32'h0000_03FC;
+        // ---- La IMEM da la vuelta fuera de rango ----
+        r_pc_sel  = PC_SEL_EX;
+        r_ex_pc   = 32'h0000_03FC;
+        r_flush_d = 1'b1;
         ciclo;
-        r_redirect_ex = 1'b0;
+        sin_eventos;
         ciclo;
         ver_instr("ultima palabra (0x3FC)", 32'h0000_03FC);
         ciclo;
