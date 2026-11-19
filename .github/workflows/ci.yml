@@ -50,6 +50,9 @@ jobs:
           cd tools && uv sync --locked && cd ..
           make sim-programs
 
+      - name: Verificacion cruzada nucleo vs. golden model (US-305)
+        run: make verify
+
       - name: Guardar logs de simulacion
         if: failure()
         uses: actions/upload-artifact@v4
@@ -57,7 +60,8 @@ jobs:
           name: logs-simulacion
           path: |
             TP3/build/*.log
-            TP3/build/programs/*.log
+            TP3/build/programs/**/*.log
+            TP3/build/verify/**/*.log
 
   python:
     name: Python (ruff + mypy + pytest + pip-audit)
