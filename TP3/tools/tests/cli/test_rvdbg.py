@@ -84,8 +84,8 @@ def test_step_muestra_el_avance_y_los_latches(capsys: Capsys) -> None:
     salida = capsys.readouterr().out
     assert "ciclo     1: pc 0x004" in salida
     assert "STEPPING · 3 ciclos · pc 0x00c" in salida
-    assert "IF/ID   0x00c  addi x4, x0, 12" in salida
-    assert "MEM/WB  0x000  addi x1, x0, 0" in salida
+    assert "IF/ID   0x008  addi x3, x0, 0" in salida  # la última ejecutada
+    assert "EX/MEM  0x000  addi x1, x0, 0" in salida
 
 
 def test_step_frena_al_terminar(capsys: Capsys, tmp_path: Path) -> None:

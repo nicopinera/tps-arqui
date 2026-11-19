@@ -122,12 +122,12 @@ def test_step_a_step_hasta_el_halt() -> None:
     snap = snapshot(s1)
     assert snap.estado is EstadoDU.STEPPING
     assert (snap.ciclos, snap.pc, snap.regs[1]) == (1, 4, 5)
-    assert snap.if_id.instr == PROGRAMA[1]  # la próxima
-    assert (snap.id_ex.instr, snap.id_ex.valid) == (PROGRAMA[0], True)  # la recién ejecutada
+    assert (snap.if_id.instr, snap.if_id.valid) == (PROGRAMA[0], True)  # la recién ejecutada
+    assert not snap.id_ex.valid
 
     (s2,) = respuestas(fake, encode_cmd(Comando.STEP))
     assert snapshot(s2).mem_usada == {0: 5}
-    assert snapshot(s2).ex_mem.instr == PROGRAMA[0]
+    assert snapshot(s2).id_ex.instr == PROGRAMA[0]
 
     (s3,) = respuestas(fake, encode_cmd(Comando.STEP))
     fin = snapshot(s3)
@@ -227,13 +227,14 @@ def test_dump_mem_en_pedazos() -> None:
     assert MemRange.from_bytes(datos.payload) == MemRange(0, (0,))
 
 
-def test_latches_con_las_tres_anteriores() -> None:
+def test_latches_con_las_cuatro_anteriores() -> None:
     palabras = ensamblar(
-        "addi x1, x0, 1\naddi x2, x0, 2\naddi x3, x0, 3\naddi x4, x0, 4\n"
+        "addi x1, x0, 1\naddi x2, x0, 2\naddi x3, x0, 3\naddi x4, x0, 4\naddi x5, x0, 5\n"
     ).palabras
     fake = cargado(palabras)
-    *_, ultimo = respuestas(fake, *[encode_cmd(Comando.STEP)] * 3)
+    *_, ultimo = respuestas(fake, *[encode_cmd(Comando.STEP)] * 4)
     snap = snapshot(ultimo)
-    assert snap.if_id.instr == palabras[3]  # IF/ID: la próxima
-    assert [snap.id_ex.instr, snap.ex_mem.instr, snap.mem_wb.instr] == palabras[2::-1]
+    assert snap.pc == 16  # IF: la próxima, la quinta
+    latches = [snap.if_id.instr, snap.id_ex.instr, snap.ex_mem.instr, snap.mem_wb.instr]
+    assert latches == palabras[3::-1]
     assert snap.mem_wb.pc_plus4 == 4  # la primera, en 0x000

@@ -1,5 +1,6 @@
 """DebugSession con FakeTransport y con transportes que inyectan errores (US-410)."""
 
+import threading
 import time
 from pathlib import Path
 
@@ -271,6 +272,36 @@ def test_ctrl_c_durante_run_y_abort() -> None:
     assert snap.motivo is Motivo.ABORTED
     assert snap.regs[1] == 1
     assert snap.estado is EstadoDU.HALTED
+
+
+def test_run_con_bandera_levantada_aborta() -> None:
+    sesion = DebugSession(FakeTransport(max_instr=10), RAPIDO)
+    sesion.load(LOOP)
+    cancelar = threading.Event()
+    cancelar.set()
+
+    snap = sesion.run(cancelar)
+    assert snap.motivo is Motivo.ABORTED
+    assert snap.estado is EstadoDU.HALTED
+    assert sesion.estado is EstadoDU.HALTED
+
+
+def test_run_cancelado_desde_otro_hilo() -> None:
+    # Lo que hace la GUI: el worker espera en run() y el botón Abortar levanta la bandera.
+    sesion = DebugSession(FakeTransport(max_instr=10), RAPIDO)
+    sesion.load(LOOP)
+    cancelar = threading.Event()
+    threading.Timer(0.1, cancelar.set).start()
+
+    inicio = time.monotonic()
+    assert sesion.run(cancelar).motivo is Motivo.ABORTED
+    assert time.monotonic() - inicio < 1
+
+
+def test_run_que_termina_ignora_la_bandera() -> None:
+    sesion = DebugSession(FakeTransport(), RAPIDO)
+    sesion.load(FIBONACCI)
+    assert sesion.run(threading.Event()).motivo is Motivo.HALTED
 
 
 def test_run_con_limite_corta_con_timeout() -> None:
