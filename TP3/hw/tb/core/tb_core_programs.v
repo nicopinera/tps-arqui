@@ -9,7 +9,7 @@
 //   +MAX_CICLOS=<n>     limite de ciclos con enable (por defecto 10000).
 //   +ENABLE_ALEATORIO   i_enable alterna al azar entre 0 y 1 (AC4).
 //   +SEMILLA=<n>        semilla del enable aleatorio (por defecto 210).
-// make sim-programs los arma para cada programa de asm/tests/h2.
+// make sim-programs (asm/tests) y make verify (todo asm/, US-305) los arman para cada programa.
 //
 // Secuencia, como la de un LOAD de la Debug Unit (ADR-009):
 // 1. Con i_enable = 0: escribe la IMEM por i_imem_we (lo que no ocupa el programa se rellena
@@ -25,6 +25,18 @@
 //
 // Ademas, en cada ciclo se verifica AC3: despues de que un HALT valido entra a EX, ninguna otra
 // instruccion valida entra a EX.
+//
+// Volcado final (US-305): despues de comparar imprime el estado en un formato fijo que parsea
+// tools/scripts/verify_rtl.py. Una linea por dato, "VOLCADO <clave> <valor>":
+//   motivo  0 = no termino, 1 = HALTED, 2 = ILLEGAL (codigos del .expected)
+//   pc      o_pc en hex (la instruccion siguiente al HALT o a la ilegal)
+//   ciclos, retiradas, stalls, flush_if_id, flush_id_ex   en decimal, contando solo ciclos con
+//           enable: ciclos desde el flush global hasta o_halted; retiradas = instrucciones
+//           validas en WB (incluye el HALT o la ilegal); stalls y flushes = ciclos con o_stall,
+//           o_flush_if_id y o_flush_id_ex en 1
+//   x<n>    registro n (1 a 31) en hex
+//   mem     <direccion de byte en hex> <dato en hex>, una linea por palabra usada
+// Empieza con "VOLCADO inicio" y termina con "VOLCADO fin".
 module tb_core_programs;
     `include "tb_utils.vh"
 
@@ -77,6 +89,9 @@ module tb_core_programs;
     wire [        247:0] w_id_ex;
     wire [        151:0] w_ex_mem;
     wire [        143:0] w_mem_wb;
+    wire                 w_stall;
+    wire                 w_flush_if_id;
+    wire                 w_flush_id_ex;
 
     reg  [         31:0] r_programa       [0:IMEM_DEPTH-1];
     reg  [         31:0] r_esperado       [  0:EXP_MAX-1];
@@ -93,6 +108,11 @@ module tb_core_programs;
     integer              k;
     integer              ciclos;
     integer              ciclos_con_enable;
+    // Contadores del volcado (solo ciclos con enable)
+    integer              retiradas;
+    integer              stalls;
+    integer              flushes_if_id;
+    integer              flushes_id_ex;
 
     riscv_core #(
         .IMEM_DEPTH (IMEM_DEPTH),
@@ -119,9 +139,9 @@ module tb_core_programs;
         .o_dbg_mem_data  (w_dbg_mem_data),
         .o_dbg_mem_used  (w_dbg_mem_used),
         .o_dbg_used_count(w_dbg_used_count),
-        .o_stall         (),
-        .o_flush_if_id   (),
-        .o_flush_id_ex   (),
+        .o_stall         (w_stall),
+        .o_flush_if_id   (w_flush_if_id),
+        .o_flush_id_ex   (w_flush_id_ex),
         .o_fwd_a         (),
         .o_fwd_b         (),
         .o_if_id         (w_if_id),
@@ -152,6 +172,32 @@ module tb_core_programs;
         begin
             @(posedge clock);
             @(negedge clock);
+        end
+    endtask
+
+    // Volcado final para verify_rtl.py (formato en el encabezado)
+    task volcado;
+        integer n;
+        begin
+            $display("VOLCADO inicio");
+            $display("VOLCADO motivo %0d", !w_halted ? 0 : (w_illegal ? MOTIVO_ILLEGAL : MOTIVO_HALTED));
+            $display("VOLCADO pc %08h", w_pc);
+            $display("VOLCADO ciclos %0d", ciclos_con_enable);
+            $display("VOLCADO retiradas %0d", retiradas);
+            $display("VOLCADO stalls %0d", stalls);
+            $display("VOLCADO flush_if_id %0d", flushes_if_id);
+            $display("VOLCADO flush_id_ex %0d", flushes_id_ex);
+            for (n = 1; n < 32; n = n + 1) begin
+                r_dbg_reg_addr = n[4:0];
+                #1;
+                $display("VOLCADO x%0d %08h", n, w_dbg_reg_data);
+            end
+            for (n = 0; n < DMEM_DEPTH; n = n + 1) begin
+                r_dbg_mem_addr = n[ADDR_BITS-1:0];
+                #1;
+                if (w_dbg_mem_used) $display("VOLCADO mem %08h %08h", 4 * n, w_dbg_mem_data);
+            end
+            $display("VOLCADO fin");
         end
     endtask
 
@@ -197,9 +243,20 @@ module tb_core_programs;
         // ---- 3. Corre hasta o_halted ----
         ciclos            = 0;
         ciclos_con_enable = 0;
+        retiradas         = 0;
+        stalls            = 0;
+        flushes_if_id     = 0;
+        flushes_id_ex     = 0;
         while (!w_halted && ciclos_con_enable < max_ciclos) begin
             r_enable = r_aleatorio ? $random(semilla) : 1'b1;
-            if (r_enable) ciclos_con_enable = ciclos_con_enable + 1;
+            if (r_enable) begin
+                // Lo que pasa en el flanco de este ciclo
+                ciclos_con_enable = ciclos_con_enable + 1;
+                retiradas         = retiradas + w_mem_wb[MEM_WB_VALID];
+                stalls            = stalls + w_stall;
+                flushes_if_id     = flushes_if_id + w_flush_if_id;
+                flushes_id_ex     = flushes_id_ex + w_flush_id_ex;
+            end
             ciclos = ciclos + 1;
             ciclo;
         end
@@ -241,6 +298,7 @@ module tb_core_programs;
             check_eq("memoria: usada", {31'd0, w_dbg_mem_used}, 32'd1);
         end
 
+        volcado;
         tb_finish;
     end
 endmodule
