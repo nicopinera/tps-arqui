@@ -81,6 +81,9 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `hw/tb/core/tb_core_control.v`: señales de riesgo del flush básico, layout de los buses de latches, ABORT (AC6), núcleo congelado con `o_halted`, `i_flush_all` (no borra bitmap ni DMEM) e `i_reset` (US-210).
 - `make sim-programs`: ensambla `asm/tests/h2`, genera el `.expected` con el golden model y corre cada programa con enable fijo y aleatorio; entra en `make check` y en el CI (US-210).
 - `make timing-core` (`hw/scripts/timing_core_ooc.tcl`): síntesis e implementación fuera de contexto de `riscv_core` a 100 MHz; deja `hw/reports/timing_core_ooc.rpt` y `util_core_ooc.rpt` (primer dato: WNS = +1,286 ns, WHS = +0,097 ns) (US-210).
+- `hw/rtl/core/forwarding_unit.v`: selectores `fwd_a`/`fwd_b` (EX/MEM > MEM/WB > banco); no reenvía desde `x0`, desde burbujas ni desde instrucciones que no escriben el banco. Conectada en `riscv_core` (`o_fwd_a`/`o_fwd_b`) (US-301).
+- `hw/tb/core/tb_forwarding_unit.v`: casos dirigidos y 5000 combinaciones aleatorias contra un modelo de referencia (US-301).
+- `asm/tests/hazards/`: `fwd_ex_mem`, `fwd_mem_wb`, `fwd_doble`, `fwd_store_data`, `fwd_branch`, `x0_no_forward` y `jal_jalr`, sin `nop` entre instrucciones dependientes; `make sim-programs` también los corre (US-301).
 - `hw/rtl/core/dmem_bitmap.v`: bitmap de memoria usada y contador (ADR-008), separado de `data_mem`; marca con `o_core_we`/`o_core_addr` de `data_mem` (H2-E2).
 - `make synth-ooc` (`hw/scripts/synth_ooc.tcl`): síntesis fuera de contexto de cada módulo de `hw/rtl/core/` con Vivado en modo batch; deja en `build/synth/` el reporte de utilización de cada módulo y una tabla con LUTs, LUTRAM, FF, latches, BRAM y *critical warnings*, y falla si algún módulo infiere latches (H2-E1).
 

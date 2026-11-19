@@ -19,7 +19,8 @@
 //! - Flush basico (ADR-006): redireccion de EX -> flush de IF/ID e ID/EX; jal en ID -> flush de
 //!   IF/ID.
 //! - i_stop_fetch (ABORT, ADR-010): busqueda detenida (como halt_fetch) y burbuja en ID/EX.
-//! - Hasta el Hito 3 no hay hazard unit ni forwarding unit: stall = 0 y fwd_a = fwd_b = 00.
+//! - Forwarding (US-301): forwarding_unit elige de donde sale cada operando en EX. Hasta
+//!   US-302 no hay hazard unit: stall = 0.
 //! - Buses planos de los latches con el layout de bytes del snapshot (riscv_core.md 4).
 module riscv_core #(
     /* verilator lint_off UNUSEDPARAM */
@@ -195,10 +196,10 @@ module riscv_core #(
     // Con el programa terminado, el nucleo no avanza aunque i_enable = 1
     wire        w_en = i_enable && !r_halted;
 
-    // Riesgos de datos: hasta el Hito 3 no hay hazard unit ni forwarding unit
+    // Riesgos de datos: el stall de load-use llega con la hazard unit (US-302)
     wire        w_stall = 1'b0;
-    wire [ 1:0] w_fwd_a = FWD_ID_EX;
-    wire [ 1:0] w_fwd_b = FWD_ID_EX;
+    wire [ 1:0] w_fwd_a;
+    wire [ 1:0] w_fwd_b;
 
     // Flush basico
     wire        w_flush_if_id = w_ex_redirect || w_id_redirect_jal;
@@ -384,6 +385,19 @@ module riscv_core #(
     // ---------------------------------------------------------------------------------------
     // EX
     // ---------------------------------------------------------------------------------------
+
+    forwarding_unit u_forwarding_unit (
+        .i_id_ex_rs1       (w_e_rs1),
+        .i_id_ex_rs2       (w_e_rs2),
+        .i_ex_mem_rd       (w_m_rd),
+        .i_ex_mem_reg_write(w_m_reg_write),
+        .i_ex_mem_valid    (w_m_valid),
+        .i_mem_wb_rd       (w_w_rd),
+        .i_mem_wb_reg_write(w_w_reg_write),
+        .i_mem_wb_valid    (w_w_valid),
+        .o_fwd_a           (w_fwd_a),
+        .o_fwd_b           (w_fwd_b)
+    );
 
     ex_stage u_ex_stage (
         .i_pc         (w_e_pc),
