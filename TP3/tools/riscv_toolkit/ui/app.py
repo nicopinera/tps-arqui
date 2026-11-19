@@ -17,6 +17,7 @@ congela. Reglas:
 
 import asyncio
 import threading
+import time
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import replace
@@ -28,7 +29,7 @@ from riscv_toolkit.assembler.assembler import ensamblar
 from riscv_toolkit.assembler.errores import ErrorEnsamblado
 from riscv_toolkit.assembler.imagen import Imagen
 from riscv_toolkit.protocol.codec import ErrorTrama
-from riscv_toolkit.protocol.comandos import EstadoDU
+from riscv_toolkit.protocol.comandos import EstadoDU, Motivo
 from riscv_toolkit.protocol.fake_transport import FakeTransport
 from riscv_toolkit.protocol.serial_transport import (
     ErrorPuerto,
@@ -38,7 +39,20 @@ from riscv_toolkit.protocol.serial_transport import (
 )
 from riscv_toolkit.protocol.snapshot import Snapshot
 from riscv_toolkit.session.debug_session import DebugSession, ErrorNackDU, ErrorSesion
+from riscv_toolkit.session.export import ErrorSesionGuardada, exportar, leer
+from riscv_toolkit.session.history import SnapshotHistory
+from riscv_toolkit.session.verificar import comparacion, esperado_de
+from riscv_toolkit.ui.arquitectura import filas_memoria, filas_registros, rango_desde_hasta
+from riscv_toolkit.ui.historial import (
+    cambios_registros,
+    escribe_al_final,
+    filas_historial,
+    origen_de,
+    resumen,
+    ultimas_escrituras,
+)
 from riscv_toolkit.ui.pipeline import columnas_pipeline
+from riscv_toolkit.ui.pipeline_chart import carta_pipeline
 from riscv_toolkit.ui.state import (
     Accion,
     EstadoUI,
@@ -47,11 +61,22 @@ from riscv_toolkit.ui.state import (
     pc_resaltado,
 )
 from riscv_toolkit.ui.tema import ASSETS, FUENTES, tema
-from riscv_toolkit.ui.views.connection_bar import SIMULADO, BarraConexion
-from riscv_toolkit.ui.views.controls_view import BarraEstado, Controles
+from riscv_toolkit.ui.views.connect_view import PantallaConexion
+from riscv_toolkit.ui.views.controls_view import (
+    SIMULADO,
+    BannerRun,
+    BarraEstado,
+    BarraSuperior,
+    Controles,
+)
 from riscv_toolkit.ui.views.editor_view import PanelPrograma
-from riscv_toolkit.ui.views.latch_detail_view import DetalleLatch
-from riscv_toolkit.ui.views.pipeline_view import VistaPipeline
+from riscv_toolkit.ui.views.memory_view import VistaMemoria
+from riscv_toolkit.ui.views.pipeline_chart_view import MAX_CICLOS, VistaCarta
+from riscv_toolkit.ui.views.pipeline_view import PaginaPipeline
+from riscv_toolkit.ui.views.registers_view import VistaRegistros
+from riscv_toolkit.ui.views.summary_view import VistaResumen
+from riscv_toolkit.ui.views.timeline_view import VistaHistorial
+from riscv_toolkit.ui.views.verify_view import Verificacion, VistaVerificar
 
 ASM = Path(__file__).resolve().parents[3] / "asm"  # TP3/asm: donde abrir y guardar
 # Lo que puede fallar al hablar con la placa: NACK, respuesta inesperada, basura, puerto
@@ -71,17 +96,28 @@ class App:
         self.puerto: str | None = None  # al que se está conectado
         self.imagen: Imagen | None = None  # la última ensamblada sin errores (la del listado)
         self.texto_imagen = ""  # el texto del que salió `imagen`
+        self.con_error = False  # el último Ensamblar dio error
         self.cargada: Imagen | None = None  # la que está en la placa
         self.ruta: Path | None = None  # el .asm abierto
         self.cancelar: threading.Event | None = None  # el del RUN en curso, si hay uno
+        self._run_desde: float | None = None  # time.monotonic() al empezar el RUN en curso
         # Lo último que se leyó de la sesión: mientras hay una operación en curso la sesión
         # es del worker, y la barra de estado sigue mostrando esto.
         self._snapshot: Snapshot | None = None
-        self._riesgos = (0, 0)
+        self._anterior: Snapshot | None = None  # el de antes en el historial: contra él se resalta
+        self._riesgos = (0, 0, 0)
+        self._pedido: tuple[int, dict[int, int]] | None = None  # DUMP_MEM: (ciclo, memoria)
+        self.fuente_cargada: str | None = None  # el texto del programa de la placa (o reabierto)
+        # Una sesión reabierta (US-505): su historial y su programa, sin placa.
+        self.abierta: SnapshotHistory | None = None
+        self.origen: str | None = None  # el nombre de su archivo
+        self.programa_abierto: list[int] | None = None
+        self._verificacion: Verificacion | str | None = None
+        self.editando = True  # Programa: el editor (True) o la fuente en ejecución
+        self._ultimo_error = ""  # el de la última operación que falló
 
         self.picker = ft.FilePicker()
         page.services.append(self.picker)
-        self.barra = BarraConexion(self.conectar, self.buscar_puertos)
         self.acciones: dict[Accion, Callable[[], Awaitable[None]]] = {
             Accion.CARGAR: self.cargar,
             Accion.CORRER: self.correr,
@@ -89,27 +125,46 @@ class App:
             Accion.ABORTAR: self.abortar,
             Accion.RESET: self.reset,
         }
-        self.controles = Controles(self.acciones, self.pasos)
-        self.panel = PanelPrograma(
-            self.abrir, self.guardar, self.al_ensamblar, self.editado, self.refrescar
+        self.barra = BarraSuperior(self.boton_conexion)
+        self.conexion = PantallaConexion(
+            self.conectar, self.simular, self.buscar_puertos, self.abrir_ruta,
+            self.reabrir_sesion, ASM,
+        )  # fmt: skip
+        self.controles = Controles(
+            self.acciones, self.pasos, self.abrir, self._ensamblar_boton, self.ir_a_ciclo
         )
-        self.detalle = DetalleLatch(self.refrescar)
-        self.pipeline = VistaPipeline(self.elegir_latch)
+        self.banner = BannerRun(self.abortar)
+        self.panel = PanelPrograma(self.guardar, self.editado, self.refrescar, self.cambiar_modo)
+        self.pipeline = PaginaPipeline(self.refrescar)
+        self.carta = VistaCarta(self.ir_a_ciclo)
+        self.registros = VistaRegistros(self.refrescar)
+        self.memoria = VistaMemoria(self.leer_memoria)
+        self.historial = VistaHistorial(self.ir_a_ciclo, self.exportar_sesion, self.reabrir_sesion)
+        self.verificacion = VistaVerificar(self.verificar, self.ir_a_ciclo)
+        self.resumen = VistaResumen()
         self.barra_estado = BarraEstado()
-        # Las páginas del menú lateral; los controles y las barras se comparten.
+        # Las páginas del menú lateral; la barra superior, los controles y la barra de estado
+        # se comparten. La pantalla de conexión no está en el menú: es el botón Conexión.
         self.paginas: list[tuple[str, ft.IconData, ft.Control]] = [
             ("Programa", ft.Icons.CODE, self.panel.control),
-            (
-                "Pipeline",
-                ft.Icons.VIEW_COLUMN,
-                ft.Column(
-                    [self.pipeline.control, ft.Divider(height=1), self.detalle.control],
-                    scroll=ft.ScrollMode.AUTO,
-                    expand=True,
-                ),
-            ),
+            ("Pipeline", ft.Icons.VIEW_COLUMN, self.pipeline.control),
+            ("Carta", ft.Icons.GRID_ON, self.carta.control),
+            ("Registros", ft.Icons.TABLE_ROWS, self.registros.control),
+            ("Memoria", ft.Icons.MEMORY, self.memoria.control),
+            ("Historial", ft.Icons.HISTORY, self.historial.control),
+            ("Verificar", ft.Icons.FACT_CHECK, self.verificacion.control),
+            ("Resumen", ft.Icons.INSIGHTS, self.resumen.control),
         ]
-        self.cuerpo = ft.Container(self.panel.control, expand=True)
+        self.menu = ft.NavigationRail(
+            selected_index=None,
+            label_type=ft.NavigationRailLabelType.ALL,
+            destinations=[
+                ft.NavigationRailDestination(icon=icono, label=nombre)
+                for nombre, icono, _ in self.paginas
+            ],
+            on_change=lambda e: self.ir_a_pagina(e.control.selected_index),
+        )
+        self.cuerpo = ft.Container(self.conexion.control, expand=True)
         self.buscar_puertos(SIMULADO if fake else None)
 
     # --- Armado ----------------------------------------------------------------------------
@@ -122,28 +177,20 @@ class App:
         page.theme = tema()
         page.padding = 0
         page.spacing = 0
-        page.horizontal_alignment = ft.CrossAxisAlignment.STRETCH  # barra de estado a lo ancho
+        page.horizontal_alignment = ft.CrossAxisAlignment.STRETCH  # barras a lo ancho
         page.on_keyboard_event = self.tecla
         page.window.prevent_close = True  # para abortar un RUN antes de cerrar
         page.window.on_event = self.ventana
 
-        menu = ft.NavigationRail(
-            selected_index=0,
-            label_type=ft.NavigationRailLabelType.ALL,
-            destinations=[
-                ft.NavigationRailDestination(icon=icono, label=nombre)
-                for nombre, icono, _ in self.paginas
-            ],
-            on_change=lambda e: self.ir_a_pagina(e.control.selected_index),
-        )
         contenido = ft.Column(
-            [self.barra.control, ft.Divider(height=1), self.controles.control, self.cuerpo],
-            expand=True,
+            [self.controles.control, self.banner.control, self.cuerpo], expand=True
         )
         page.add(
+            self.barra.control,
+            ft.Divider(height=1),
             ft.Row(
                 [
-                    menu,
+                    self.menu,
                     ft.VerticalDivider(width=1),
                     ft.Container(contenido, expand=True, padding=12),
                 ],
@@ -155,36 +202,145 @@ class App:
 
     # --- Refresco: el estado se copia a las vistas -----------------------------------------
 
+    def _viendo(self, control: ft.Control) -> bool:
+        return self.cuerpo.content is control
+
     def refrescar(self) -> None:
-        """Copia el estado a todos los controles. Se llama después de cada cambio."""
-        if self.sesion is not None and not self.estado.ocupado:
-            self._snapshot = self.sesion.historial.actual
-            self._riesgos = contar_riesgos(self.sesion.historial)
-        self.controles.habilitar(acciones_habilitadas(self.estado))
+        """Copia el estado a todos los controles. Se llama después de cada cambio.
+
+        Las páginas que recorren el historial entero (carta, historial, resumen, memoria) se
+        rearman solo si se están viendo, y no mientras la sesión es del worker.
+        """
+        h = self._historial()
+        e = self.estado
+        if h is not None and not e.ocupado:
+            self._snapshot = h.actual  # el del cursor: todas las vistas muestran ese ciclo
+            self._anterior = list(h)[h.indice - 1] if h.indice > 0 else None
+            self._riesgos = contar_riesgos(h)
+        snaps = list(h) if h is not None and not e.ocupado else []
+        snap = self._snapshot
+        motivo_cargar = (
+            "No se puede cargar: el programa tiene un error" if self.con_error
+            else "Ensamblá el programa primero (Ctrl+B)" if not e.imagen_valida
+            else "Conectate a la placa primero" if not e.conectado else None
+        )  # fmt: skip
+        self.controles.habilitar(acciones_habilitadas(e), motivo_cargar)
+        self.controles.mostrar_ciclo(
+            h.indice if h is not None else -1,
+            len(h) if h is not None else 0,
+            snap.ciclos if snap is not None else None,
+            e.ocupado,
+        )
         self.barra.mostrar(
-            self.estado.conectado, self.puerto == SIMULADO, self.version, self.puerto
+            self.ruta.name if self.ruta is not None else None,
+            self.con_error,
+            self.puerto if e.conectado else None,
+            self.version,
+            self.origen if self.sesion is None else None,
         )
-        self.barra.boton.disabled = self.estado.ocupado
+        self.barra.boton.disabled = e.ocupado
+        self.conexion.habilitar(e.ocupado or e.conectado)
+        self.banner.mostrar(
+            int(time.monotonic() - self._run_desde) if self._run_desde is not None else None
+        )
+        # Sin placa (sesión reabierta) no hay estado en vivo: el del snapshot.
+        estado_du = e.estado_du
+        if self.sesion is None and snap is not None:
+            estado_du = snap.estado
         self.barra_estado.mostrar(
-            self.estado.estado_du, self._snapshot, self._riesgos, self.estado.ocupado
+            estado_du, e.conectado, self.sesion is None and self.abierta is not None,
+            snap, self._riesgos, e.ocupado,
+        )  # fmt: skip
+        imem = self._programa()
+        columnas = columnas_pipeline(snap, imem) if snap is not None else None
+        # Programa: la fuente en ejecución si el listado es el del programa que corre.
+        se_puede_ver = self.cargada is not None and self.cargada is self.imagen and snap is not None
+        self.panel.mostrar_modo(
+            self.editando or not se_puede_ver,
+            snap.ciclos if snap is not None else None,
+            se_puede_ver,
         )
-        self.panel.resaltar(self._pc_resaltado())
-        imem = self.cargada.palabras if self.cargada is not None else None
-        self.pipeline.mostrar(
-            columnas_pipeline(self._snapshot, imem) if self._snapshot is not None else None,
-            self.detalle.elegido(),
-        )
-        self.detalle.mostrar(self._snapshot)
+        etapas: dict[int, list[str]] = {}
+        if se_puede_ver and columnas is not None:
+            for c in columnas:
+                if not c.burbuja and c.pc is not None:
+                    etapas.setdefault(c.pc, []).append(c.etapa)
+        self.panel.resaltar(self._pc_resaltado(), etapas)
+        if self._viendo(self.pipeline.control):
+            self.pipeline.mostrar(snap, columnas)
+        if self._viendo(self.carta.control) and not e.ocupado:
+            visibles = snaps[-MAX_CICLOS:]
+            desde = len(snaps) - len(visibles)
+            cursor = h.indice - desde if h is not None else None
+            self.carta.mostrar(carta_pipeline(visibles, imem), cursor, desde)
+        if self._viendo(self.registros.control):
+            self.registros.mostrar(
+                filas_registros(snap, self._anterior),
+                cambios_registros(self._anterior, snap),
+                escribe_al_final(snap) if snap is not None else None,
+            )
+        self.memoria.leer.disabled = not self._puede_leer()
+        if self._viendo(self.memoria.control) and not e.ocupado:
+            anterior = self._anterior.mem_usada if self._anterior is not None else None
+            usada = snap.mem_usada if snap is not None else {}
+            pedido = self._pedido
+            hasta = h.indice + 1 if h is not None else 0
+            self.memoria.mostrar(
+                filas_memoria(usada, anterior),
+                ultimas_escrituras(snaps[:hasta]),
+                (pedido[0], filas_memoria(pedido[1])) if pedido is not None else None,
+            )
+        if self._viendo(self.historial.control) and not e.ocupado:
+            self.historial.mostrar(
+                h.indice if h is not None else -1,
+                filas_historial(snaps, imem),
+                self.origen if self.sesion is None else None,
+                e.ocupado,
+                not e.conectado,
+            )
+        self.verificacion.boton.disabled = e.ocupado or not snaps
+        self.verificacion.mostrar(self._verificacion)
+        if self._viendo(self.resumen.control) and not e.ocupado:
+            self.resumen.mostrar(resumen(snaps, imem) if snaps else None)
         self.page.update()
 
-    def ir_a_pagina(self, indice: int) -> None:
+    def ir_a_pagina(self, indice: int | None) -> None:
+        if indice is None:
+            return
+        self.menu.selected_index = indice
         self.cuerpo.content = self.paginas[indice][2]
-        self.page.update()
-
-    def elegir_latch(self, nombre: str) -> None:
-        """Clic en una etapa del pipeline: muestra el latch que guarda su instrucción."""
-        self.detalle.elegir(nombre)
         self.refrescar()
+
+    def ir_a_conexion(self) -> None:
+        self.menu.selected_index = None
+        self.cuerpo.content = self.conexion.control
+        self.refrescar()
+
+    async def boton_conexion(self) -> None:
+        """Barra superior: conectado, desconecta; si no, muestra la pantalla de conexión."""
+        if self.estado.conectado:
+            self._desconectar()
+        self.ir_a_conexion()
+
+    def cambiar_modo(self, editar: bool) -> None:
+        self.editando = editar
+        self.refrescar()
+
+    def ir_a_ciclo(self, indice: int) -> None:
+        """Línea de tiempo: mueve el cursor del historial (solo lectura, AC1)."""
+        h = self._historial()
+        if h is None or self.estado.ocupado or not 0 <= indice < len(h):
+            return
+        h.ir_a(indice)
+        self.refrescar()
+
+    def _historial(self) -> SnapshotHistory | None:
+        """El de la sesión en vivo o, sin placa, el de una sesión reabierta."""
+        return self.sesion.historial if self.sesion is not None else self.abierta
+
+    def _programa(self) -> list[int] | None:
+        """Las palabras del programa de esta sesión (None si no se sabe)."""
+        return self.cargada.palabras if self.cargada is not None else self.programa_abierto
 
     def _pc_resaltado(self) -> int | None:
         """La línea a resaltar, solo si el listado es del programa que está en la placa."""
@@ -198,6 +354,11 @@ class App:
     def _puede(self, accion: Accion) -> bool:
         return accion in acciones_habilitadas(self.estado)
 
+    def _puede_leer(self) -> bool:
+        """DUMP_MEM: en cualquier estado menos RUN (protocolo §4.1)."""
+        e = self.estado
+        return e.conectado and not e.ocupado and e.estado_du is not EstadoDU.RUN
+
     # --- Operaciones con la placa ----------------------------------------------------------
 
     async def _ejecutar(
@@ -208,12 +369,14 @@ class App:
         `durante`: el estado de la DU mientras corre (RUN, para que se habilite Abortar).
         """
         self.estado = replace(self.estado, ocupado=True, estado_du=durante or self.estado.estado_du)
+        self._verificacion = None  # era del estado final de antes
         self.refrescar()
         try:
             await asyncio.to_thread(operacion)
             ok = True
         except _ERRORES as error:
-            self._avisar(str(error))
+            self._ultimo_error = str(error)
+            self._avisar(self._ultimo_error)
             ok = False
         finally:
             estado_du = self.sesion.estado if self.sesion is not None else None
@@ -227,14 +390,21 @@ class App:
                 await self.panel.mostrar_fila(pc)
         return ok
 
+    async def simular(self) -> None:
+        """Usar sin placa: FakeTransport (el golden model contesta como la DU)."""
+        await self._conectar_a(SIMULADO)
+
     async def conectar(self) -> None:
-        """Conectar (PING + DUMP para saber el estado) o, si ya está, desconectar."""
-        if self.estado.conectado:
-            self._desconectar()
-            return
-        puerto = self.barra.puerto.value
+        puerto = self.conexion.puerto.value
         if not puerto:
-            self._avisar("Elegí un puerto (o la opción simulada).")
+            self.conexion.avisar("Elegí un puerto, o usá el modo sin placa.")
+            self.refrescar()
+            return
+        await self._conectar_a(puerto)
+
+    async def _conectar_a(self, puerto: str) -> None:
+        """PING + DUMP para saber el estado. Si falla, el aviso queda en la pantalla."""
+        if self.estado.conectado:
             return
 
         def abrir() -> None:
@@ -252,13 +422,19 @@ class App:
         self.puerto = puerto
         if await self._ejecutar(abrir):
             self.estado = replace(self.estado, conectado=True)
+            self.abierta = self.origen = self.programa_abierto = None  # manda la placa
+            self.conexion.avisar(None)
+            self.ir_a_pagina(0)
+        else:
+            self.conexion.avisar(f"{puerto}: {self._ultimo_error}")
             self.refrescar()
 
     def _desconectar(self) -> None:
         if self.sesion is not None:
             self.sesion.close()
-        self.sesion = self.version = self.cargada = self._snapshot = None
-        self._riesgos = (0, 0)
+        self.sesion = self.version = self.cargada = self._snapshot = self._anterior = None
+        self._pedido = self.fuente_cargada = self._verificacion = None
+        self._riesgos = (0, 0, 0)
         self.estado = EstadoUI(imagen_valida=self.estado.imagen_valida)
         self.refrescar()
 
@@ -269,30 +445,46 @@ class App:
             try:
                 preferido = detectar_puerto()
             except ErrorPuerto:
-                preferido = puertos[0] if puertos else SIMULADO
-        self.barra.poner_puertos(puertos, preferido)
+                preferido = puertos[0] if puertos else None
+        self.conexion.poner_puertos(puertos, preferido if preferido != SIMULADO else None)
 
     async def cargar(self) -> None:
         sesion, imagen = self.sesion, self.imagen
         if sesion is None or imagen is None or not self._puede(Accion.CARGAR):
             return
 
+        self._pedido = None  # era de otro programa
+
         def operacion() -> None:
             sesion.load(imagen.palabras)
-            self.cargada = imagen
+            self.cargada, self.fuente_cargada = imagen, self.texto_imagen
             sesion.dump()  # ciclo 0: muestra el estado inicial y resalta la primera línea
 
-        await self._ejecutar(operacion)
+        if await self._ejecutar(operacion):
+            self.editando = False  # la página Programa muestra la fuente en ejecución
+            self.refrescar()
 
     async def correr(self) -> None:
         sesion = self.sesion
         if sesion is None or not self._puede(Accion.CORRER):
             return
         self.cancelar = cancelar = threading.Event()  # uno nuevo por RUN: nunca queda levantado
+        self._run_desde = time.monotonic()
+        reloj = asyncio.create_task(self._reloj())
         try:
             await self._ejecutar(lambda: sesion.run(cancelar), durante=EstadoDU.RUN)
         finally:
-            self.cancelar = None
+            self.cancelar = self._run_desde = None
+            reloj.cancel()
+            self.refrescar()
+
+    async def _reloj(self) -> None:
+        """Actualiza los segundos del banner de RUN mientras corre."""
+        while self._run_desde is not None:
+            await asyncio.sleep(1)
+            if self._run_desde is not None:
+                self.banner.mostrar(int(time.monotonic() - self._run_desde))
+                self.banner.control.update()
 
     async def paso(self) -> None:
         if self.sesion is not None and self._puede(Accion.PASO):
@@ -325,11 +517,119 @@ class App:
         if sesion is None or not self._puede(Accion.RESET):
             return
 
+        self._pedido = None
+
         def operacion() -> None:
             sesion.reset()
             sesion.dump()
 
         await self._ejecutar(operacion)
+
+    async def leer_memoria(self) -> None:
+        """Botón Leer: un rango de la DMEM con DUMP_MEM, que se muestra aparte (AC3)."""
+        sesion = self.sesion
+        if sesion is None or not self._puede_leer():
+            return
+        try:
+            addr, n = rango_desde_hasta(
+                self.memoria.desde.value or "", self.memoria.hasta.value or ""
+            )
+        except ValueError as error:
+            self._avisar(str(error))
+            return
+        leido: dict[int, int] = {}
+        if await self._ejecutar(lambda: leido.update(sesion.dump_mem(addr, n).como_dict())):
+            self._pedido = (self._snapshot.ciclos if self._snapshot is not None else 0, leido)
+            self.refrescar()
+
+    # --- Historial: exportar, reabrir y verificar (US-505) ----------------------------------
+
+    async def exportar_sesion(self) -> None:
+        h = self._historial()
+        if h is None or len(h) == 0 or self.estado.ocupado:
+            return
+        elegido = await self.picker.save_file(
+            dialog_title="Exportar sesión",
+            initial_directory=str(ASM),
+            file_name="sesion.json",
+            file_type=ft.FilePickerFileType.CUSTOM,
+            allowed_extensions=["json"],
+        )
+        if not elegido:
+            return
+        ruta = Path(elegido)
+        try:
+            exportar(ruta, h, self._programa(), self.fuente_cargada)
+        except OSError as error:
+            self._avisar(f"No se pudo exportar a {ruta.name}: {error}")
+            return
+        self._avisar(f"Sesión exportada en {ruta}")
+
+    async def reabrir_sesion(self) -> None:
+        """Abre una sesión exportada y se navega igual que en vivo (AC2), sin placa."""
+        if self.estado.conectado or self.estado.ocupado:
+            self._avisar("Desconectate para reabrir una sesión: la placa tiene su historial.")
+            return
+        archivos = await self.picker.pick_files(
+            dialog_title="Reabrir sesión",
+            initial_directory=str(ASM),
+            file_type=ft.FilePickerFileType.CUSTOM,
+            allowed_extensions=["json"],
+        )
+        if not archivos or archivos[0].path is None:
+            return
+        ruta = Path(archivos[0].path)
+        try:
+            guardada = leer(ruta)
+        except ErrorSesionGuardada as error:
+            self._avisar(str(error))
+            return
+        self.abierta, self.origen = guardada.historial, ruta.name
+        self.programa_abierto, self.fuente_cargada = guardada.programa, guardada.fuente
+        self.cargada = self._verificacion = self._pedido = None
+        if guardada.fuente is not None:
+            self.panel.editor.value = guardada.fuente
+            self.ruta = None  # que Guardar no pise el .asm abierto antes con este texto
+            self.al_ensamblar()
+            imagen = self.imagen
+            if (
+                imagen is not None
+                and self.texto_imagen == guardada.fuente
+                and imagen.palabras == guardada.programa
+            ):
+                self.cargada = imagen  # el listado es el de la sesión: se resalta la línea
+                self.editando = False
+        self.ir_a_pagina(0)
+
+    async def verificar(self) -> None:
+        """Corre el programa en el golden model y compara con el último snapshot (AC3)."""
+        h = self._historial()
+        programa = self._programa()
+        snaps = list(h) if h is not None else []
+        final = snaps[-1] if snaps else None
+        resultado: Verificacion | str
+        if programa is None:
+            resultado = "No se sabe qué programa corrió: cargalo desde la GUI."
+        elif final is None or final.motivo not in (Motivo.HALTED, Motivo.ILLEGAL):
+            resultado = "El programa no terminó: corré hasta el final (F5) o dale Paso hasta HALT."
+        else:
+            esperado = await asyncio.to_thread(esperado_de, programa)  # hasta 100 000 instr.
+            if esperado is None:
+                resultado = "El programa no termina en el golden model: no hay con qué comparar."
+            else:
+                filas = comparacion(final, esperado)
+                origenes = {}
+                for d in filas:
+                    if not d.ok and (o := origen_de(snaps, d.que)) is not None:
+                        origenes[d.que] = (o[0], o[1], snaps[o[0]].ciclos)
+                resultado = Verificacion(
+                    filas,
+                    final.ciclos,
+                    f"{esperado.motivo.name} en 0x{esperado.pc:03x}",
+                    origenes,
+                )
+        self._verificacion = resultado
+        self.refrescar()
 
     # --- Programa --------------------------------------------------------------------------
 
@@ -345,12 +645,16 @@ class App:
         except ErrorEnsamblado as error:
             self.panel.mostrar_mensajes((error.linea, error.mensaje), [], self.panel.ir_a_linea)
             self.estado = replace(self.estado, imagen_valida=False)
+            self.con_error, self.editando = True, True
         else:
-            self.imagen, self.texto_imagen = imagen, texto
+            self.imagen, self.texto_imagen, self.con_error = imagen, texto, False
             self.panel.mostrar_mensajes(None, imagen.advertencias, self.panel.ir_a_linea)
             self.panel.mostrar_listado(imagen, texto)
             self.estado = replace(self.estado, imagen_valida=True)
         self.refrescar()
+
+    async def _ensamblar_boton(self) -> None:
+        self.al_ensamblar()
 
     def editado(self) -> None:
         """Si el texto ya no es el que se ensambló, no se puede cargar hasta reensamblar."""
@@ -365,9 +669,11 @@ class App:
             file_type=ft.FilePickerFileType.CUSTOM,
             allowed_extensions=["asm", "s"],
         )
-        if not archivos or archivos[0].path is None:
-            return
-        ruta = Path(archivos[0].path)
+        if archivos and archivos[0].path is not None:
+            await self.abrir_ruta(Path(archivos[0].path))
+
+    async def abrir_ruta(self, ruta: Path) -> None:
+        """Pone el .asm en el editor, lo ensambla y va a la página Programa."""
         try:
             texto = ruta.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as error:
@@ -375,9 +681,9 @@ class App:
             return
         self.ruta = ruta
         self.panel.editor.value = texto
-        self.panel.poner_archivo(ruta.name)
-        self.editado()
-        self.refrescar()
+        self.editando = True
+        self.al_ensamblar()
+        self.ir_a_pagina(0)
 
     async def guardar(self) -> None:
         ruta = self.ruta
@@ -398,7 +704,6 @@ class App:
             self._avisar(f"No se pudo guardar {ruta.name}: {error}")
             return
         self.ruta = ruta
-        self.panel.poner_archivo(ruta.name)
         self._avisar(f"Guardado en {ruta}")
         self.refrescar()
 
@@ -410,6 +715,7 @@ class App:
         atajos: dict[tuple[str, bool, bool], Callable[[], Awaitable[None]]] = {
             ("F5", False, False): self.correr,
             ("F5", False, True): self.abortar,
+            ("Escape", False, False): self.abortar,
             ("F10", False, False): self.paso,
             ("L", True, False): self.cargar,
             ("R", True, False): self.reset,
