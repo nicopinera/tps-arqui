@@ -482,3 +482,30 @@ always @(*) begin
 end
 // lo mismo para el operando B
 ```
+
+## 12. Hazard unit (US-302)
+
+La hazard unit resuelve un problema que la forwarding unit no puede resolver, es el tema de load-use por ejemplo:
+
+```
+lw  x1, 0(x2)      ← el dato sale de la DMEM al final de MEM
+add x3, x1, x4     ← lo necesita al principio de EX
+```
+
+El valor de x1 esta disponible recien a la salida de la fase de recuperar el dato osea a la salida del bloque Load-extend en la etapa de MEM, cuando el add ya esta en EX y lo necesita en ese mismo ciclo. Por eso no se puede reenviar: en EX/MEM todavia esta la direccion, no el dato. Para detectar este tipo de riesgo se hace lo siguiente:
+
+1. ver si la instrucción que está en EX es válida, y lee la memoria (es un load), y su registro destino no es x0.
+2. La instruccion que esta en ID necesita el registro que se carga en la instruccion anterior (que estaria en EX), y la instruccion de verdad lee ese operando (uses_rs1/uses_rs2) (en un addi, lui o jal los bits de rs pueden ser parte del inmediato)
+3. Si se cumplen las dos, se hace un stall: el PC e IF/ID se mantienen (la instrucción espera en ID) y en ID/EX entra una burbuja (no se ejecuta nada en EX en el ciclo siguiente). Al ciclo siguiente el load ya está en WB y el dato llega a EX por forwarding desde MEM/WB
+
+```verilog
+// hazard_unit.v:34-39
+//1.
+// Load valido en EX que escribe un registro distinto de x0
+wire w_load_en_ex = i_id_ex_valid && i_id_ex_mem_read && (i_id_ex_rd != X0);
+//2.
+// La instruccion de ID necesita el registro que carga el load
+wire w_usa_rd = (i_uses_rs1 && (i_if_id_rs1 == i_id_ex_rd)) || (i_uses_rs2 && (i_if_id_rs2 == i_id_ex_rd));
+//3.
+assign o_stall = w_load_en_ex && w_usa_rd;
+```
