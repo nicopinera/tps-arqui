@@ -7,9 +7,11 @@ sesión, la CLI y la GUI sin hardware, y para probarlas en el CI.
 Diferencias con la placa (por eso el snapshot sale con `simulado = True`):
 - Un `STEP` ejecuta una **instrucción**, no un ciclo; `ciclos` cuenta instrucciones.
 - No hay riesgos: el byte de riesgos siempre es 0.
-- Los latches son una aproximación: en `STEPPING`, IF/ID tiene la próxima instrucción y ID/EX,
-  EX/MEM y MEM/WB las tres anteriores, ya ejecutadas (con `pc`, `pc_plus4`, `instr` y `valid`;
-  el resto de los campos en 0). En los demás estados el pipeline está vacío.
+- Los latches son una aproximación: en `STEPPING`, IF/ID, ID/EX, EX/MEM y MEM/WB tienen las
+  cuatro últimas instrucciones ejecutadas, de la más reciente a la más vieja (con `pc`,
+  `pc_plus4`, `instr` y `valid`; el resto de los campos en 0), y el PC apunta a la próxima. Así
+  la vista del pipeline (US-502: IF = la del PC, ID = la de IF/ID, …) muestra cinco
+  instrucciones seguidas, como un pipeline lleno sin riesgos. En los demás estados está vacío.
 - `RUN` corre de una, dentro de `write`: si el programa no termina en `max_instr`
   instrucciones queda en `RUN` hasta un `ABORT`, como un loop infinito en la placa.
 - Sin timeouts de recepción: un comando con argumentos incompletos espera al próximo `write`.
@@ -57,7 +59,7 @@ class FakeTransport:
         self._entrada = bytearray()  # bytes recibidos que todavía no formaron un comando
         self._salida = bytearray()  # tramas listas para `read`
         self._programa: list[int] = []
-        self._historia: deque[int] = deque(maxlen=3)  # PC de las últimas ejecutadas
+        self._historia: deque[int] = deque(maxlen=4)  # PC de las últimas ejecutadas
         # Los asigna _reiniciar (LOAD, RESET y el encendido):
         self._modelo: GoldenModel
         self._estado: EstadoDU
@@ -227,16 +229,17 @@ class FakeTransport:
             return m.imem[(pc // 4) % len(m.imem)]
 
         if_id, id_ex, ex_mem, mem_wb = LatchIFID(), LatchIDEX(), LatchEXMEM(), LatchMEMWB()
-        if self._estado is EstadoDU.STEPPING:
-            if_id = LatchIFID(m.pc, m.pc + 4, instr(m.pc), valid=True)
-        historia = list(self._historia)  # la más reciente primero: ID/EX, EX/MEM, MEM/WB
+        historia = list(self._historia)  # la más reciente primero: IF/ID, ID/EX, EX/MEM, MEM/WB
         if len(historia) > 0:
             pc = historia[0]
-            id_ex = LatchIDEX(pc=pc, pc_plus4=pc + 4, valid=True, instr=instr(pc))
+            if_id = LatchIFID(pc, pc + 4, instr(pc), valid=True)
         if len(historia) > 1:
-            ex_mem = LatchEXMEM(pc_plus4=historia[1] + 4, valid=True, instr=instr(historia[1]))
+            pc = historia[1]
+            id_ex = LatchIDEX(pc=pc, pc_plus4=pc + 4, valid=True, instr=instr(pc))
         if len(historia) > 2:
-            mem_wb = LatchMEMWB(pc_plus4=historia[2] + 4, valid=True, instr=instr(historia[2]))
+            ex_mem = LatchEXMEM(pc_plus4=historia[2] + 4, valid=True, instr=instr(historia[2]))
+        if len(historia) > 3:
+            mem_wb = LatchMEMWB(pc_plus4=historia[3] + 4, valid=True, instr=instr(historia[3]))
         return Snapshot(
             estado=self._estado,
             motivo=None if self._motivo is Motivo.NINGUNO else self._motivo,
