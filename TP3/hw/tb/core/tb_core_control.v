@@ -13,7 +13,8 @@
 //   0x10 sig:  jal  x0, lazo
 //
 // - Senales de riesgo: en cada ciclo del lazo, o_flush_if_id/o_flush_id_ex coinciden con el
-//   jal en ID y el beq en EX; o_stall = 0 y o_fwd_a = o_fwd_b = 00 (Hito 2).
+//   jal en ID y el beq en EX; o_fwd_a/o_fwd_b coinciden con el forwarding calculado a partir de
+//   los buses de los latches; o_stall = 0 (hasta US-302).
 // - Layout de los buses de latches (riscv_core.md 4): campos del addi, el beq y el sw.
 // - AC6 (ABORT): con i_stop_fetch = 1 el pipeline queda vacio en 3 ciclos o menos, el PC no
 //   cambia y la instruccion que estaba en ID no escribe; lo que estaba en EX, MEM y WB si.
@@ -133,6 +134,19 @@ module tb_core_control;
 
     always #(PERIODO / 2) clock = ~clock;
 
+    // Forwarding esperado para un registro de la instruccion en EX, leyendo rd, reg_write y
+    // valid de los buses de EX/MEM y MEM/WB (riscv_core.md 4)
+    function [1:0] fwd_esperado;
+        input [4:0] rs;
+        begin
+            if (w_ex_mem[EX_MEM_VALID] && w_ex_mem[115] && w_ex_mem[100:96] != 0 && w_ex_mem[100:96] == rs)
+                fwd_esperado = 2'b10;
+            else if (w_mem_wb[MEM_WB_VALID] && w_mem_wb[107] && w_mem_wb[100:96] != 0 && w_mem_wb[100:96] == rs)
+                fwd_esperado = 2'b01;
+            else fwd_esperado = 2'b00;
+        end
+    endfunction
+
     task ciclo;
         begin
             @(posedge clock);
@@ -195,10 +209,10 @@ module tb_core_control;
         r_visto_addi = 1'b0;
         for (ciclos = 0; ciclos < CICLOS_LAZO; ciclos = ciclos + 1) begin
             #1;
-            // Senales de riesgo del ciclo (Hito 2)
+            // Senales de riesgo del ciclo
             check_eq("o_stall = 0", {31'd0, w_stall}, 32'd0);
-            check_eq("o_fwd_a = 00", {30'd0, w_fwd_a}, 32'd0);
-            check_eq("o_fwd_b = 00", {30'd0, w_fwd_b}, 32'd0);
+            check_eq("o_fwd_a segun los latches", {30'd0, w_fwd_a}, {30'd0, fwd_esperado(w_id_ex[164:160])});
+            check_eq("o_fwd_b segun los latches", {30'd0, w_fwd_b}, {30'd0, fwd_esperado(w_id_ex[172:168])});
             check_eq("flush_id_ex = beq en EX", {31'd0, w_flush_id_ex},
                      {31'd0, w_id_ex[ID_EX_VALID] && w_id_ex[247:216] == W_BEQ});
             check_eq("flush_if_id = beq en EX o jal en ID", {31'd0, w_flush_if_id},
