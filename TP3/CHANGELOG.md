@@ -81,9 +81,21 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `asm/demos/fibonacci.asm` y `asm/special/infinite_loop.asm` (US-410).
 - `tests/session/` (`test_debug_session.py` con `FakeTransport` y con transportes que inyectan errores, `test_history.py`, `test_diff.py`) y `tests/cli/test_rvdbg.py` (US-410).
 - `tools/scripts/verify_board.py`: por cada programa, LOAD → RUN → compara registros, memoria usada y motivo contra el golden model; `--step` corre todo con STEP y lo compara con RUN; carga los programas seguidos sin RESET; reporte Markdown con commit y SHA-256 del bitstream (`--reporte`, `--bitstream`); `--fake` para correrlo sin placa. Probado con `tests/scripts/test_verify_board.py` (US-411, AC1–AC4; falta la corrida en placa).
+- `tools/riscv_toolkit/ui/`: estructura de la GUI en Flet 1.0.5 (`python -m riscv_toolkit ui [--fake]`): barra de conexión (puertos detectados u opción simulada, versión de `PING`), panel de programa (abrir, editar, guardar, ensamblar, error clickeable que lleva a la línea, listado con la línea en IF o WB resaltada), controles Cargar/Correr/Paso/Paso xN/Abortar/Reset habilitados según el estado (espejo de R-DU-1), barra de estado y atajos (F5, Shift+F5, F10, Ctrl+L, Ctrl+R, Ctrl+O, Ctrl+S, Ctrl+B). Las operaciones con la placa corren en otro hilo (`asyncio.to_thread`) y Abortar funciona durante un RUN; cerrar la ventana aborta el RUN en curso (US-501, AC1–AC6).
+- `ui/state.py`: reglas de la GUI sin Flet (`acciones_habilitadas`, `pc_resaltado`, `contar_riesgos`, posiciones en el texto), con `tests/ui/test_state.py` (US-501).
+- `ui/tema.py` y `ui/assets/fonts/`: semilla `#1F7A52`, densidad compacta, Inter y JetBrains Mono con sus licencias OFL, para que la GUI se vea igual en Linux y Windows (US-501).
+- `protocol/serial_transport.listar_puertos()` y `SnapshotHistory.__iter__` (US-501).
+- `docs/manual/checklist_ui.md`: recorrido manual de la GUI en modo simulado y con placa (US-501).
+- Página **Pipeline** de la GUI: las 5 etapas IF…WB con la instrucción desensamblada, el PC y marcas de burbuja, `halt`, ilegal, stall, flush (tachada) y forwarding (`A ← EX/MEM` en EX y `→ A` en la fuente); al tocar una etapa, tabla campo / hex / decimal de su latch con todos los campos (`ui/views/pipeline_view.py`, `ui/views/latch_detail_view.py`) (US-502, AC1–AC5).
+- `ui/pipeline.py`: mapeo columna → instrucción (IF desde el PC y la imagen cargada, el resto desde su latch), marcas de riesgo y campos de cada latch, sin Flet, con `tests/ui/test_pipeline.py` (US-502).
 
 ### Changed
 
+- `FakeTransport`: los 4 latches tienen las 4 últimas instrucciones ejecutadas (antes IF/ID tenía la próxima), así la vista del pipeline muestra 5 instrucciones seguidas sin repetir IF en ID (US-502).
+- `docs/guias/guia-riscv-toolkit.md` §15.6 y `checklist_ui.md`: vista del pipeline y de dónde sale cada columna (US-502).
+- `DebugSession.run(cancelar=None)`: con un `threading.Event` levantado desde otro hilo, manda el `ABORT` desde el hilo que espera y devuelve el snapshot `ABORTED` (cancelación cooperativa para la GUI); sin él, igual que antes (US-501).
+- Dependencia `flet[desktop]==1.0.5`; `mypy` permite llamadas sin tipos solo en `riscv_toolkit.ui.*` (Flet deja métodos sin anotar); `make setup` instala `libsecret-1-0` (lo necesita el cliente de Flet en Linux); `.venv-windows/` en `.gitignore` (US-501).
+- `docs/guias/guia-riscv-toolkit.md`: sección de la GUI (§15) y cancelación del RUN (§13.4) (US-501).
 - `FakeTransport.read` duerme el `timeout` pedido cuando no hay nada para leer, como una placa que no contesta, para que la espera de `RUN` no gire en vacío (US-410).
 - `rvsim`: `volcado(regs, mem_usada)` pasa a ser público y lo usa también `rvdbg` (US-410).
 - `docs/guias/guia-riscv-toolkit.md`: secciones de `session/`, la CLI `dbg` y `verify_board.py` (US-410, US-411).
