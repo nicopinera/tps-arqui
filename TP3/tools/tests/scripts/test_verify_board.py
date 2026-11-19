@@ -13,12 +13,12 @@ from riscv_toolkit.protocol.serial_transport import ErrorPuerto
 from riscv_toolkit.protocol.snapshot import Snapshot
 from riscv_toolkit.protocol.transport import Transport
 from riscv_toolkit.session.debug_session import DebugSession, Timeouts
+from riscv_toolkit.session.verificar import Diferencia, comparacion, comparar
 from scripts import verify_board
 from scripts.verify_board import (
     FALLA,
     OMITIDO,
     PASA,
-    comparar,
     comparar_step_run,
     main,
     verificar_programa,
@@ -54,7 +54,13 @@ def test_suite_completa_con_step(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "| fibonacci.asm | RUN | PASA |" in texto
     assert "| fibonacci.asm | STEP | PASA |" in texto
     assert "| infinite_loop.asm | RUN | OMITIDO |" in texto
-    assert "(North Star, AC1):** 5 de 5 (100.0 %)" in texto
+    assert "falta_coma.asm" not in texto
+    # Todos los programas menos infinite_loop.asm (omitido) y los de errores/ (no ensamblan a
+    # propósito): calculado, así agregar un .asm a TP3/asm/ no rompe el test.
+    asm = [a for a in ASM.rglob("*.asm") if "errores" not in a.parts]
+    n = len(list(ISS.glob("*.asm"))) + len(asm) - 1
+    assert n >= 13
+    assert f"(North Star, AC1):** {n} de {n} (100.0 %)" in texto
     assert "sha256 `" in texto
     assert "FakeTransport" in texto
     assert "PASA    loop.asm (STEP)" in capsys.readouterr().out
@@ -141,3 +147,19 @@ def test_sin_placa(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.Monke
 def test_una_falla_sale_con_1(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(verify_board, "comparar", lambda snap, esperado: ["x1 distinto"])
     assert main([str(FIBONACCI), "--fake"]) == 1
+
+
+def test_comparacion_trae_tambien_lo_que_coincide() -> None:
+    snap = correr_fake(FIBONACCI)
+    esperado = golden(FIBONACCI).estado_final()
+    filas = comparacion(snap, esperado)
+    assert filas[0] == Diferencia("motivo", "HALTED", "HALTED", ok=True)
+    assert all(f.ok for f in filas)
+    # Los registros en 0 de los dos lados no se listan (la GUI dice cuántos se ocultaron).
+    regs = [f.que for f in filas if f.que.startswith("x")]
+    assert "x0" not in regs
+    assert len(regs) == sum(1 for v in snap.regs if v)
+    roto = replace(snap, regs=(0, 1, *snap.regs[2:]))
+    assert [f for f in comparacion(roto, esperado) if not f.ok] == [
+        Diferencia("x1", "0x00000001", "0x00000090")
+    ]

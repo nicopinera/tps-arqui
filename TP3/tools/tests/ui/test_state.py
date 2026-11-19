@@ -123,9 +123,10 @@ def test_contar_riesgos() -> None:
         replace(BASE, riesgos=RiesgosCiclo(stall=True)),
         replace(BASE, riesgos=RiesgosCiclo(flush_if_id=True, flush_id_ex=True)),  # uno solo
         replace(BASE, riesgos=RiesgosCiclo(stall=True, flush_id_ex=True)),
+        replace(BASE, riesgos=RiesgosCiclo(fwd_a=2, fwd_b=1)),  # dos operandos
         BASE,
     ]
-    assert contar_riesgos(snaps) == (2, 2)
+    assert contar_riesgos(snaps) == (2, 2, 2)
 
 
 # --- Posiciones en el texto ----------------------------------------------------------------

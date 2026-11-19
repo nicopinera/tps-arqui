@@ -23,7 +23,10 @@ from riscv_toolkit.ui.pipeline import (
     Columna,
     campos_latch,
     columnas_pipeline,
+    destino_salto,
+    explicar,
     latches,
+    senales,
 )
 
 # 0x00 lw · 0x04 add (usa x1: load-use) · 0x08 beq tomado → 0x10 · 0x0c addi x3 · 0x10 addi x4
@@ -192,3 +195,49 @@ def test_sin_snapshot_los_latches_estan_vacios() -> None:
     vacios = latches(None)
     assert list(vacios) == list(LATCHES)
     assert not any(latch.valid for latch in vacios.values())
+
+
+# --- "Qué pasó en este ciclo" --------------------------------------------------------------
+
+
+def test_explicar_un_ciclo_sin_riesgos() -> None:
+    s = snap(0x08, if_id=(0x04, ADD), id_ex=(0x00, LW))
+    assert explicar(s, columnas_pipeline(s, PROGRAMA)) == [
+        "Sin riesgos: cada instrucción avanza una etapa."
+    ]
+    assert [activa for _, activa in senales(s)] == [False] * 5
+
+
+def test_explicar_load_use() -> None:
+    s = snap(0x08, if_id=(0x04, ADD), id_ex=(0x00, LW), riesgos=RiesgosCiclo(stall=True))
+    [frase] = explicar(s, columnas_pipeline(s, PROGRAMA))
+    assert frase.startswith("Load-use: «lw x1, 0(x0)» está en EX")
+    assert "«add x2, x1, x1» en ID" in frase
+    assert senales(s)[0] == ("stall = 1", True)
+
+
+def test_branch_tomado_destino_y_explicacion() -> None:
+    s = snap(0x10, if_id=(0x0C, ADDI3), id_ex=(0x08, BEQ),
+             riesgos=RiesgosCiclo(flush_if_id=True, flush_id_ex=True))  # fmt: skip
+    s = replace(s, id_ex=replace(s.id_ex, imm=8, branch=True))
+    assert destino_salto(s) == 0x10
+    [frase] = explicar(s, columnas_pipeline(s, PROGRAMA))
+    assert "salta (tomado → 0x10)" in frase
+    assert destino_salto(replace(s, id_ex=replace(s.id_ex, jalr=True))) is None
+
+
+def test_jal_en_id_salta_y_descarta_if() -> None:
+    jal = ensamblar("nop\njal x1, f\nnop\nnop\nf: halt\n").palabras[1]  # 0x04 → 0x10
+    s = snap(0x08, if_id=(0x04, jal), riesgos=RiesgosCiclo(flush_if_id=True))
+    assert destino_salto(s) == 0x10
+    [frase] = explicar(s, columnas_pipeline(s, PROGRAMA))
+    assert "salta desde ID → 0x10" in frase
+
+
+def test_explicar_forwarding_marca_el_valor_viejo() -> None:
+    s = snap(0x0C, id_ex=(0x08, ADD), ex_mem=(0x04, LW), riesgos=RiesgosCiclo(fwd_a=2, fwd_b=1))
+    frases = explicar(s, columnas_pipeline(s, PROGRAMA))
+    assert frases[0].startswith("Forwarding A: EX toma el operando de EX/MEM")
+    assert "rs1_data de ID/EX es un valor viejo" in frases[0]
+    assert frases[1].startswith("Forwarding B: EX toma el operando de MEM/WB")
+    assert senales(s)[3:] == [("fwd_a = 10", True), ("fwd_b = 01", True)]
