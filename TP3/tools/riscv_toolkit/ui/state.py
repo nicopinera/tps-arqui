@@ -104,16 +104,19 @@ def pc_resaltado(snapshot: Snapshot, etapa: Etapa) -> int | None:
     return wb.pc_plus4 - 4 if wb.valid else None
 
 
-def contar_riesgos(snapshots: Iterable[Snapshot]) -> tuple[int, int]:
-    """(stalls, flushes) acumulados. Un ciclo con flush en IF/ID y en ID/EX cuenta uno.
+def contar_riesgos(snapshots: Iterable[Snapshot]) -> tuple[int, int, int]:
+    """(stalls, flushes, forwardings) acumulados. Un ciclo con flush en IF/ID y en ID/EX
+    cuenta uno; un ciclo con forwarding en A y en B cuenta dos (son dos operandos).
 
     Solo tiene sentido paso a paso: de un RUN llega únicamente el snapshot final.
     """
-    stalls = flushes = 0
+    stalls = flushes = fwds = 0
     for s in snapshots:
-        stalls += s.riesgos.stall
-        flushes += s.riesgos.flush_if_id or s.riesgos.flush_id_ex
-    return stalls, flushes
+        r = s.riesgos
+        stalls += r.stall
+        flushes += r.flush_if_id or r.flush_id_ex
+        fwds += (r.fwd_a != 0) + (r.fwd_b != 0)
+    return stalls, flushes, fwds
 
 
 # --- Posiciones en el texto del editor -----------------------------------------------------
