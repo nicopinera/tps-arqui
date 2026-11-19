@@ -462,3 +462,23 @@ RV32I está pensada para no cambiar cuando se agrega C, y por eso tiene detalles
 En nuestro caso como usamos solamente instrucciones del 32 bits, la IMEM ignora `pc[1:0]` (explicado en la seccion 6.2), así que con PC = `0x102` lee la palabra de `0x100`, y las instrucciones que se ejecutan son las mismas.
 
 Pero fue agregado para respetar la especificacion, ademas para que lo que muestra el hardware en los snapshots (el PC y registros como x1) coincida con el golden model, que sigue la spec.
+
+## 11. Forwarding unit (US-301)
+
+En la forwarding unit ingresan las direcciones de los registros que se usan en la etapa de EX y se comparan contra rd en MEM y rd en WB osea lo que se hace es verifica que en la etapa de EX se va a usar registros (rs1 y rs2) que van a ser escritos (reg_write) en MEM o WB y que la operacion no es una burbuja mediante el valid. Luego notar tambien que el registro en MEM tiene mayor prioridad en la toma de la decision porque es el valor mas reciente, podria darse el caso que las instrucciones en MEM y en WB escriban el mismo registro, y el valor correcto es el de la mas reciente. Ademas se verifica que el registro no sea x0, que siempre debe valer 0: hay instrucciones con rd = x0 y reg_write = 1 (jal x0, addi x0) y, si se reenviaran, la que lee x0 recibiria un valor distinto de 0
+
+```verilog
+// forwarding_unit.v:41-49
+// Aca solo se verifica si hay escritura del registro en esas etapas
+wire w_escribe_mem = i_ex_mem_valid && i_ex_mem_reg_write && (i_ex_mem_rd != X0);
+wire w_escribe_wb = i_mem_wb_valid && i_mem_wb_reg_write && (i_mem_wb_rd != X0);
+
+// Operando A
+// Aca se verifica que el registro que se va a escribir es el que se necesita en EX
+always @(*) begin
+    o_fwd_a = FWD_ID_EX;
+    if (w_escribe_mem && (i_ex_mem_rd == i_id_ex_rs1)) o_fwd_a = FWD_EX_MEM;
+    else if (w_escribe_wb && (i_mem_wb_rd == i_id_ex_rs1)) o_fwd_a = FWD_MEM_WB;
+end
+// lo mismo para el operando B
+```
