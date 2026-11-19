@@ -12,6 +12,7 @@ manda un comando, espera la respuesta que le corresponde (`LOAD` → `ACK`, `STE
 Debajo, el `Transport` decide si es la placa real o `FakeTransport`.
 """
 
+import threading
 import time
 from collections.abc import Sequence
 from contextlib import suppress
@@ -211,12 +212,15 @@ class DebugSession:
         )
         return MemRange.from_bytes(trama.payload)
 
-    def run(self) -> Snapshot:
+    def run(self, cancelar: threading.Event | None = None) -> Snapshot:
         """Corre hasta HALT o una ilegal y devuelve el snapshot final.
 
-        Espera sin límite (salvo `timeouts.run`), en lecturas cortas para que un Ctrl+C
-        (`KeyboardInterrupt`) pueda cortar la espera. Si eso pasa, la DU sigue en RUN: hay que
-        llamar a `abort()`.
+        Espera sin límite (salvo `timeouts.run`), en lecturas cortas. Entre una y otra:
+        - un Ctrl+C (`KeyboardInterrupt`) corta la espera; la DU sigue en RUN y hay que llamar
+          a `abort()` (lo hace la CLI);
+        - si `cancelar` está levantado, manda el ABORT desde este mismo hilo y devuelve el
+          snapshot `ABORTED` (lo usa la GUI: el botón Abortar levanta la bandera desde el hilo
+          de la interfaz, y así un solo hilo lee el puerto).
         """
         self._pedir(Comando.RUN, TipoTrama.ACK, self.timeouts.respuesta)
         self.estado = EstadoDU.RUN
@@ -225,6 +229,8 @@ class DebugSession:
             try:
                 return self._recibir_snapshot(Comando.RUN, self.timeouts.sondeo)
             except TimeoutError:
+                if cancelar is not None and cancelar.is_set():
+                    return self.abort()
                 if limite is not None and time.monotonic() >= limite:
                     raise TimeoutError(f"RUN no terminó en {self.timeouts.run} s") from None
             except ErrorNackDU as error:
