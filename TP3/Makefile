@@ -17,8 +17,9 @@ TOOLS_DIR := tools
 BUILD_DIR := build
 # tb_core_programs necesita un programa: lo corre sim-programs, no sim-all
 TB_NAMES  := $(filter-out tb_core_programs,$(sort $(basename $(notdir $(shell find hw/tb -type f -name 'tb_*.v' 2>/dev/null)))))
-PROG_DIR  := asm/tests/h2
-PROGRAMS  := $(sort $(basename $(notdir $(wildcard $(PROG_DIR)/*.asm))))
+# Programas que corre sim-programs, como <carpeta>/<nombre> relativo a asm/tests
+PROG_DIRS := h2 hazards
+PROGRAMS  := $(sort $(patsubst asm/tests/%.asm,%,$(foreach d,$(PROG_DIRS),$(wildcard asm/tests/$(d)/*.asm))))
 UV_RUN := cd $(TOOLS_DIR) && uv run
 
 .PHONY: help setup lint sim sim-all sim-programs synth-ooc timing-core test-py check-py gnu-ref check clean
@@ -33,7 +34,7 @@ help:
 	@echo "       EXPECTED=<ruta>             estado final del golden model (+EXPECTED)"
 	@echo "       ARGS=\"+X +Y=1\"              plusargs extra"
 	@echo "  make sim-all                   Corre todos los hw/tb/**/tb_*.v (salvo tb_core_programs) y resume el resultado"
-	@echo "  make sim-programs              Ensambla asm/tests/h2, genera el .expected y corre cada programa en el nucleo,"
+	@echo "  make sim-programs              Ensambla asm/tests/{h2,hazards}, genera el .expected y corre cada programa en el nucleo,"
 	@echo "                                 con enable fijo y con enable aleatorio"
 	@echo "  make synth-ooc                 Sintesis fuera de contexto de hw/rtl/core con Vivado (recursos y latches)"
 	@echo "       MOD=\"alu data_mem\"        solo esos modulos (por defecto, todos)"
@@ -82,29 +83,30 @@ sim-all:
 	if [ $$total -eq 0 ]; then echo "No se encontraron testbenches en hw/tb"; exit 1; fi; \
 	[ $$failed -eq 0 ]
 
-# Programas de asm/tests/h2 en el nucleo completo (US-210). Para cada uno: rvasm -> .hex,
+# Programas de asm/tests/h2 y asm/tests/hazards en el nucleo completo (US-210, US-301). Para cada uno: rvasm -> .hex,
 # rvsim --expect -> .expected (golden model) y tb_core_programs con enable fijo y con enable
 # aleatorio (AC4). Deja todo en build/programs/.
 sim-programs:
 	@mkdir -p $(BUILD_DIR)/programs
 	@total=0; failed=0; \
 	for p in $(PROGRAMS); do \
-		src=$(CURDIR)/$(PROG_DIR)/$$p.asm; out=$(CURDIR)/$(BUILD_DIR)/programs/$$p; \
+		src=$(CURDIR)/asm/tests/$$p.asm; out=$(CURDIR)/$(BUILD_DIR)/programs/$$p; \
+		mkdir -p $$(dirname $$out); \
 		if ! (cd $(TOOLS_DIR) && uv run python -m riscv_toolkit asm $$src -o $$out.hex > /dev/null 2>&1 \
 				&& uv run python -m riscv_toolkit sim $$src --expect $$out.expected > /dev/null 2>&1); then \
 			total=$$((total + 1)); failed=$$((failed + 1)); \
-			printf '  FAIL  %-14s no ensambla o no termina en el golden model\n' $$p; continue; \
+			printf '  FAIL  %-26s no ensambla o no termina en el golden model\n' $$p; continue; \
 		fi; \
 		for modo in fijo aleatorio; do \
 			total=$$((total + 1)); \
 			if [ $$modo = aleatorio ]; then extra="+ENABLE_ALEATORIO"; else extra=""; fi; \
 			if QUIET=1 HEX=$$out.hex EXPECTED=$$out.expected ARGS="$$extra" \
 					bash hw/scripts/sim.sh tb_core_programs > /dev/null 2>&1; then \
-				printf '  PASS  %-14s enable %s\n' $$p $$modo; \
+				printf '  PASS  %-26s enable %s\n' $$p $$modo; \
 			else \
 				failed=$$((failed + 1)); \
 				cp $(BUILD_DIR)/tb_core_programs.log $$out.$$modo.log; \
-				printf '  FAIL  %-14s enable %s   (ver %s)\n' $$p $$modo $(BUILD_DIR)/programs/$$p.$$modo.log; \
+				printf '  FAIL  %-26s enable %s   (ver %s)\n' $$p $$modo $(BUILD_DIR)/programs/$$p.$$modo.log; \
 			fi; \
 		done; \
 	done; \
