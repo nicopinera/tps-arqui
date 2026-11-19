@@ -9,7 +9,7 @@ Mapa de todo el código Python del TP3 (`TP3/tools/`): qué hace cada paquete, c
 | Expresiones regulares  | [guia-regex.md](guia-regex.md) (las usa el lexer)        |
 | Protocolo con la placa | [`docs/protocolo.md`](../protocolo.md), ADR-003, ADR-017 |
 
-> **Estado.** Cubre lo hecho hasta US-411: `isa`, `assembler`, `disasm`, `iss`, `protocol/` (constantes, codec, snapshot y transportes), `session/` (la sesión de depuración), `cli` (`asm`, `sim` y `dbg`) y `scripts` (incluido `verify_board.py`), y la GUI (`ui/`: estructura y vista del pipeline, US-501 y US-502, §15).
+> **Estado.** Cubre lo hecho hasta US-411: `isa`, `assembler`, `disasm`, `iss`, `protocol/` (constantes, codec, snapshot y transportes), `session/` (la sesión de depuración), `cli` (`asm`, `sim` y `dbg`) y `scripts` (incluido `verify_board.py`), y la GUI (`ui/`: estructura, pipeline, carta, registros, memoria, historial y Verificar, US-501 a US-505, §15).
 
 ---
 
@@ -664,6 +664,15 @@ En Windows la GUI corre nativa (ahí está el COM de la placa), con un entorno a
 | `ui/pipeline.py`             | Lo que muestra la vista del pipeline, **sin Flet**: columnas, marcas de riesgo y campos de cada latch (US-502)   |
 | `ui/views/pipeline_view.py`  | Las 5 etapas en tarjetas con sus marcas (US-502)                                                                  |
 | `ui/views/latch_detail_view.py` | Tabla campo / hex / decimal del latch elegido (US-502)                                                         |
+| `ui/pipeline_chart.py`       | La carta de pipeline, **sin Flet**: sigue cada instancia por el historial (US-503)                               |
+| `ui/views/pipeline_chart_view.py` | La grilla instrucciones × ciclos (US-503)                                                                  |
+| `ui/arquitectura.py`         | Filas de registros y memoria con lo que cambió, y validación del rango de `DUMP_MEM`, **sin Flet** (US-504)     |
+| `ui/views/registers_view.py` | Los 32 registros en hex, con signo y sin signo (US-504)                                                          |
+| `ui/views/memory_view.py`    | Memoria usada (bytes y ASCII) y el rango leído a pedido (US-504)                                                 |
+| `ui/views/timeline_view.py`  | Línea de tiempo, Exportar y Reabrir (US-505)                                                                      |
+| `ui/views/verify_view.py`    | Panel Verificar: coincide, o la tabla de diferencias (US-505)                                                    |
+| `session/export.py`          | Exportar una sesión a JSON y leerla validando todo (US-505)                                                      |
+| `session/verificar.py`       | Golden model y comparación del estado final; la usan `verify_board` y la GUI (US-505)                           |
 
 La idea: **las vistas no deciden nada**. Después de cada cambio, `App.refrescar()` le pregunta a `state.py` qué se puede hacer y qué línea resaltar, y lo copia a los controles. Los atajos de teclado consultan la misma función, así que un atajo no puede saltear un botón deshabilitado.
 
@@ -698,7 +707,7 @@ Solo se resalta si el listado es del programa que **está en la placa**. Si edit
 ### 15.4 Lo que aprendimos de Flet 1.0
 
 - **Los handlers `def` corren en el bucle** y lo bloquean; los `async def` pueden hacer `await`. Por eso todos los que hablan con la placa son `async`.
-- **Las listas se reconcilian por clave**, como en React. Si un listado nuevo reusara las claves del anterior, sus filas quedarían emparejadas y "congeladas" (`Frozen controls cannot be updated`). Cada listado lleva un número de generación en la clave.
+- **Las listas se reconcilian por clave**, como en React. Si un listado nuevo reusara las claves del anterior, sus filas quedarían emparejadas y "congeladas" (`Frozen controls cannot be updated`). Cada listado lleva un número de generación en la clave y, además, se crea una `ListView` nueva por programa (§15.11).
 - **El `TextField` no se estira al alto disponible**: no expone `expands` de Flutter. El editor va sin borde dentro de un contenedor con borde, que es el que se estira y scrollea.
 - **Algunos métodos no tienen tipos** (`focus`, `window.destroy`). `pyproject.toml` relaja `disallow_untyped_calls` solo para `riscv_toolkit.ui.*`.
 
@@ -743,6 +752,122 @@ Lo mismo vale para `fwd_b`. Además, una instrucción ilegal se pinta con el col
 
 **El fake y los riesgos.** `FakeTransport` ejecuta una instrucción por `STEP` y no tiene Hazard Unit: los latches tienen las 4 últimas instrucciones ejecutadas y el PC la próxima, así que se ven 5 instrucciones seguidas y **nunca** hay riesgos. Los AC1 a AC3 (stall, flush, forwarding) se verifican con los tests y, en la placa, con los programas de riesgos (Hito 3).
 
+### 15.7 La carta de pipeline (US-503)
+
+La página **Carta** del menú lateral dibuja la figura clásica de "Segmentado": una fila por instrucción, una columna por ciclo, y en cada celda la etapa en la que estaba. Se arma con el historial de la sesión (`SnapshotHistory`, US-410) y el mismo mapeo de columnas de §15.6.
+
+**El problema: identidad.** Cada snapshot dice qué PC hay en cada etapa, pero no *qué vuelta* es. En un loop, `0x010` en EX en el ciclo 13 y `0x010` en EX en el ciclo 5 son dos instancias distintas (AC3). Una fila es una **instancia**: una instrucción en una vuelta concreta.
+
+**Cómo se sigue a una instancia.** Entra por IF y avanza una etapa por ciclo, salvo lo que digan los riesgos del ciclo **anterior**, que son las señales que decidieron cómo se movió el pipeline:
+
+| Etapa en t | Viene de (en t-1)                                                 |
+| ---------- | ----------------------------------------------------------------- |
+| IF         | IF si hubo `stall`; si no, es una instancia nueva (otra fila)     |
+| ID         | ID si hubo `stall`; nada si hubo `flush_if_id`; si no, IF          |
+| EX         | nada si hubo `stall` (entra la burbuja) o `flush_id_ex`; si no, ID |
+| MEM, WB    | la etapa anterior (nunca se congelan)                             |
+
+Además el PC tiene que coincidir; si no, se arranca una fila nueva en vez de pegar dos instrucciones distintas. La burbuja que mete un stall tiene su propia fila ("burbuja"), así se la ve bajar por EX, MEM y WB (AC1); los huecos que deja un flush no.
+
+Ejemplo, `load_use` (AC1):
+
+```
+lw  x1, 0(x0)    IF  ID  EX  MEM WB
+add x2, x1, x1       IF  ID* ID  EX
+beq ...                  IF* IF  ID
+burbuja                          EX  MEM
+```
+
+`*` = congelada (relleno de STALL). Un flush se ve con el relleno de FLUSH y la etapa tachada.
+
+**Solo paso a paso.** De un RUN llega únicamente el snapshot final: si el contador de ciclos salta entre dos snapshots, no se puede seguir a nadie, la carta arranca filas nuevas y la página lo avisa.
+
+**Cómo está hecho.** `ui/pipeline_chart.py` (sin Flet) arma la `Carta`; `tests/ui/test_pipeline_chart.py` la prueba con historiales armados a mano (sin riesgos, load-use, branch tomado, salto de ciclos) y con el fake (un loop). La vista rearma la grilla en cada refresco, pero solo con la página a la vista, y cada fila dibuja un espaciador más sus ~5 celdas (no una por ciclo). Muestra los últimos 80 ciclos.
+
+### 15.8 Registros y memoria (US-504)
+
+La página **Estado** del menú lateral muestra los 32 registros (dos tablas de 16) y la memoria. Lo que cambió en el último paso se resalta con el mismo color que la línea en ejecución.
+
+**¿Cambió respecto de qué?** Del snapshot **anterior** del historial, con `session/diff.py` (US-410). Después de un paso es el ciclo anterior. Después de un RUN es el de antes de correr, así que se resalta todo lo que cambió en la corrida. Después de LOAD o RESET el historial se vacía y no se resalta nada.
+
+**Registros (AC1).** Cada uno en hex, decimal con signo y sin signo: `addi x5, x0, -1` → `0xffffffff`, `-1`, `4294967295`. El con signo es complemento a dos: si el bit 31 está prendido, el valor menos 2³².
+
+**Memoria (AC2).** Una fila por palabra de `mem_usada` (las que el programa escribió, ADR-008): dirección, hex, los 4 bytes **en orden de dirección** y ASCII. La DMEM es little-endian: el byte `+0` es el menos significativo de la palabra, y es el que escribe `sb x6, 0(x0)`. Por eso `0x00006948` se lee `48 69 00 00` = `"Hi.."`. Un `sb` resalta la fila y, adentro, el byte que cambió con relleno fuerte. Una palabra que no estaba vale 0 (el mismo criterio que `diff`).
+
+**Leído a pedido (AC3).** Abajo, dirección y cantidad de palabras, y el botón Leer (`DUMP_MEM`, `DebugSession.dump_mem`). La respuesta va en una tabla aparte, marcada "Leído a pedido en el ciclo N": no se actualiza sola, porque cada lectura es un comando a la placa. Lo que escribe el usuario se valida antes de mandarlo (`rango_pedido`: número, alineada a 4, dentro de las 256 palabras), así no se manda algo que la DU rechazaría con `NACK(RANGO)`. Leer se deshabilita en RUN (la sesión no manda DUMP_MEM mientras corre, §4.1). LOAD, RESET y Desconectar borran lo leído.
+
+**Cómo está hecho.** `ui/arquitectura.py` (sin Flet) arma las filas y valida el rango; `tests/ui/test_arquitectura.py` prueba AC1 (con el fake), AC2 y la validación. La tabla de registros se arma una vez; la de memoria se rearma (cambia de tamaño), solo con la página a la vista.
+
+### 15.9 Historial, exportar y verificar (US-505)
+
+**Línea de tiempo.** Debajo de los controles, en todas las páginas: anterior, siguiente, un deslizador y "volver al último". Mueve el cursor de `SnapshotHistory` (US-410) y **todas** las vistas muestran el snapshot bajo el cursor (AC1): pipeline, latches, carta (con su ciclo marcado), registros, memoria, la línea resaltada en el listado y la barra de estado. Es **solo lectura**: el hardware no retrocede. El próximo Paso sigue desde el último y el cursor vuelve ahí. Mientras hay una operación en curso la navegación se deshabilita, porque la sesión mueve el cursor desde otro hilo.
+
+Lo que cambió (registros y memoria) se compara contra el snapshot anterior **al cursor**, no contra el último: al volver al ciclo 3 se ve lo que cambió en el ciclo 3.
+
+**Exportar y reabrir (AC2).** `session/export.py` guarda en JSON el programa (palabras y texto), el cursor y cada snapshot como el payload del protocolo en hex (`Snapshot.to_bytes`). Así no hay un segundo formato que mantener, y al reabrir se decodifica con el mismo código que en vivo: se ve exactamente igual. Para reabrir hay que estar desconectado, porque la placa tiene su propio historial. La sesión reabierta pone el texto en el editor y lo ensambla; si da las mismas palabras, el listado resalta la línea como en vivo. El archivo viene de afuera, así que `leer` valida todo (formato, versión, tipos, rango del cursor, cada snapshot) y cualquier problema es un `ErrorSesionGuardada` con un mensaje para mostrar.
+
+**Verificar (AC3).** En la página Estado. Corre el programa en el golden model (en otro hilo: puede ser de hasta 100 000 instrucciones) y compara el **último** snapshot: motivo, registros y memoria usada. El PC no, por lo mismo que en `verify_board`. Si coincide, "✔ Coincide"; si no, una tabla qué / obtenido / esperado. La comparación es `session/verificar.py`, que antes estaba en `scripts/verify_board.py`: ahora la usan los dos. No verifica si el programa no terminó (falta RUN o pasos hasta HALT), si no se sabe qué programa corrió, o si el golden model no termina (loop infinito).
+
+Para probar el AC3 "alterando un valor": exportar una sesión, cambiar un byte de un registro en el último snapshot del JSON, reabrir y Verificar (checklist H5).
+
+**Cómo está hecho.** `tests/session/test_export_import.py`: ida y vuelta idéntica (snapshots iguales campo a campo, cursor, programa), cada archivo inválido con su mensaje, y Verificar con un snapshot alterado.
+
+### 15.10 Programas de prueba (`TP3/asm/`)
+
+Todos dicen en el encabezado qué muestran y qué se espera al final. `verify_board` los corre todos (RUN y STEP contra el golden model), así que el comentario "Esperado" está verificado.
+
+| Programa                        | Qué muestra                                                                                 |
+| ------------------------------- | ------------------------------------------------------------------------------------------- |
+| `tests/hazards/load_use.asm`    | Un stall load-use y, con una instrucción en el medio, solo forwarding                        |
+| `tests/hazards/fwd_ex_mem.asm`  | Forwarding EX/MEM y MEM/WB, las dos fuentes a la vez, `x0` y la escritura del banco         |
+| `tests/hazards/branch_taken.asm`| Branch tomado (flush), no tomado (sin flush), un loop y un `j`; "trampas" que no deben correr |
+| `tests/hazards/llamadas.asm`    | `jal` y `ret`: dirección de vuelta en x1 y forwarding hacia `jalr`                          |
+| `demos/fibonacci.asm`           | Loop simple con `sw`                                                                         |
+| `demos/hola.asm`                | Una cadena con `sb` (columna ASCII de la página Estado) y un strlen con `lbu`                |
+| `demos/burbuja.asm`             | Burbuja de 8 números con signo: loops anidados, `slt` + `beq` y load-use en cada vuelta      |
+| `demos/factorial.asm`           | 1! … 7! con una multiplicación por sumas y desplazamientos en una subrutina                 |
+| `special/ilegal.asm`            | Motivo `ILLEGAL` y la fila de la ilegal resaltada                                           |
+| `special/infinite_loop.asm`     | No termina: para probar Abortar                                                             |
+
+Los riesgos (stall, flush, forwarding) solo se ven con la placa: el modo simulado no tiene Hazard Unit. Con el fake se ve el resultado, la memoria y la carta sin riesgos.
+
+---
+
+### 15.11 Rediseño con la maqueta
+
+La GUI se rehízo para que se vea como el "Muestrario GUI RISC-V" (base Datapath). Las reglas (qué se habilita, qué columna es qué) no cambiaron; cambió cómo se muestra.
+
+**Lo común.**
+- **Barra superior:** el archivo abierto (con ● si no ensambla) y una píldora de conexión: puerto y 8E1, simulado, sesión desde archivo o desconectado.
+- **Controles:** Correr relleno, Cargar y Paso tonales, y **Abortar en rojo** cuando se puede apretar (también con **Esc**). Si Cargar está deshabilitado, el tooltip dice por qué.
+- **Navegación:** a la derecha de los controles, ◀ "Ciclo N de M" ▶ y un chip *En vivo* / *Revisando*.
+- **Barra de estado:** el estado de la DU es una insignia de color (RUN relleno).
+- **Banner de RUN:** "Corriendo en la placa desde hace X s", con barra de progreso y Abortar.
+
+**Colores de las marcas** (`tema.RIESGO`): stall ámbar, flush rojo, forwarding A azul, forwarding B verde azulado y HALT violeta. Son los únicos colores en hex: con roles de la semilla, todos verdosos, no se distinguen entre sí. La burbuja va rayada (un `LinearGradient` que se repite con cortes duros) y el branch tomado usa el color primario. Son los mismos en Pipeline, Carta, Historial y Resumen.
+
+**Páginas:**
+
+| Página     | Qué tiene                                                                                                    | De dónde sale                    |
+| ---------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------- |
+| Conexión   | Puerto, aviso del último fallo, Conectar / Usar sin placa, los programas de `TP3/asm` y Abrir sesión          | `views/connect_view.py`          |
+| Programa   | Edición: editor y tarjeta Problemas. Ejecución: la fuente de solo lectura con la línea marcada y la etapa de cada línea | `views/editor_view.py`  |
+| Pipeline   | **Etapas** (latches entre etapas, flechas de forwarding, "Qué pasó en este ciclo", el latch elegido con los valores viejos marcados), **Latches** (los 4 juntos) y **Campos** (qué es cada campo) | `pipeline.py`, `latch_info.py` |
+| Carta      | Colores, A/B en EX, ✕ después de un flush, la columna del ciclo y clic para ir a un ciclo                      | `pipeline_chart.py`              |
+| Registros  | Hex / con signo / sin signo, "Cambió en este paso" (quién lo escribió) y "Se escribe al final de este ciclo"  | `historial.py`                   |
+| Memoria    | Palabras usadas, "Última escritura" de cada una y un rango Desde / Hasta                                      | `historial.py`, `arquitectura.py` |
+| Historial  | Línea de tiempo con el color del riesgo de cada ciclo, tabla por ciclo (etapas, riesgos, cambios), Abrir y Exportar | `historial.py`              |
+| Verificar  | Banner verde o rojo, todo lo comparado (Todo / Solo diferencias), cómo se verificó y "Por dónde empezar" con *Ir al ciclo N* | `session/verificar.py` (`comparacion`), `historial.py` (`origen_de`) |
+| Resumen    | Ciclos, instrucciones, CPI, stalls, flushes, forwardings, etapas ocupadas por ciclo, en qué se fueron los ciclos y mezcla de instrucciones | `historial.py` (`resumen`) |
+
+**Quién escribió qué.** Entre el snapshot del ciclo t y el del t+1, un registro lo escribe la instrucción que en t está en WB y una palabra la escribe el store que en t está en MEM. Solo se le atribuye si cierra (`reg_write` y el mismo `rd`; `mem_write`). Si no (hubo un RUN, o el modo simulado, que no llena los latches como el pipeline), dice "no se sabe": es mejor eso que culpar a la instrucción equivocada.
+
+**Qué pasó en este ciclo.** `explicar()` arma una oración por cada señal activa con las instrucciones de cada etapa: el load-use, a dónde salta un branch tomado (`pc + imm` de ID/EX) o un `jal` (`pc + imm` de IF/ID), y de dónde sale cada operando adelantado. El destino de `jalr` no se deduce del latch (rs1 puede venir adelantado), así que no se muestra.
+
+**Programas con errores (`asm/errores/`).** Uno por tipo de error: mnemónico desconocido, registro inválido, inmediato fuera de rango, etiqueta inexistente, etiqueta duplicada, falta una coma, y uno que ensambla con una advertencia. El ensamblador corta en el primer error, así que Problemas muestra uno solo. `verify_board` saltea esa carpeta.
+
+**Un bug de Flet que apareció acá.** Al reemplazar los hijos (con clave) de una `ListView` que ya estaba en pantalla, la ventana no aplicaba ese cambio y **descartaba el resto de la actualización**. Se veía así: la fuente o el listado vacíos y la barra de estado con el ciclo viejo, aunque en Python todo estaba bien. La solución fue crear una `ListView` nueva por programa y reemplazarla entera (`editor_view.mostrar_listado`). La clave con número de generación (§15.4) no alcanzaba.
+
 ---
 
 ## 16. Lo que viene
@@ -751,7 +876,8 @@ Lo mismo vale para `fwd_b`. Además, una instrucción ilegal se pinta con el col
 | ------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | US-411  | la parte de hardware: integrar `riscv_core` (Hito 3) en `top.v`, repetir los testbenches de US-404…407 y correr `verify_board` en placa |
 | US-411  | verificar en placa la lectura de los riesgos de la vista del pipeline (§15.6) con los programas de riesgos del Hito 3                    |
-| US-503+ | carta de pipeline, registros, memoria e historial, como secciones nuevas del menú lateral                                               |
+| US-503  | comparar en placa la carta de `load_use.asm` y la del programa de 10 instrucciones (US-103 AC4) con la dibujada a mano (AC1, AC2)       |
+| US-505  | probar en placa: exportar una sesión real y reabrirla sin placa (la defensa, si la placa falla)                                         |
 
 ---
 
@@ -773,3 +899,13 @@ Lo mismo vale para `fwd_b`. Además, una instrucción ilegal se pinta con el col
 14. ¿Por qué la GUI resalta la línea en el listado y no en el editor? ¿Y por qué deja de resaltar si reensamblás otro programa sin cargarlo?
 15. En la vista del pipeline, ¿por qué la columna IF sale de `Snapshot.pc` y la imagen cargada, y no del latch IF/ID? ¿Qué mostraría IF justo después de un branch tomado si se tomara del latch?
 16. ¿Por qué un `stall` marca IF e ID pero no pone la burbuja en EX en el mismo snapshot?
+17. En la carta de pipeline, ¿por qué no alcanza con el PC para saber que dos celdas son la misma instrucción? ¿Qué se usa además?
+18. ¿Por qué la carta mira los riesgos del ciclo **anterior** y no los del ciclo que está dibujando?
+19. Después de `sb x6, 1(x0)` con `x6 = 0x69`, ¿qué byte de la palabra `0x0` cambia y por qué la vista lo muestra en la columna `+1` y no en la más significativa?
+20. ¿Por qué la tabla de "leído a pedido" no se actualiza sola en cada paso, como la memoria usada?
+21. La línea de tiempo vuelve al ciclo 3: ¿contra qué snapshot se resaltan los registros que cambiaron? ¿Por qué no contra el último?
+22. ¿Por qué la sesión exportada guarda cada snapshot como el payload del protocolo y no como un objeto JSON con un campo por registro?
+23. ¿Por qué Verificar no compara el PC?
+24. En la página Registros, ¿por qué "lo escribió" mira la instrucción que estaba en WB en el ciclo **anterior** y no la del ciclo actual?
+25. ¿Por qué "Por dónde empezar" (Verificar) no puede decir quién escribió un valor que cambió durante un RUN?
+26. ¿Por qué el destino de un branch tomado se puede calcular con el latch ID/EX y el de un `jalr` no?
