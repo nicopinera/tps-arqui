@@ -34,6 +34,11 @@ def detectar_puerto() -> str:
     return candidatos[-1]
 
 
+def listar_puertos() -> list[str]:
+    """Todos los puertos serie de la PC, para elegir a mano (la GUI los lista)."""
+    return sorted(p.device for p in list_ports.comports())
+
+
 class SerialTransport:
     """`Transport` sobre `pyserial`, configurado como la UART de la Debug Unit (8E1, 19200)."""
 
