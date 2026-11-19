@@ -26,8 +26,8 @@ valor esperado y, al terminar, escribe una **firma** en la última palabra de la
 Ningún programa usa `0x3FC` para otra cosa. La firma es una palabra escrita, así que siempre
 aparece en la memoria usada (ADR-008).
 
-Además de la firma, `make sim-programs` (y en US-305, `make verify`) compara el estado final
-completo con el golden model: la firma dice *qué caso* falló sin tener el golden model a mano
+Además de la firma, `make verify` (US-305) compara el estado final completo con el golden
+model: la firma dice *qué caso* falló sin tener el golden model a mano
 (por ejemplo, en la placa o en la defensa).
 
 ### Registros reservados
@@ -73,14 +73,15 @@ falla:
 - En `tests/hazards/` los chequeos van **después** de la secuencia con riesgo: si se intercalaran,
   agregarían distancia entre productora y consumidora y el riesgo dejaría de existir.
 - Cada archivo empieza con un comentario que dice qué prueba y qué valores espera. La cantidad
-  de ciclos no se escribe a mano: la mide `make verify` (US-305).
+  de ciclos no se escribe a mano: la mide `make verify` y queda en `docs/informe/datos/cpi.csv`.
 
 ## Cómo correrlos
 
 Desde `TP3/`:
 
 ```bash
-make sim-programs                     # h2/, hazards/ e instr/ en el núcleo, contra el golden model
+make verify                           # toda asm/ en el núcleo contra el golden model, con la tabla de CPI
+make sim-programs                     # h2/, hazards/ e instr/ en el núcleo, con enable fijo y aleatorio
 make test-py                          # incluye tests/test_asm_suite.py: toda la carpeta en el golden model
 ```
 
