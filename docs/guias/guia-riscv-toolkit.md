@@ -9,7 +9,7 @@ Mapa de todo el código Python del TP3 (`TP3/tools/`): qué hace cada paquete, c
 | Expresiones regulares  | [guia-regex.md](guia-regex.md) (las usa el lexer)        |
 | Protocolo con la placa | [`docs/protocolo.md`](../protocolo.md), ADR-003, ADR-017 |
 
-> **Estado.** Cubre lo hecho hasta US-411: `isa`, `assembler`, `disasm`, `iss`, `protocol/` (constantes, codec, snapshot y transportes), `session/` (la sesión de depuración), `cli` (`asm`, `sim` y `dbg`) y `scripts` (incluido `verify_board.py`). La GUI (Hito 5) se agrega cuando exista (§15).
+> **Estado.** Cubre lo hecho hasta US-411: `isa`, `assembler`, `disasm`, `iss`, `protocol/` (constantes, codec, snapshot y transportes), `session/` (la sesión de depuración), `cli` (`asm`, `sim` y `dbg`) y `scripts` (incluido `verify_board.py`), y la GUI (`ui/`: estructura y vista del pipeline, US-501 y US-502, §15).
 
 ---
 
@@ -567,6 +567,8 @@ Un `NACK(ERR_ESTADO)` solo trae el código, no el estado. Para decir "_No se pue
 
 El `RUN` no tiene un timeout corto, porque un programa puede tardar lo que quiera. Pero un `read` bloqueado sin límite puede no dejar pasar el **Ctrl+C** (`KeyboardInterrupt`): en Windows, pyserial bloqueado a veces lo ignora. Por eso `run()` espera en un bucle de lecturas cortas (`sondeo`). Entre una y otra, Python revisa las señales y el Ctrl+C corta la espera. La DU sigue en `RUN`, y quien llamó decide mandar `abort()`; la CLI lo hace sola (AC5).
 
+Ese mismo bucle sirve para **cancelar desde otro hilo**, que es lo que necesita la GUI: `run(cancelar)` recibe un `threading.Event` y, en cada vuelta sin respuesta, se fija si está levantado. Si lo está, manda el `ABORT` **desde el mismo hilo** y devuelve el snapshot `ABORTED`. El botón Abortar de la GUI solo hace `cancelar.set()`: nunca toca la sesión, así que un solo hilo lee el puerto y no hay dos lectores peleándose el snapshot final. A esto se le dice **cancelación cooperativa**: no se mata el hilo, se le pide que termine en un punto seguro.
+
 Dos detalles del protocolo que `run()` y `abort()` resuelven:
 
 - **`NACK(ERR_PARIDAD)` durante `RUN`.** Un byte con ruido no corta la ejecución (§7.2): `run()` lo ignora y sigue esperando el snapshot.
@@ -640,16 +642,120 @@ Con `--fake` todo el script se prueba sin placa: es lo que hace `tests/scripts/t
 
 ---
 
-## 15. Lo que viene
+## 15. `ui/`: la GUI (US-501)
 
-| US     | Qué falta                                                                                                                                |
-| ------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| US-411 | la parte de hardware: integrar `riscv_core` (Hito 3) en `top.v`, repetir los testbenches de US-404…407 y correr `verify_board` en placa |
-| Hito 5 | `gui/`: la GUI en Flet, sobre `DebugSession`, `historial` y `diff`                                                                        |
+```bash
+cd TP3/tools
+uv run python -m riscv_toolkit ui --fake     # WSL (necesita libsecret-1-0) o Windows
+```
+
+En Windows la GUI corre nativa (ahí está el COM de la placa), con un entorno aparte para no pisar el `.venv` de Linux: `$env:UV_PROJECT_ENVIRONMENT = ".venv-windows"` antes de `uv run`. El recorrido manual completo está en [`docs/manual/checklist_ui.md`](../manual/checklist_ui.md).
+
+### 15.1 Las piezas
+
+| Archivo                      | Qué hace                                                                                                          |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `ui/state.py`                | Las reglas, **sin Flet**: `acciones_habilitadas`, `pc_resaltado`, `contar_riesgos`, `linea_de`, `rango_de_linea` |
+| `ui/tema.py`                 | Semilla `#1F7A52`, densidad compacta, fuentes Inter y JetBrains Mono (en `ui/assets/fonts/`, licencia OFL)        |
+| `ui/app.py`                  | El controlador: recibe los clics, corre las operaciones con la placa y refresca las vistas; elige el transporte   |
+| `ui/views/connection_bar.py` | Puerto (o "Simulado"), Conectar/Desconectar, indicador y versión del protocolo                                    |
+| `ui/views/controls_view.py`  | Cargar, Correr, Paso, Paso xN, Abortar, Reset y la barra de estado                                                |
+| `ui/views/editor_view.py`    | Editor, mensajes del ensamblador y listado con la línea en ejecución resaltada                                    |
+| `ui/pipeline.py`             | Lo que muestra la vista del pipeline, **sin Flet**: columnas, marcas de riesgo y campos de cada latch (US-502)   |
+| `ui/views/pipeline_view.py`  | Las 5 etapas en tarjetas con sus marcas (US-502)                                                                  |
+| `ui/views/latch_detail_view.py` | Tabla campo / hex / decimal del latch elegido (US-502)                                                         |
+
+La idea: **las vistas no deciden nada**. Después de cada cambio, `App.refrescar()` le pregunta a `state.py` qué se puede hacer y qué línea resaltar, y lo copia a los controles. Los atajos de teclado consultan la misma función, así que un atajo no puede saltear un botón deshabilitado.
+
+### 15.2 Que la ventana no se congele
+
+Flet atiende los eventos en **un solo hilo**, el bucle de asyncio. Un handler común que llamara a `sesion.run()` lo bloquearía: ni Abortar se podría apretar. Por eso cada operación con la placa pasa por `App._ejecutar`:
+
+```python
+self.estado = replace(self.estado, ocupado=True)   # deshabilita todo (salvo Abortar en RUN)
+await asyncio.to_thread(operacion)                 # la placa, en otro hilo; el bucle sigue libre
+...                                                # esto ya corre en el bucle: se puede tocar Flet
+```
+
+Tres reglas sostienen esto:
+
+1. **La sesión es de un solo hilo a la vez.** `ocupado` impide lanzar una segunda operación mientras corre la primera.
+2. **Flet se toca solo desde el bucle.** Lo que sigue al `await` corre ahí, así que el worker nunca toca un control.
+3. **Lo único que cruza entre hilos es el `threading.Event` del RUN.** Abortar hace `cancelar.set()`; `run()` lo ve en su próxima lectura corta y manda el `ABORT` él mismo (§13.4). Se crea un `Event` nuevo por RUN, así nunca queda uno levantado de antes.
+
+Al cerrar la ventana (`window.prevent_close`) se levanta la bandera y se espera a que termine la operación. Sin eso, el hilo de un RUN infinito no dejaría terminar el proceso, y la placa quedaría corriendo.
+
+### 15.3 La línea en ejecución (AC5 y AC6)
+
+El `TextField` de Flet no puede resaltar ni numerar líneas, así que el resaltado va en el **listado** (dirección, palabra, línea, fuente). `pc_resaltado(snapshot, etapa)` elige qué PC pintar:
+
+- **Seguir IF**: el registro PC.
+- **Seguir WB**: el del latch MEM/WB (`pc_plus4 - 4`), o ninguno si es una burbuja.
+- **Terminó por `ILLEGAL`**: la instrucción ilegal, siga la etapa que siga. Terminó por `HALT` o `ABORT`: ninguna.
+
+Solo se resalta si el listado es del programa que **está en la placa**. Si editaste y reensamblaste otra cosa, el resaltado se apaga en vez de pintar una fila que no corresponde.
+
+### 15.4 Lo que aprendimos de Flet 1.0
+
+- **Los handlers `def` corren en el bucle** y lo bloquean; los `async def` pueden hacer `await`. Por eso todos los que hablan con la placa son `async`.
+- **Las listas se reconcilian por clave**, como en React. Si un listado nuevo reusara las claves del anterior, sus filas quedarían emparejadas y "congeladas" (`Frozen controls cannot be updated`). Cada listado lleva un número de generación en la clave.
+- **El `TextField` no se estira al alto disponible**: no expone `expands` de Flutter. El editor va sin borde dentro de un contenedor con borde, que es el que se estira y scrollea.
+- **Algunos métodos no tienen tipos** (`focus`, `window.destroy`). `pyproject.toml` relaja `disallow_untyped_calls` solo para `riscv_toolkit.ui.*`.
+
+### 15.5 Diferencias con el PRD
+
+- El ensamblador frena en el **primer** error, así que la lista muestra uno, más las advertencias. Las advertencias no traen línea y no son clickeables.
+- Stalls y flushes se suman sobre el historial: tienen sentido paso a paso, porque de un RUN llega solo el snapshot final. Con `--fake` siempre dan 0.
+- El editor no numera líneas; debajo se muestra la del cursor (`Ln N`), y el listado sí trae el número de línea de cada instrucción.
+- Paso xN está acotado a 100 pasos: no se puede cortar a la mitad.
+
+### 15.6 La vista del pipeline (US-502)
+
+La página **Pipeline** del menú lateral muestra las 5 etapas en tarjetas, y debajo el detalle de un latch. Comparte la barra de conexión, los controles y la barra de estado con la página Programa, así que se puede dar Paso mirando el pipeline.
+
+**De dónde sale cada columna.** Es fácil confundirse: el latch IF/ID **no** es la etapa IF, es lo que IF le dejó a ID.
+
+| Columna | Instrucción                                                                 | PC                  |
+| ------- | --------------------------------------------------------------------------- | ------------------- |
+| IF      | la de `Snapshot.pc` en la imagen cargada (la IMEM no cambia al ejecutar)    | `Snapshot.pc`       |
+| ID      | `instr` de IF/ID                                                            | `if_id.pc`          |
+| EX      | `instr` de ID/EX                                                            | `id_ex.pc`          |
+| MEM     | `instr` de EX/MEM                                                           | `pc_plus4 - 4`      |
+| WB      | `instr` de MEM/WB                                                           | `pc_plus4 - 4`      |
+
+En `IDLE` y `HALTED` el pipeline está vacío (protocolo §5), así que IF también se muestra como burbuja. Si la GUI se conectó a una placa que ya tenía un programa, IF muestra `?`: no sabe qué hay en la IMEM. Un PC más allá del programa muestra `halt`, porque el resto de la IMEM está lleno de HALT.
+
+**Marcas** (de `RiesgosCiclo`, con relleno, como en la maqueta). Los riesgos son salidas combinacionales de la Hazard Unit y la Forwarding Unit con el núcleo congelado: dicen qué va a pasar con lo que está en el pipeline **ahora**.
+
+| Señal         | Marca                                                                                 |
+| ------------- | ------------------------------------------------------------------------------------- |
+| `stall`       | `STALL` en IF e ID: se congelan, y en el próximo ciclo hay una burbuja en EX           |
+| `flush_if_id` | IF tachada y `FLUSH`: esa instrucción se descarta (`jal` en ID o redirección desde EX) |
+| `flush_id_ex` | ID tachada y `FLUSH` (branch tomado o `jalr` en EX)                                    |
+| `fwd_a = 10`  | `A ← EX/MEM` en EX y `→ A` en MEM (la fuente)                                          |
+| `fwd_a = 01`  | `A ← MEM/WB` en EX y `→ A` en WB                                                       |
+
+Lo mismo vale para `fwd_b`. Además, una instrucción ilegal se pinta con el color de error y `halt` con otro fondo.
+
+**Detalle del latch (AC4).** Tabla campo / hex / decimal con **todos** los campos, en el orden del protocolo. Los de 32 bits con el bit 31 prendido muestran también el decimal con signo (`imm = 0xfffffffc` → `4294967292 (-4)`). Al tocar una tarjeta se elige su latch, y esa tarjeta queda con borde.
+
+**Cómo está hecho.** `ui/pipeline.py` (sin Flet) arma las `Columna` y las filas de cada latch; `tests/ui/test_pipeline.py` prueba el mapeo y un caso por AC con snapshots armados a mano. Las vistas crean sus controles **una vez** y después solo les cambian propiedades: rearmarlos en cada paso los haría reconciliar contra los viejos (§15.4).
+
+**El fake y los riesgos.** `FakeTransport` ejecuta una instrucción por `STEP` y no tiene Hazard Unit: los latches tienen las 4 últimas instrucciones ejecutadas y el PC la próxima, así que se ven 5 instrucciones seguidas y **nunca** hay riesgos. Los AC1 a AC3 (stall, flush, forwarding) se verifican con los tests y, en la placa, con los programas de riesgos (Hito 3).
 
 ---
 
-## 16. Preguntas de autoevaluación
+## 16. Lo que viene
+
+| US      | Qué falta                                                                                                                               |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| US-411  | la parte de hardware: integrar `riscv_core` (Hito 3) en `top.v`, repetir los testbenches de US-404…407 y correr `verify_board` en placa |
+| US-411  | verificar en placa la lectura de los riesgos de la vista del pipeline (§15.6) con los programas de riesgos del Hito 3                    |
+| US-503+ | carta de pipeline, registros, memoria e historial, como secciones nuevas del menú lateral                                               |
+
+---
+
+## 17. Preguntas de autoevaluación
 
 1. ¿Por qué el golden model recibe `imagen.palabras` y no el texto `.asm` ni la `Imagen` entera? ¿Qué se gana con esa separación?
 2. Si cambiás el valor de `Comando.DUMP_MEM` en `comandos.py` y no hacés nada más, ¿qué falla primero y por qué es mejor que falle ahí y no en la placa?
@@ -662,3 +768,8 @@ Con `--fake` todo el script se prueba sin placa: es lo que hace `tests/scripts/t
 9. `conectar()` reintenta el `PING` pero `step()` no se reintenta nunca. ¿Qué propiedad tiene uno y no el otro, y qué pasaría si se reintentara un `STEP` que en realidad sí llegó?
 10. ¿Por qué `load()` se niega a mandar la trama si la DU está en `RUN`, si la DU igual la rechazaría con un `NACK`?
 11. `rvdbg --fake load x.asm && rvdbg --fake run` falla, pero con la placa real funciona. ¿Por qué?
+12. ¿Por qué el botón Abortar de la GUI no llama a `sesion.abort()` cuando hay un RUN en curso, sino que levanta un `threading.Event`?
+13. `acciones_habilitadas` revisa `estado_du is RUN` **antes** que `ocupado`. ¿Qué dejaría de funcionar si fuera al revés?
+14. ¿Por qué la GUI resalta la línea en el listado y no en el editor? ¿Y por qué deja de resaltar si reensamblás otro programa sin cargarlo?
+15. En la vista del pipeline, ¿por qué la columna IF sale de `Snapshot.pc` y la imagen cargada, y no del latch IF/ID? ¿Qué mostraría IF justo después de un branch tomado si se tomara del latch?
+16. ¿Por qué un `stall` marca IF e ID pero no pone la burbuja en EX en el mismo snapshot?
