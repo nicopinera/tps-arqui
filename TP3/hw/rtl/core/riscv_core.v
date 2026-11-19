@@ -11,17 +11,13 @@
 //!   aunque i_enable = 1.
 //! - Reset de PC, latches y banco: i_reset || i_flush_all (actua aunque i_enable = 0). El bitmap
 //!   se borra con i_reset || i_clear_used (i_flush_all no lo toca).
-//! - r_halt_fetch: un HALT o una ilegal detectada en ID dura un ciclo en ID; este registro deja
-//!   la busqueda detenida hasta que el HALT se retira (o hasta un reset). Lo borra una
-//!   redireccion de EX: el HALT de ID era del camino equivocado (HALT especulativo, R-EJ-4bis).
 //! - o_halted / o_illegal: se activan cuando el HALT (o la ilegal) llega a WB y se mantienen
 //!   hasta i_reset o i_flush_all.
-//! - Flush basico (ADR-006): redireccion de EX -> flush de IF/ID e ID/EX; jal en ID -> flush de
-//!   IF/ID.
-//! - i_stop_fetch (ABORT, ADR-010): busqueda detenida (como halt_fetch) y burbuja en ID/EX.
-//! - Forwarding (US-301): forwarding_unit elige de donde sale cada operando en EX.
-//! - Load-use (US-302): hazard_unit frena un ciclo (PC e IF/ID se mantienen, burbuja en ID/EX)
-//!   cuando la instruccion de ID usa el registro que carga el load que esta en EX.
+//! - hazard_unit: todo el control de riesgos, como en el datapath. Elige el proximo PC
+//!   (pc_sel) y genera StallF, StallD, FlushD, FlushE y la burbuja de ID/EX con la tabla de
+//!   prioridades (redireccion de EX > ABORT > jal > load-use > HALT), y tiene el registro
+//!   halt_fetch.
+//! - forwarding_unit: de donde sale cada operando en EX.
 //! - Buses planos de los latches con el layout de bytes del snapshot (riscv_core.md 4).
 module riscv_core #(
     /* verilator lint_off UNUSEDPARAM */
@@ -188,38 +184,21 @@ module riscv_core #(
 
     reg         r_halted;
     reg         r_illegal;
-    reg         r_halt_fetch;
 
     // Reset de PC, latches y banco (el bitmap tiene el suyo)
     wire        w_rst = i_reset || i_flush_all;
     // Con el programa terminado, el nucleo no avanza aunque i_enable = 1
     wire        w_en = i_enable && !r_halted;
 
-    // Riesgos de datos: stall de load-use (hazard_unit) y forwarding (forwarding_unit)
-    wire        w_stall;
+    // Control de riesgos (hazard_unit) y forwarding (forwarding_unit)
+    wire [ 1:0] w_pc_sel;
+    wire        w_stall_f;
+    wire        w_stall_d;
+    wire        w_flush_d;
+    wire        w_flush_e;
+    wire        w_bubble_e;
     wire [ 1:0] w_fwd_a;
     wire [ 1:0] w_fwd_b;
-
-    // Flush basico
-    wire        w_flush_if_id = w_ex_redirect || w_id_redirect_jal;
-    wire        w_flush_id_ex = w_ex_redirect;
-
-    // IF deja de buscar: HALT/ilegal en ID (este ciclo o antes) o ABORT
-    wire        w_halt_fetch = r_halt_fetch || w_id_halt_detected || i_stop_fetch;
-    // Burbuja en ID/EX: load-use (Hito 3) o ABORT (se descarta la instruccion de ID)
-    wire        w_bubble_id_ex = w_stall || i_stop_fetch;
-
-    // halt_fetch pegajoso: se activa con un HALT/ilegal en ID y se borra si EX redirige (el
-    // HALT era especulativo y lo descarta el flush). Con ABORT no se activa: el HALT de ID
-    // tambien se descarta.
-    always @(posedge clock) begin
-        if (w_rst) begin
-            r_halt_fetch <= 1'b0;
-        end else if (w_en) begin
-            if (w_ex_redirect) r_halt_fetch <= 1'b0;
-            else if (w_id_halt_detected && !i_stop_fetch) r_halt_fetch <= 1'b1;
-        end
-    end
 
     // Fin de programa: el HALT o la ilegal llego a WB
     always @(posedge clock) begin
@@ -236,9 +215,10 @@ module riscv_core #(
     assign o_illegal     = r_illegal;
     assign o_pc          = w_if_pc;
 
-    assign o_stall       = w_stall;
-    assign o_flush_if_id = w_flush_if_id;
-    assign o_flush_id_ex = w_flush_id_ex;
+    // Senales de riesgo del ciclo: stall = load-use (StallD), flushes por redireccion
+    assign o_stall       = w_stall_d;
+    assign o_flush_if_id = w_flush_d;
+    assign o_flush_id_ex = w_flush_e;
     assign o_fwd_a       = w_fwd_a;
     assign o_fwd_b       = w_fwd_b;
 
@@ -249,30 +229,28 @@ module riscv_core #(
     if_stage #(
         .IMEM_DEPTH(IMEM_DEPTH)
     ) u_if_stage (
-        .clock           (clock),
-        .i_reset         (w_rst),
-        .i_enable        (w_en),
-        .i_stall         (w_stall),
-        .i_halt_fetch    (w_halt_fetch),
-        .i_redirect_ex   (w_ex_redirect),
-        .i_redirect_ex_pc(w_ex_redirect_pc),
-        .i_redirect_jal  (w_id_redirect_jal),
-        .i_jal_pc        (w_id_jal_pc),
-        .o_pc            (w_if_pc),
-        .o_pc_plus4      (w_if_pc_plus4),
-        .o_instr         (w_if_instr),
-        .o_valid         (w_if_valid),
-        .i_imem_we       (i_imem_we),
-        .i_imem_addr     (i_imem_addr),
-        .i_imem_wdata    (i_imem_wdata)
+        .clock       (clock),
+        .i_reset     (w_rst),
+        .i_enable    (w_en),
+        .i_stall_f   (w_stall_f),
+        .i_pc_sel    (w_pc_sel),
+        .i_ex_pc     (w_ex_redirect_pc),
+        .i_jal_pc    (w_id_jal_pc),
+        .o_pc        (w_if_pc),
+        .o_pc_plus4  (w_if_pc_plus4),
+        .o_instr     (w_if_instr),
+        .o_valid     (w_if_valid),
+        .i_imem_we   (i_imem_we),
+        .i_imem_addr (i_imem_addr),
+        .i_imem_wdata(i_imem_wdata)
     );
 
     if_id_reg u_if_id_reg (
         .clock     (clock),
         .i_reset   (w_rst),
         .i_enable  (w_en),
-        .i_flush   (w_flush_if_id),
-        .i_stall   (w_stall),
+        .i_flush   (w_flush_d),
+        .i_stall   (w_stall_d),
         .i_pc      (w_if_pc),
         .i_pc_plus4(w_if_pc_plus4),
         .i_instr   (w_if_instr),
@@ -331,8 +309,8 @@ module riscv_core #(
         .clock       (clock),
         .i_reset     (w_rst),
         .i_enable    (w_en),
-        .i_flush     (w_flush_id_ex),
-        .i_bubble    (w_bubble_id_ex),
+        .i_flush     (w_flush_e),
+        .i_bubble    (w_bubble_e),
         .i_pc        (w_d_pc),
         .i_pc_plus4  (w_d_pc_plus4),
         .i_rs1_data  (w_id_rs1_data),
@@ -386,6 +364,9 @@ module riscv_core #(
     // ---------------------------------------------------------------------------------------
 
     hazard_unit u_hazard_unit (
+        .clock           (clock),
+        .i_reset         (w_rst),
+        .i_enable        (w_en),
         .i_id_ex_valid   (w_e_valid),
         .i_id_ex_mem_read(w_e_mem_read),
         .i_id_ex_rd      (w_e_rd),
@@ -393,7 +374,16 @@ module riscv_core #(
         .i_if_id_rs2     (w_id_rs2),
         .i_uses_rs1      (w_id_uses_rs1),
         .i_uses_rs2      (w_id_uses_rs2),
-        .o_stall         (w_stall)
+        .i_redirect_ex   (w_ex_redirect),
+        .i_redirect_jal  (w_id_redirect_jal),
+        .i_halt_detected (w_id_halt_detected),
+        .i_stop_fetch    (i_stop_fetch),
+        .o_pc_sel        (w_pc_sel),
+        .o_stall_f       (w_stall_f),
+        .o_stall_d       (w_stall_d),
+        .o_flush_d       (w_flush_d),
+        .o_flush_e       (w_flush_e),
+        .o_bubble_e      (w_bubble_e)
     );
 
     forwarding_unit u_forwarding_unit (

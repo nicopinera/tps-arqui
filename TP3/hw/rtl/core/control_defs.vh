@@ -69,6 +69,13 @@ localparam [1:0] FWD_MEM_WB = 2'b01;  // dato que escribe WB (ResultW)
 localparam [1:0] FWD_EX_MEM = 2'b10;  // alu_result de EX/MEM
 
 // ---------------------------------------------------------------------------------------------
+// pc_sel[1:0]: proximo PC, lo elige la hazard unit
+// ---------------------------------------------------------------------------------------------
+localparam [1:0] PC_SEL_PLUS4 = 2'b00;  // pc + 4
+localparam [1:0] PC_SEL_JAL   = 2'b01;  // destino del jal (ID)
+localparam [1:0] PC_SEL_EX    = 2'b10;  // destino de un branch tomado o jalr (EX)
+
+// ---------------------------------------------------------------------------------------------
 // Burbuja: instr que queda en un latch con valid = 0 (flush, halt_fetch o reset)
 // ---------------------------------------------------------------------------------------------
 localparam [31:0] INSTR_NOP = 32'h0000_0013;  // addi x0, x0, 0
