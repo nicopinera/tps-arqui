@@ -19,8 +19,9 @@
 //! - Flush basico (ADR-006): redireccion de EX -> flush de IF/ID e ID/EX; jal en ID -> flush de
 //!   IF/ID.
 //! - i_stop_fetch (ABORT, ADR-010): busqueda detenida (como halt_fetch) y burbuja en ID/EX.
-//! - Forwarding (US-301): forwarding_unit elige de donde sale cada operando en EX. Hasta
-//!   US-302 no hay hazard unit: stall = 0.
+//! - Forwarding (US-301): forwarding_unit elige de donde sale cada operando en EX.
+//! - Load-use (US-302): hazard_unit frena un ciclo (PC e IF/ID se mantienen, burbuja en ID/EX)
+//!   cuando la instruccion de ID usa el registro que carga el load que esta en EX.
 //! - Buses planos de los latches con el layout de bytes del snapshot (riscv_core.md 4).
 module riscv_core #(
     /* verilator lint_off UNUSEDPARAM */
@@ -107,10 +108,8 @@ module riscv_core #(
     wire        w_id_jalr;
     wire        w_id_halt;
     wire        w_id_illegal;
-    /* verilator lint_off UNUSEDSIGNAL */
     wire        w_id_uses_rs1;  // los usa la hazard unit
     wire        w_id_uses_rs2;
-    /* verilator lint_on UNUSEDSIGNAL */
     wire        w_id_redirect_jal;
     wire [31:0] w_id_jal_pc;
     wire        w_id_halt_detected;
@@ -196,8 +195,8 @@ module riscv_core #(
     // Con el programa terminado, el nucleo no avanza aunque i_enable = 1
     wire        w_en = i_enable && !r_halted;
 
-    // Riesgos de datos: el stall de load-use llega con la hazard unit (US-302)
-    wire        w_stall = 1'b0;
+    // Riesgos de datos: stall de load-use (hazard_unit) y forwarding (forwarding_unit)
+    wire        w_stall;
     wire [ 1:0] w_fwd_a;
     wire [ 1:0] w_fwd_b;
 
@@ -385,6 +384,17 @@ module riscv_core #(
     // ---------------------------------------------------------------------------------------
     // EX
     // ---------------------------------------------------------------------------------------
+
+    hazard_unit u_hazard_unit (
+        .i_id_ex_valid   (w_e_valid),
+        .i_id_ex_mem_read(w_e_mem_read),
+        .i_id_ex_rd      (w_e_rd),
+        .i_if_id_rs1     (w_id_rs1),
+        .i_if_id_rs2     (w_id_rs2),
+        .i_uses_rs1      (w_id_uses_rs1),
+        .i_uses_rs2      (w_id_uses_rs2),
+        .o_stall         (w_stall)
+    );
 
     forwarding_unit u_forwarding_unit (
         .i_id_ex_rs1       (w_e_rs1),

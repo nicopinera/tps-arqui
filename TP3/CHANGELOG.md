@@ -84,6 +84,9 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `hw/rtl/core/forwarding_unit.v`: selectores `fwd_a`/`fwd_b` (EX/MEM > MEM/WB > banco); no reenvía desde `x0`, desde burbujas ni desde instrucciones que no escriben el banco. Conectada en `riscv_core` (`o_fwd_a`/`o_fwd_b`) (US-301).
 - `hw/tb/core/tb_forwarding_unit.v`: casos dirigidos y 5000 combinaciones aleatorias contra un modelo de referencia (US-301).
 - `asm/tests/hazards/`: `fwd_ex_mem`, `fwd_mem_wb`, `fwd_doble`, `fwd_store_data`, `fwd_branch`, `x0_no_forward` y `jal_jalr`, sin `nop` entre instrucciones dependientes; `make sim-programs` también los corre (US-301).
+- `hw/rtl/core/hazard_unit.v`: detección de load-use (load válido en EX, `rd ≠ x0`, la instrucción de ID lee ese registro según `uses_rs1`/`uses_rs2`); en `riscv_core` el stall mantiene PC e IF/ID, mete una burbuja en ID/EX y sale por `o_stall` (US-302).
+- `hw/tb/core/tb_hazard_unit.v`: casos dirigidos y 5000 combinaciones aleatorias contra un modelo de referencia (US-302).
+- `asm/tests/hazards/load_use.asm` y `load_use_store.asm`; `tb_core_control` cuenta los ciclos de stall de cada caso de load-use (US-302).
 - `hw/rtl/core/dmem_bitmap.v`: bitmap de memoria usada y contador (ADR-008), separado de `data_mem`; marca con `o_core_we`/`o_core_addr` de `data_mem` (H2-E2).
 - `make synth-ooc` (`hw/scripts/synth_ooc.tcl`): síntesis fuera de contexto de cada módulo de `hw/rtl/core/` con Vivado en modo batch; deja en `build/synth/` el reporte de utilización de cada módulo y una tabla con LUTs, LUTRAM, FF, latches, BRAM y *critical warnings*, y falla si algún módulo infiere latches (H2-E1).
 
