@@ -276,7 +276,10 @@ def main(argv: list[str] | None = None) -> int:
         if faltan:
             parser.error(f"no existe {faltan[0]}")
     else:
-        programas = sorted(ASM.rglob("*.asm"))
+        # `errores/` tiene programas que no ensamblan a propósito (ejemplos de mensajes de error).
+        programas = sorted(
+            p for p in ASM.rglob("*.asm") if "errores" not in p.relative_to(ASM).parts
+        )
 
     resultados: list[Resultado] = []
     omitidos: list[str] = []
