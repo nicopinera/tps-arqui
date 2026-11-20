@@ -50,3 +50,7 @@ __pycache__/
 
 # Simulacion (Icarus): salida de make sim / sim-all
 TP3/build/
+
+# IP de Vivado (ADR-020): de cada IP se versiona solo el .xci; el resto lo regenera impl_top.tcl
+TP3/hw/ip/*/*
+!TP3/hw/ip/*/*.xci
