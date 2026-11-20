@@ -1,4 +1,4 @@
-//! @brief Memoria de datos (DMEM) del nucleo RV32I con bitmap de memoria usada
+//! @brief Memoria de datos (DMEM) del nucleo RV32I
 //!
 //! Memoria distribuida (LUTRAM) inferida, de DEPTH palabras de 32 bits con write enable por
 //! byte. Dos puertos de lectura combinacional (nucleo y Debug Unit) y un
@@ -11,17 +11,15 @@
 //! - Limpieza de la Debug Unit: si i_dbg_we, escribe ceros en la palabra i_dbg_wr_addr (los 4
 //!   bytes) y NO marca el bitmap. Toma el puerto de escritura con prioridad: si coincide con
 //!   un store del nucleo, el store no se hace. La Debug Unit solo la usa con i_enable = 0.
-//! - Bitmap de memoria usada (flip-flops): un store del nucleo pone en 1 el bit de su palabra;
-//!   si el bit pasa de 0 a 1, o_used_count se incrementa. i_clear_used pone ambos en 0,
-//!   aunque i_enable = 0, y tiene prioridad sobre el store. En el core debe conectarse a
-//!   i_reset || i_clear_used.
-//! - Puerto de depuracion: o_dbg_data y o_dbg_used de la palabra i_dbg_addr (combinacional).
+//! - Marca para el bitmap de memoria usada (dmem_bitmap): o_core_we/o_core_addr dicen, en forma
+//!   combinacional, si en este ciclo hay un store efectivo del nucleo y en que palabra. Es la
+//!   misma senal que habilita la escritura, asi memoria y bitmap no se pueden desincronizar.
+//! - Puerto de depuracion: o_dbg_data de la palabra i_dbg_addr (combinacional).
 module data_mem #(
     parameter DEPTH = 256  //! Cantidad de palabras (DMEM_DEPTH)
 ) (
     input  wire                     clock,
     input  wire                     i_enable,       //! Clock enable del core
-    input  wire                     i_clear_used,   //! Borra bitmap y contador
     // Puerto del nucleo (MEM)
     input  wire                     i_we,           //! mem_write de la instruccion en MEM
     input  wire                     i_valid,        //! valid de la instruccion en MEM
@@ -31,13 +29,14 @@ module data_mem #(
     input  wire [              3:0] i_be,           //! Bytes a escribir (byte k = [8k+7:8k])
     input  wire [             31:0] i_wdata,        //! Dato ya alineado
     output wire [             31:0] o_rdata,        //! Palabra completa en i_addr
+    // Marca para dmem_bitmap
+    output wire                     o_core_we,      //! Store efectivo del nucleo en este ciclo
+    output wire [$clog2(DEPTH)-1:0] o_core_addr,    //! Palabra que escribe ese store
     // Puerto de la Debug Unit
     input  wire                     i_dbg_we,       //! Escribe ceros en mem[i_dbg_wr_addr]
     input  wire [$clog2(DEPTH)-1:0] i_dbg_wr_addr,  //! Direccion de palabra a limpiar
     input  wire [$clog2(DEPTH)-1:0] i_dbg_addr,     //! Direccion de palabra a leer
-    output wire [             31:0] o_dbg_data,     //! mem[i_dbg_addr]
-    output wire                     o_dbg_used,     //! Bit del bitmap de i_dbg_addr
-    output wire [  $clog2(DEPTH):0] o_used_count    //! Palabras usadas (0 a DEPTH)
+    output wire [             31:0] o_dbg_data      //! mem[i_dbg_addr]
 );
 
     localparam ADDR_BITS = $clog2(DEPTH);  // bits para direccionamiento
@@ -47,9 +46,6 @@ module data_mem #(
     localparam [NBYTES-1:0] BE_NINGUNO = {NBYTES{1'b0}};
 
     reg  [         31:0] r_mem         [0:DEPTH-1];
-    //bitmap:
-    reg  [    DEPTH-1:0] r_used;
-    reg  [  ADDR_BITS:0] r_used_count;
 
     // Palabra que direcciona el nucleo
     wire [ADDR_BITS-1:0] w_core_addr = i_addr[ADDR_BITS+BYTE_OFFSET_BITS-1 : BYTE_OFFSET_BITS];
@@ -69,24 +65,12 @@ module data_mem #(
         if (w_wr_be[3]) r_mem[w_wr_addr][31:24] <= w_wr_data[31:24];
     end
 
-    // Bitmap y contador de palabras usadas
-    always @(posedge clock) begin
-        //Borrado de datos del bitmap
-        if (i_clear_used) begin
-            r_used       <= {DEPTH{1'b0}};
-            r_used_count <= {(ADDR_BITS + 1) {1'b0}};
-        end else if (w_core_we) begin
-            // Marca como usada la posicion que se escribio
-            r_used[w_core_addr] <= 1'b1;
-            // Solo cuenta la primera escritura de cada palabra
-            if (!r_used[w_core_addr]) r_used_count <= r_used_count + 1'b1;
-        end
-    end
-
     // Lectura de memoria
     assign o_rdata      = r_mem[w_core_addr];
     assign o_dbg_data   = r_mem[i_dbg_addr];
-    assign o_dbg_used   = r_used[i_dbg_addr];
-    assign o_used_count = r_used_count;
+
+    // Marca para dmem_bitmap
+    assign o_core_we    = w_core_we;
+    assign o_core_addr  = w_core_addr;
 
 endmodule

@@ -1,8 +1,8 @@
-# Guía de los bloques del núcleo (H2-E1, US-201 a US-205)
+# Guía de los bloques del núcleo (H2-E1 y H2-E2, US-201 a US-210)
 
 Cómo funcionan los bloques combinacionales y de memoria del núcleo, que la épica H2-E2 va a conectar en las etapas del pipeline. El código está en `TP3/hw/rtl/core/`; los contratos, en [`tabla_control.md`](../interfaces/tabla_control.md), [`riscv_core.md`](../interfaces/riscv_core.md) y [`formatos.md`](../interfaces/formatos.md); las decisiones, en ADR-005, ADR-008, ADR-018 y ADR-019.
 
-> Estado: H2-E1 completa (US-201 a US-205). Esta guía cubre solo las partes difíciles de cada bloque, no todo el código.
+> Estado: H2-E1 completa (US-201 a US-205); H2-E2 en curso (US-206). Esta guía cubre solo las partes difíciles de cada bloque, no todo el código.
 
 ## 1. Panorama
 
@@ -55,7 +55,7 @@ En un `always @(*)`, si en algún camino del if/case una salida no recibe valor,
 
 ## 3. ALU y control de ALU (US-201)
 
-El bloque alu control tiene por fin determina a partir del opcode, el funct3 y el bit 5 de funct7 que operacion debe hacer la ALU, mientras que la control unit en la etapa de ID se encarga de generar las señales de control unicamente.
+El bloque alu control tiene por fin determina a partir de alu_op, el funct3 y el bit 5 de funct7 que operacion debe hacer la ALU, mientras que la control unit en la etapa de ID se encarga de generar las señales de control unicamente.
 
 ### 3.1 Dos niveles de decodificación: `alu_op` → `alu_ctrl`
 
@@ -123,7 +123,7 @@ La memoria de instrucciones por dentro esta implementada como un arreglo de 32x2
 
 Para esto se hace lo siguiente:
 
-- Se descartan [1:0] (Byte offset), porque dividir por 4 equivale a sacar esos bits. Ademas estos valen 00 siempre, porque el PC es múltiplo de 4.
+- Se descartan [1:0] (Byte offset), porque dividir por 4 equivale a sacar esos bits. Ademas estos deberian valer 00 siempre, porque el PC es múltiplo de 4.
 - Se toman ADDR bits, por ejemplo para una memoria de 256, ADDR es 8 (se le suma el Byte offset para tomar esa parte)[9:2].
 - Se ignoran los demas bits, siguiendo el ejemplo anterior seria [31:10].
 
@@ -134,7 +134,7 @@ wire [ADDR_BITS-1:0] w_word_addr = i_pc[ADDR_BITS+BYTE_OFFSET_BITS-1:BYTE_OFFSET
 
 ### Memoria de datos y Bitmap
 
-En el mismo archivo se implementan la memoria de datos propia y el bitmap, el cual tiene un bit por palabra, que indica si esa palabra fue escrita al menos una vez y un contador que cuenta cuántas palabras distintas se escribieron.
+En dmem_bitmap se implementan el bitmap, el cual tiene un bit por palabra, que indica si esa palabra fue escrita al menos una vez y un contador que cuenta cuántas palabras distintas se escribieron. La señal que indica que se escribio un dato y en que direccion la recibe de la memoria de datos
 
 ### 6.2 Escritura (memoria de datos + store align)
 
@@ -151,7 +151,7 @@ wire [ADDR_BITS-1:0] w_core_addr = i_addr[ADDR_BITS+BYTE_OFFSET_BITS-1 : BYTE_OF
 
 En el caso de lectura la memoria de datos hace lo mismo lo que modifica el resultado final es el load extend. La memoria de datos devuelve la palabra completa que se lee y load extend se encarga de mover el byte o la media palabra a la parte baja y extender a 32 bits, con el signo (lb, lh) o con ceros (lbu, lhu).
 
-### 6.4 Exclusion de lectura entre debug unit y core
+### 6.4 Exclusion de escritura entre debug unit y core
 
 Tanto el núcleo como la Debug Unit pueden escribir en la memoria. El mux del puerto le da prioridad a la debug unit, si `i_dbg_we=1`, se escribe la limpieza y el store del núcleo se descarta. Para que ese store tampoco marque el bitmap, se define una señal de store efectivo que usan tanto la escritura como el bitmap: el núcleo escribe solo si la instrucción es un store, no es una burbuja lo cual se valida mediante el `i_valid`, el núcleo no está congelado (`i_enable`) y la Debug Unit no está escribiendo (`!i_dbg_we`).
 
@@ -238,3 +238,227 @@ always @(*) begin
     endcase
 end
 ```
+
+## 8. Etapa IF y latch IF/ID (US-206)
+
+Este bloque instancia e implementa los sub-bloques de la etapa IF, el cual sera instanciado en un superbloque core
+
+### 8.1 Entradas de `if_stage`
+
+El stall es activado por la hazard unit cuando hay un riesgo tipo load-use, por ejemplo:
+
+```
+lw x1, 2(x0)
+add x2, x1, x3
+```
+
+El valor de x1, esta disponible en la etapa WB, requeriendo que la siguiente instruccion se congele un ciclo en ID para poder tener el valor de x1.
+
+```
+  ciclo          │   1   │   2   │   3   │   4   │   5   │   6   │
+  clock        ──┘‾‾‾└───┘‾‾‾└───┘‾‾‾└───┘‾‾‾└───┘‾‾‾└───┘‾‾‾└───
+                 ↑       ↑       ↑       ↑       ↑       ↑
+  IF           ──┤  lw   │  add  │       │       │       │       │
+  ID (IF/ID)   ──┤       │  lw   │  add  │  add  │       │       │
+  EX (ID/EX)   ──┤       │       │  lw   │ bubbl │  add  │       │
+  MEM (EX/MEM) ──┤       │       │       │  lw   │ bubbl │  add  │
+  WB (MEM/WB)  ──┤       │       │       │       │  lw   │ bubbl │
+
+  stall        ______________________/‾‾‾‾‾‾‾\________________________
+  fwd_a        ──────── 00 ──────────────────────│  01   │── 00 ───
+```
+
+Lo que muestra esta imagen es que cuando la instruccion de add este en EX, le llega el valor de x1 desde WB, gestionado por la forward unit
+
+### 8.2 Mux del próximo PC con prioridad
+
+El mux se realiza mediante prioridades, donde la redireccion desde EX (salto condicional o jalr) > redireccion desde ID (salto incondicional, sin contar jalr) > pc+4. Esto tiene un motivo fundamental: La que se resulve mas tarde es la que gana porque su decision anula a las que vinieron despues
+
+```verilog
+// if_stage.v:54-58
+always @(*) begin
+    r_pc_next = w_pc_plus4;
+    if (i_redirect_ex) r_pc_next = i_redirect_ex_pc;
+    else if (i_redirect_jal) r_pc_next = i_jal_pc;
+end
+```
+
+### 8.3 Cuándo se escribe el PC: la redirección de EX le gana a la detención
+
+```verilog
+// if_stage.v:51
+wire w_pc_we = i_enable && (i_redirect_ex || (!i_stall && !i_halt_fetch));
+```
+
+De esta parte lo mas interesante es que la escritura de next pc se habilita a pesar de que haya un stall o un halt si se trata de salto condicional o jalr (redireccion desde EX), esto es mas visible con un ejemplo:
+
+```
+0x00  addi x1, x0, 2        # contador = 2
+  loop:
+  0x04  addi x1, x1, -1
+  0x08  bne  x1, x0, loop     # mientras x1 no sea 0, vuelve
+  0x0C  halt                  # el ensamblador lo agrega solo al final
+```
+
+El bne se resuelve en EX pero halt se detecta en ID
+
+### 8.4 Latch IF/ID y el bit `valid`
+
+si i_valid = 0, IF tiene la busqueda detenida (HALT o ilegal en ID, o ABORT), entonces lo que sale de la IMEM no es una instruccion valida, no debe ejecutarse
+si i_flush = 1, indica que la instruccion que busco IF es del camino equivocado (hay un jal en ID o se resolvio un salto en EX), se descarta antes de que llegue a tener efecto
+
+En ambos casos se mete una burbuja, en este caso se usa la instruccion NOP pero podria ser cualquiera ya que esta de igual manera no se va a ejecutar a posterior, lo que importa es el valid = 0. Se usa NOP para que en el snapshot no aparezca una instruccion "real" en un latch vacio.
+
+```verilog
+// if_id_reg.v:38 y 52-60
+wire w_burbuja = i_flush || !i_valid;
+
+always @(posedge clock) begin
+    if (i_reset) begin
+        o_instr <= INSTR_NOP;
+        o_valid <= 1'b0;
+    end else if (i_enable && (i_flush || !i_stall)) begin
+        o_instr <= w_burbuja ? INSTR_NOP : i_instr;
+        o_valid <= !w_burbuja;
+    end
+end
+```
+
+Ademas hay que decidir si se esta ante un congelamiento (osea los valores tienen que mantenerse) esto se hace evaluando i_enable e i_stall: si i_enable = 0, o si i_stall esta activado y no hay flush, no se cambia ni el valid ni la instruccion. Con flush se carga igual aunque haya stall, porque mantener dejaria en ID una instruccion del camino equivocado. Si se carga y es una burbuja (flush o i_valid = 0) se carga un NOP (de relleno, es no valido) y sino la instruccion y se dice valida
+
+## 9. Latch ID/EX (US-207)
+
+### 9.1 `DEBUG_TRACE`
+
+En el funcionamiento normal luego de ID, las siguientes etapas nunca trabajan con la instruccion como tal sino con sus distintas partes, pero para poder debugear y saber que instruccion habia en cada etapa es necesario propagar la instruccion. DEBUG_TRACE permite decidir si se desea guardar la instruccion.
+
+```verilog
+// id_ex_reg.v:83-84
+localparam [31:0] INSTR_BURBUJA = (DEBUG_TRACE != 0) ? INSTR_NOP : 32'h0000_0000;
+wire       [31:0] w_instr = (DEBUG_TRACE != 0) ? i_instr : 32'h0000_0000;
+```
+
+### 9.2 Condiciones para poner una burbuja en EX
+
+1.  el valid desactivado implica que la instruccion que venia de la etapa anterior es una burbuja
+2.  el flush activado indica que no se tiene que ejecutar la instruccion actual, porque el programa toma otro flujo de ejecucion (decidido en EX, osea branch tomado o jalr)
+3.  bubble indica que la burbuja nace acá, porque IF/ID está holdeando una instrucción válida (load-use). (siguiendo el ejemplo de antes con el lw y el add, seria el add). Hay que dejar que pase un ciclo en EX y justamente lo que activa este mecanismo es esto.
+
+```verilog
+wire        w_burbuja = i_flush || i_bubble || !i_valid;
+```
+
+### 9.3 Sin stall: diferencia con IF/ID
+
+A diferencia del registro anterior, no hay condicion que afecte a la decision de propagar o no la instruccion (salvo el enable obviamente), lo que si se afecta es que instruccion propagar y el valid con el mismo criterio que en ese latch. Si es una burbuja, se carga un nop o 0 dependiendo del debug trace y se pone el valid a 0, en caso contrario se propaga la instruccion y el valid en 1
+
+```verilog
+// id_ex_reg.v:147-155
+always @(posedge clock) begin
+    if (i_reset) begin
+        o_instr <= INSTR_BURBUJA;
+        o_valid <= 1'b0;
+    end else if (i_enable) begin
+        o_instr <= w_burbuja ? INSTR_BURBUJA : w_instr;
+        o_valid <= !w_burbuja;
+    end
+end
+```
+
+### 9.4 La burbuja anula el control, no los datos
+
+Con una burbuja, ID/EX pone en 0 todas las señales de control y carga los datos (`pc`, operandos, `imm`, `rs1`, `rs2`, `rd`, ...) igual que siempre.
+
+```verilog
+// id_ex_reg.v:104-113 (datos) y 132-142 (control), resumido
+o_pc        <= i_pc;                             // datos: se cargan siempre
+o_rd        <= i_rd;
+...
+o_reg_write <= w_burbuja ? 1'b0 : i_reg_write;   // control: en 0 si es burbuja
+o_branch    <= w_burbuja ? 1'b0 : i_branch;
+o_halt      <= w_burbuja ? 1'b0 : i_halt;
+...
+```
+
+No hace falta anular los datos, porque sin control ningún bloque los usa, y anularlos sería un mux más por cada bit. Además, el snapshot muestra qué instrucción se descartó: después de un flush, ID/EX queda con valid = 0 pero con el pc y el rd de la instrucción que se mató.
+
+Ademas al anular las señales de control se protege los datos de la burbuja. Una burbuja por flush conserva el rd de la instrucción descartada (por ejemplo, x1). Si la forwarding unit comparara solo registros, vería ese rd = x1 en EX/MEM o MEM/WB y le pasaría basura a la instrucción en EX. No pasa porque el forwarding también pide reg_write = 1, y en la burbuja vale 0.
+
+## 10. Etapa EX y latch EX/MEM (US-208)
+
+`ex_stage` es combinacional e instancia `alu_control`, `alu` y `branch_cmp`. Calcula el resultado de la instrucción y decide si EX redirige el PC. `pc_plus4`, `rd` y las señales de control de MEM y WB no pasan por la etapa: van de ID/EX a EX/MEM directo.
+
+### 10.1 `store_data` sale antes del mux `alu_src`
+
+```verilog
+// ex_stage.v:79-80
+assign w_alu_b      = i_alu_src ? i_imm : r_op_b;
+assign o_store_data = r_op_b;
+```
+
+Un store usa los dos operandos para cosas distintas: la ALU calcula la dirección con rs1 + imm, y el dato a guardar es rs2. Por eso el mux 2 a 1 tiene la posibilidad de seleccionar el operando B o el inmedianto, y a su vez el operando B pasa directamente al registro EX/MEM
+
+### 10.2 Forwarding: el selector `11`
+
+Los dos operandos pasan por un mux de forwarding de 3 entradas, pero el selector es de 2 bits, así que hay un cuarto valor posible:
+
+```verilog
+// ex_stage.v:59-67 (operando A; el B es igual)
+always @(*) begin
+    r_op_a = i_rs1_data;
+    case (i_fwd_a)
+        FWD_MEM_WB: r_op_a = i_fwd_mem_wb;   // 01
+        FWD_EX_MEM: r_op_a = i_fwd_ex_mem;   // 10
+        default:    r_op_a = i_rs1_data;     // 00 y 11
+    endcase
+end
+```
+
+`11` no deberia darse nunca pero en caso de darse se comporta como `00`, es decir, usa el valor leído del banco en ID. Así nunca hay una salida indefinida.
+
+### 10.3 `branch_cmp` en paralelo con la ALU
+
+branch_cmp compara los operandos forwardeados en paralelo a la ALU. La decisión de saltar se arma aparte en redirect:
+
+```verilog
+// ex_stage.v:107 y 113
+wire w_branch_taken = i_branch && ((i_funct3 == F3_BEQ) ? w_eq : !w_eq);
+assign o_redirect   = i_valid && (w_branch_taken || i_jalr);
+```
+
+- `beq` salta con `eq` y `bne` con `!eq`. `control_unit` marca como ilegal cualquier otro `funct3` de branch mediante la señal `i_branch`, así que no hace falta mirar más.
+- `i_valid`: una burbuja nunca redirige. En la práctica ID/EX ya puso `branch = jalr = 0` en la burbuja, y esto es una segunda protección.
+
+### 10.4 Destinos: sumador propio para branches, ALU para `jalr`
+
+```verilog
+// ex_stage.v:110-114
+wire [31:0] w_branch_target = i_pc + i_imm;
+wire [31:0] w_jalr_target   = o_alu_result & JALR_MASK;   // JALR_MASK = ~1
+assign o_redirect_pc = i_jalr ? w_jalr_target : w_branch_target;
+```
+
+en un branch el destino es `pc + imm_B`. La ALU no puede calcularlo porque el PC no entra en ninguna de sus entradas: A es siempre rs1 y B es rs2 o el inmediato. En vez de agregar un mux en A para que pueda tener el PC, hay un sumador propio, que calcula el destino en paralelo con el comparador.
+
+### 10.5 Por qué `jalr` limpia solo el bit 0: la extensión C
+
+La especificación define el destino de `jalr` como `(rs1 + imm) & ~1`. Solo el bit 0, aunque nuestras instrucciones vayan de 4 en 4.
+
+La razón es la **extensión C** (_Compressed_). Es una extensión estándar de RISCV que agrega versiones de 16 bits de las instrucciones más usadas, para que el código ocupe menos. Con C, un programa mezcla instrucciones de 16 y 32 bits, y una instrucción puede empezar en una dirección múltiplo de 2:
+
+```
+0x00  add  (32 bits)
+0x04  c.mv (16 bits)
+0x06  lw   (32 bits)   ← múltiplo de 2, no de 4
+```
+
+El procesador sabe cuál es cuál por los 2 bits más bajos: `11` es una instrucción de 32 bits (todas las nuestras, incluido HALT `0001011`) y cualquier otro valor es una de 16.
+
+RV32I está pensada para no cambiar cuando se agrega C, y por eso tiene detalles que sin C parecen raros:
+
+- `jalr` hace `& ~1`, lo mínimo para que el destino sea par;
+- los inmediatos B y J (`formatos.md`) tienen el bit 0 implícito en 0, pero codifican el bit 1: los offsets están en unidades de 2 bytes.
+
+En nuestro caso como usamos solamente instrucciones del 32 bits, la IMEM ignora `pc[1:0]` (explicado en la seccion 6.2), así que con PC = `0x102` lee la palabra de `0x100`, y las instrucciones que se ejecutan son las mismas.
+
+Pero fue agregado para respetar la especificacion, ademas para que lo que muestra el hardware en los snapshots (el PC y registros como x1) coincida con el golden model, que sigue la spec.

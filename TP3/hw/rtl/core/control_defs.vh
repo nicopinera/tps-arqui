@@ -61,4 +61,16 @@ localparam [2:0] IMM_B = 3'b010;
 localparam [2:0] IMM_U = 3'b011;
 localparam [2:0] IMM_J = 3'b100;
 
+// ---------------------------------------------------------------------------------------------
+// fwd_a / fwd_b[1:0]: de donde sale cada operando en EX (riscv_core.md 2.5)
+// ---------------------------------------------------------------------------------------------
+localparam [1:0] FWD_ID_EX  = 2'b00;  // valor leido del banco en ID (sin forwarding)
+localparam [1:0] FWD_MEM_WB = 2'b01;  // dato que escribe WB (ResultW)
+localparam [1:0] FWD_EX_MEM = 2'b10;  // alu_result de EX/MEM
+
+// ---------------------------------------------------------------------------------------------
+// Burbuja: instr que queda en un latch con valid = 0 (flush, halt_fetch o reset)
+// ---------------------------------------------------------------------------------------------
+localparam [31:0] INSTR_NOP = 32'h0000_0013;  // addi x0, x0, 0
+
 /* verilator lint_on UNUSEDPARAM */
