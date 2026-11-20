@@ -7,6 +7,10 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 
 ### Added
 
+- `docs/guias/guia-riesgos-forwarding-hazard.md`: guía de estudio de los riesgos (estructurales, de datos, de control), la Forwarding Unit y la Hazard Unit, con cartas de pipeline de `load_use` y `branch_taken`, la cadena de prioridades y el Verilog de cada unidad.
+- `iss/pipeline_model.py` (agregado US-306, pasos 2 a 5): modelo del pipeline ciclo a ciclo con Forwarding Unit, Hazard Unit (load-use), flush de branch/`jalr` en EX y `jal` en ID, HALT con `halt_fetch`, `stop_fetch` y bypass del banco; probado con los AC de US-301 a US-303, cuentas de ciclos a mano y todo `asm/` contra el golden model.
+- `verify_board --step` en lockstep (agregado US-306, paso 7): en cada STEP compara el snapshot de la placa con el del modelo del pipeline y reporta el primer ciclo distinto y los campos que difieren (`comparar_ciclo`).
+- `isa/control.py` (agregado US-306, paso 1): unidad de control (`controlar`) e `imm_gen` (`inmediato`) del pipeline, con tests que leen `docs/interfaces/tabla_control.md` fila por fila.
 - Estructura de carpetas de `TP3/` (`hw/rtl`, `hw/constraints`) y `Makefile` con los objetivos de simulación pendientes de US-102 (US-101).
 - Módulos UART del TP2 migrados sin cambios a `hw/rtl/uart/` (US-101).
 - `hw/rtl/legacy/` con `alu_tp1.v`, `uart_interface.v` y `top_tp2.v` como referencia y prueba de humo de la migración (US-101).
@@ -97,6 +101,10 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 
 ### Changed
 
+- `FakeTransport` usa el modelo del pipeline en vez del golden model (agregado US-306, paso 6): un STEP es un ciclo, `ciclos` cuenta ciclos, los latches y el byte de riesgos son reales, y ABORT drena con `stop_fetch`. `max_instr` pasa a `max_ciclos`. En modo simulado el PC queda en HALT + 4 al terminar (D3).
+- GUI: las tarjetas de etapa y las filas de latch con relleno de riesgo se dibujan en tema claro, para que se lean en modo oscuro.
+- GUI pensada para 1366×768: la ventana abre a ese tamaño; letras más grandes en Pipeline (etapas, latches, campos), Registros, Memoria e Historial, con los tamaños en `tema.LETRA_*`. Registros con tablas que se estiran y las tarjetas arriba; Historial con una columna por etapa (los `│` quedaban desalineados).
+- Resumen: después de un RUN, las cuentas y el CPI son solo de los ciclos vistos paso a paso (antes mezclaba el contador de la DU con las instrucciones contadas: CPI 54,2). El rótulo de navegación muestra "Ciclo N · i/total".
 - GUI rehecha con la maqueta ("Muestrario GUI RISC-V"): pantalla de conexión (aviso del último fallo, Usar sin placa, programas de `TP3/asm`, Abrir sesión); barra superior con el archivo y la píldora de conexión; Abortar en rojo y con Esc; insignia de estado; banner de RUN con el tiempo; navegación de ciclos en los controles; colores fijos por marca (`tema.RIESGO`) en Pipeline, Carta, Historial y Resumen.
 - Página Programa con modo ejecución (fuente de solo lectura, línea marcada, etapa de cada línea) y tarjeta Problemas.
 - Página Pipeline con tres vistas: Etapas (latches entre etapas, flechas de forwarding, "Qué pasó en este ciclo", señales, valores viejos marcados), Latches (los 4 juntos, agrupados) y Campos (qué es cada campo, por qué viaja y quién lo usa: `ui/latch_info.py`).

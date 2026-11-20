@@ -2,6 +2,8 @@
 
 Recorrido guiado para verificar la GUI antes de un merge y antes de la defensa. Se hace dos veces: una en modo simulado (sin placa) y otra con la Basys 3 conectada. Lo que se puede probar sin abrir ventanas (la habilitación de botones y la línea a resaltar) ya lo cubren `tests/ui/test_state.py` y `make check-py`.
 
+La ventana abre en **1366×768** (la resolución de la maqueta, mínimo 1280×720): el recorrido se hace a ese tamaño. Ninguna página tiene que necesitar scroll horizontal, y Registros tiene que mostrar los 32 sin scroll.
+
 ## Cómo abrirla
 
 Windows (PowerShell), con un entorno propio para no pisar el `.venv` de WSL:
@@ -52,15 +54,15 @@ De dónde sale cada columna: IF = la instrucción de `Snapshot.pc` en la imagen 
 
 | #   | Paso                                                                                         | Esperado                                                                                         | S   | P   |
 | --- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | --- | --- |
-| P1  | Cargar `fibonacci.asm`, ir a **Pipeline** y dar 4 pasos                                       | Simulado: 5 instrucciones seguidas (IF = la del PC). Placa: el llenado del pipeline, ciclo a ciclo | [ ] | [ ] |
+| P1  | Cargar `fibonacci.asm`, ir a **Pipeline** y dar 4 pasos                                       | El llenado del pipeline, ciclo a ciclo (IF = la del PC)                                           | [ ] | [ ] |
 | P2  | Tocar la tarjeta EX                                                                          | Se elige ID/EX, la tarjeta EX queda con borde y la tabla muestra todos sus campos                | [ ] | [ ] |
 | P3  | **AC4**: recorrer IF/ID, ID/EX, EX/MEM y MEM/WB con el selector                               | Cada tabla con todos los campos del protocolo, en hex y decimal                                  | [ ] | [ ] |
-| P4  | **AC1**: `load_use.asm`, paso a paso                                                         | Ciclo del stall: `STALL` en IF e ID; el siguiente: burbuja en EX y la misma instrucción en ID     | —   | [ ] |
-| P5  | **AC2**: `branch_taken.asm`                                                                  | Las instrucciones descartadas tachadas, con `FLUSH`                                               | —   | [ ] |
-| P6  | **AC3**: `fwd_ex_mem.asm`                                                                    | `A ← EX/MEM` (o `B`) en EX y `→ A` en MEM, en el ciclo del forwarding                           | —   | [ ] |
+| P4  | **AC1**: `load_use.asm`, paso a paso                                                         | Ciclo del stall: `STALL` en IF e ID; el siguiente: burbuja en EX y la misma instrucción en ID     | [ ] | [ ] |
+| P5  | **AC2**: `branch_taken.asm`                                                                  | Las instrucciones descartadas tachadas, con `FLUSH`                                               | [ ] | [ ] |
+| P6  | **AC3**: `fwd_ex_mem.asm`                                                                    | `A ← EX/MEM` (o `B`) en EX y `→ A` en MEM, en el ciclo del forwarding                           | [ ] | [ ] |
 | P7  | **AC5**: justo después de un salto tomado                                                    | IF muestra la instrucción del destino                                                             | [ ] | [ ] |
 
-P4 a P6 solo se ven en la placa: el modo simulado no tiene Hazard Unit. Sacar una captura de cada uno para el informe.
+Desde el agregado US-306 el modo simulado corre el modelo del pipeline, así que P4 a P6 también se ven sin placa (en los mismos ciclos que en la placa, si el RTL está bien). Sacar una captura de cada uno para el informe.
 
 ## Carta de pipeline (US-503)
 
