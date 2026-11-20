@@ -7,6 +7,17 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 
 ### Added
 
+- `hw/rtl/top.v`: el sistema integrado (UART + Debug Unit + núcleo) con el Clock Wizard (`hw/ip/clk_wiz_0/clk_wiz_0.xci`, 100 → 85 MHz), reset sincronizado que espera a `locked`, `COUNT_MAX` recalculado para 19200 bps a 85 MHz y LEDs de estado (READY, RUN/STEP, HALTED, error de paridad) (US-411, US-602).
+- `hw/tb/top/tb_top_system.v`: un programa por la UART simulada al `top` (PING, LOAD, RUN, SNAPSHOT) contra el `.expected` del golden model, y `make sim-system` con toda la suite de `asm/` (US-411).
+- `hw/tb/top/tb_top_sin_halt.v`: el experimento de qué pasa sin HALT (cola de un programa anterior, ILLEGAL y ABORT), con el log en `docs/informe/datos/experimento_sin_halt.txt` (US-407, US-604).
+- `make impl` (`hw/scripts/impl_top.tcl`): síntesis, implementación y bitstream del `top` en contexto, con los reportes de timing, relojes, utilización por módulo, potencia y DRC en `hw/reports/top_*.rpt` (US-601, US-603).
+- `make freq-sweep` (`hw/scripts/freq_sweep.tcl`, resultado en `hw/reports/freq_sweep.csv`) y `make clk-wiz MHZ=<f>` (`hw/scripts/gen_clk_wiz.tcl`); `hw/scripts/comun.tcl` con lo compartido entre scripts (US-602).
+- `make reportes` (`tools/scripts/resumen_reportes.py`): lee los `.rpt` y el barrido sin Vivado y arma las tablas de `docs/informe/datos/reportes_vivado.md` (US-601, US-603).
+- `tools/scripts/sesiones_defensa.py` y `docs/defensa/sesiones/*.json`: sesiones grabadas para el plan B de la defensa; `docs/defensa/guion.md` (US-605).
+- `docs/manual/usuario.md` (US-604) y `docs/guias/guia-sintesis-sistema.md`.
+- `docs/informe/`: `informe.md` (las 10 secciones y las 8 preguntas del enunciado), `timing.md` (camino crítico, skew, barrido y antes/después) y `metricas.md` (recursos por módulo, potencia, CPI y comparación con el TP2), con los datos de `docs/informe/datos/` (US-601 a US-604).
+- `docs/guias/guia-reporte-timing.md`, parte 2: cuentas de setup y hold con el camino real, camino crítico, skew y CPR, jitter, MMCM/Clock Wizard, metaestabilidad y barrido de frecuencia.
+- `.github/workflows/release.yml`: al pushear un tag `vX.Y` crea el release con la sección `[X.Y]` de este archivo como notas.
 - Página **Datapath** de la GUI: el diagrama `docs/diagramas/datapath_pipeline.svg` con el valor de cada cable en el ciclo que se ve (medido del snapshot o calculado por el modelo), los latches marcados en stall/flush y el camino que elige cada mux (forwarding, PC, ALU, WB) pintado; zoom y arrastre. `scripts/gen_datapath.py` genera el fondo (PNG, con Edge) y el mapa de etiquetas, muxes y redes (`ui/assets/datapath/`); un test avisa si quedaron viejos.
 - `ModeloPipeline.cables()` y `ModeloPipeline.desde_snapshot()`: las señales combinacionales de un ciclo (las de la Hazard Unit incluidas) calculadas desde el estado de un snapshot.
 - `asm/riesgos/`: 12 programas cortos, uno por caso (forwarding EX/MEM, MEM/WB, distancia 3, el más nuevo gana, store, load-use con y sin stall, branch tomado y no tomado, `jal`, `jalr`, load-use + branch), con lo que hay que mirar en la GUI y los ciclos; un test verifica los ciclos del encabezado.
@@ -105,9 +116,24 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `tb_core_programs`: cuenta ciclos, instrucciones retiradas, stalls y flushes e imprime un volcado final (`VOLCADO <clave> <valor>`) que parsea `verify_rtl.py` (US-305).
 - `hw/rtl/core/dmem_bitmap.v`: bitmap de memoria usada y contador (ADR-008), separado de `data_mem`; marca con `o_core_we`/`o_core_addr` de `data_mem` (H2-E2).
 - `make synth-ooc` (`hw/scripts/synth_ooc.tcl`): síntesis fuera de contexto de cada módulo de `hw/rtl/core/` con Vivado en modo batch; deja en `build/synth/` el reporte de utilización de cada módulo y una tabla con LUTs, LUTRAM, FF, latches, BRAM y *critical warnings*, y falla si algún módulo infiere latches (H2-E1).
+- `hw/rtl/debug/`: Debug Unit completa (`debug_unit` con `du_cmd_fsm`, `du_loader`, `du_exec_ctrl`, `du_dumper`, `du_resp_tx` y `du_tx_mux`): intérprete de comandos con checksum y NACK, carga y reprogramación de la IMEM, modos `RUN`/`STEP`, `ABORT` con drenado del pipeline, snapshot y `DUMP_MEM` según `docs/protocolo.md` (US-403 a US-408).
+- `hw/tb/common/uart_host_model.vh` (modelo de la UART de la PC para los testbenches), `hw/tb/debug/core_stub.v` (núcleo falso sintetizable) y un testbench por módulo de la Debug Unit (`tb_du_*`, `tb_core_stub`, `tb_uart_host_model`) (US-402 a US-408).
+- `hw/scripts/synth_du_ooc.tcl` y `hw/constraints/du_ooc.xdc`: síntesis e implementación de la Debug Unit fuera de contexto a 100 MHz, con los reportes `hw/reports/du_ooc_*.rpt` (US-408).
+- `tools/riscv_toolkit/protocol/`: `codec` (armado y lectura de tramas), `snapshot` (decodifica el snapshot de 221 + 6·K bytes), `Transport` con `SerialTransport` (pyserial) y `FakeTransport` (la Debug Unit simulada en Python sobre el golden model) (US-409).
+- `tools/riscv_toolkit/session/`: `DebugSession` (conexión, carga, ejecución y volcados con timeouts y reintentos), `SnapshotHistory` y `diff` entre snapshots (US-410).
+- CLI `rvdbg` como subcomando `dbg` de `python -m riscv_toolkit` (`cli/rvdbg.py`) para manejar la placa desde la terminal (US-410).
+- `tools/scripts/verify_board.py` (toda la suite de `asm/` en la placa contra el golden model) y `tools/scripts/uart_echo_test.py` (US-401, US-411).
+- `docs/guias/guia-riscv-toolkit.md`, `docs/guias/guia-reporte-timing.md` y `docs/guias/guia-caso-timing-debug-unit.md` (H4).
+- Interfaz gráfica (`tools/riscv_toolkit/ui/`, Flet): pantalla de conexión, editor con ensamblado y errores por línea, controles de ejecución, registros, memoria, vista del pipeline con los latches campo a campo, carta de pipeline, línea de tiempo con historial navegable, resumen y verificación contra el golden model (US-501 a US-505).
+- `session/export.py` (exportar y abrir sesiones guardadas en JSON) y `session/verificar.py` (comparación de un snapshot con el golden model) (US-505).
+- `asm/demos/` `factorial` y `hola`, `asm/errores/` (un programa por error del ensamblador, para la GUI) y `asm/special/ilegal` (H5).
+- `docs/manual/checklist_ui.md`: prueba manual de la interfaz pantalla por pantalla (H5).
 
 ### Changed
 
+- ADR-016 aprobado: 85 MHz con Clock Wizard (WNS = +0,345 ns, WHS = +0,054 ns); falta la suite en placa (US-602).
+- `basys3.xdc`: `create_clock` sin `-add`, para que el reloj de la placa reemplace al que crea el `.xdc` del Clock Wizard en el mismo pin (con `-add` quedaban dos relojes primarios iguales y Vivado analizaba caminos entre ellos) (US-602).
+- `du_loader`: parámetro `RELLENO_HALT` (1 por defecto); en 0 no rellena con HALT el resto de la IMEM, solo para el experimento de `tb_top_sin_halt` (US-604).
 - `tb_core_control`: perro guardián de 20000 ciclos y límite en la espera del `addi` del lazo; con un error en la hazard unit el testbench falla en vez de quedar colgado (en el CI lo cortaría recién el límite de 6 h de GitHub Actions) (US-305).
 - Los programas de `asm/tests/hazards/` se verifican solos con la firma en `0x3FC`; las marcas de camino equivocado pasan a `x30` y `halt_speculative` sale del lazo con un `beq`, así el `halt` que sigue al `bne` siempre es especulativo. `make sim-programs` también corre `asm/tests/instr/` (US-304).
 - `if_stage`: el próximo PC lo elige `pc_sel` (hazard unit) y el PC se frena con `i_stall_f`; la prioridad entre redirecciones y el registro `halt_fetch` pasan de `if_stage`/`riscv_core` a `hazard_unit`. `tb_if_stage` maneja esas señales a mano y las prioridades se prueban en `tb_hazard_unit` (US-303).
@@ -134,3 +160,10 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `du_dumper` calcula la longitud y la posición del checksum una sola vez al pedido (`r_len`, `r_pos_checksum`) en lugar de en cada ciclo: salen del camino crítico (`r_k` → sumas → comparación → `r_xor`, WNS 0,859 ns en la primera síntesis OOC).
 - `debug_unit` instancia `du_dumper` (canal 1 del mux, `i_ciclos` desde `du_exec_ctrl`): se quitan los puertos del dumper externo, `o_ciclos` e `i_latch_valid` (los `valid` salen de los buses) y se agregan los puertos de lectura del núcleo (PC, registros, DMEM, bitmap, riesgos y latches). `tb_du_cmd_fsm.v` usa el dumper real en lugar del falso (US-405, US-408).
 - PRD US-106: `ensamblar` es una función en vez de la clase `Assembler`, la `Imagen` suma `expansiones` y el fixture de GNU pasa a `tools/tests/assembler/fixtures/` (también en ADR-013) (US-106).
+
+### Removed
+
+- `hw/tb/uart/tb_top_echo.v`: el `top` ya no es el eco de la UART; lo reemplaza `tb_top_system` (US-411).
+- `TP3/clockInfo.txt` y `TP3/dfx_runtime.txt`: archivos sueltos de Vivado versionados por error; `make` ahora corre Vivado dentro de `build/`.
+
+[Unreleased]: https://github.com/nicopinera/tps-arqui/commits/develop
