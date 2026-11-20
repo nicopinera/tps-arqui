@@ -1426,25 +1426,6 @@ treeView-beta
   - **AC5.** Solo `serial_transport.py` importa `serial`.
   - **AC6.** `SerialTransport` abre el puerto a 19200 bps, paridad par, 1 stop, 8 bits (ADR-002).
 - **Testing Mínimo:** `test_codec.py`, `test_snapshot.py`, `test_fake_transport.py`.
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "TP3/"
-        "tools/"
-            "riscv_toolkit/"
-                "protocol/"
-                    "codec.py"
-                    "snapshot.py"
-                    "transport.py"
-                    "serial_transport.py"
-                    "fake_transport.py"
-            "tests/"
-                "protocol/"
-                    "test_codec.py"
-                    "test_snapshot.py"
-                    "test_fake_transport.py"
-```
 
 ##### US-410 — Sesión de Depuración y CLI
 
@@ -1463,26 +1444,6 @@ treeView-beta
   - **AC4.** `--json` produce salida parseable usada por `verify_board.py`.
   - **AC5.** Ctrl+C durante `rvdbg run` sobre `infinite_loop.asm` envía `ABORT` y muestra el snapshot con motivo `ABORTED`.
 - **Testing Mínimo:** `test_debug_session.py` con `FakeTransport` y con un transporte que inyecta errores; `test_history.py` y `test_diff.py`.
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "TP3/"
-        "tools/"
-            "riscv_toolkit/"
-                "session/"
-                    "debug_session.py"
-                    "history.py"
-                    "diff.py"
-                "cli/"
-                    "main.py"
-            "riscv_toolkit/__main__.py — (subcomando dbg)"
-            "tests/"
-                "session/"
-                    "test_debug_session.py"
-                    "test_history.py"
-                    "test_diff.py"
-```
 
 ##### US-411 — Validación de Extremo a Extremo en Placa
 
@@ -1501,21 +1462,6 @@ treeView-beta
   - **AC3.** 5 reprogramaciones consecutivas correctas.
   - **AC4.** El bitstream usado se guarda con su hash de commit para poder reproducir la prueba.
   - **AC5.** Los testbenches de US-404 a US-407 pasan en simulación con el núcleo real.
-- **Testing Mínimo:** el propio script.
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "tps-arqui/"
-        "TP3/"
-            "tools/"
-                "scripts/"
-                    "verify_board.py"
-        "docs/"
-            "informe/"
-                "datos/"
-                    "resultados_placa.md"
-```
 
 ---
 

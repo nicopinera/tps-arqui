@@ -229,6 +229,19 @@ module tb_du_cmd_fsm;
     end
   endtask
 
+  // Guarda el payload de la ultima trama en build/snapshot_sim.bin: es la captura real que
+  // decodifica tests/protocol/test_snapshot.py (US-409, AC2). Copiarla a
+  // tools/tests/protocol/fixtures/ si cambia el layout del snapshot.
+  task guardar_payload;
+    integer fd, j;
+    begin
+      fd = $fopen("build/snapshot_sim.bin", "wb");
+      for (j = 0; j < host_len; j = j + 1)
+        $fwrite(fd, "%c", host_payload[j]);
+      $fclose(fd);
+    end
+  endtask
+
   integer b, errores_antes, aux;
 
   initial
@@ -383,6 +396,7 @@ module tb_du_cmd_fsm;
     cfg_halted  = 1'b1;
     recv_frame(r_ok);
     verificar("RUN -> ILLEGAL", `DU_TIPO_SNAPSHOT, 1, 8'h26, `DU_ESTADO_HALTED);
+    guardar_payload;
     cfg_halted  = 1'b0;
     cfg_illegal = 1'b0;
 
