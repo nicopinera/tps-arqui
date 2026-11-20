@@ -1,6 +1,6 @@
 # ADR-016 — Frecuencia de operación y generación de reloj
 
-- **Estado:** Propuesto (se aprueba con los datos de US-601 / US-602)
+- **Estado:** Aprobado (2026-11-20, con los datos de US-601 / US-602; falta repetir la suite en placa a 85 MHz)
 - **Fecha:** 2026-10-04
 - **Autores:** Krede, Julián · Piñera, Nicolás
 - **Bloquea:** Hito 6
@@ -28,11 +28,11 @@ Referencia previa: el diseño del TP2 cerraba a 100 MHz con WNS = 4,899 ns, pero
 3. **Frecuencia óptima** = la mayor frecuencia del barrido con **WNS ≥ 0,3 ns y WHS ≥ 0** (el margen deja lugar para variaciones de implementación entre corridas).
 4. **Aplicación:**
 
-   | Resultado del análisis                                         | Acción                                                                                                                                         |
-   | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-   | La óptima es 100 MHz                                           | Se documenta y se usa el reloj de la placa directo (sin MMCM). En el informe se explica por qué no hace falta el Clock Wizard                    |
-   | La óptima es **menor** que 100 MHz (no cierra a 100)           | Clock Wizard (MMCM) que genera la frecuencia óptima                                                                                             |
-   | La óptima es **mayor** que 100 MHz y la ganancia es significativa | Clock Wizard que genera la frecuencia óptima; se evalúa si la ganancia justifica la complejidad (se decide al aprobar este ADR)                  |
+| Resultado del análisis                                            | Acción                                                                                                                          |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| La óptima es 100 MHz                                              | Se documenta y se usa el reloj de la placa directo (sin MMCM). En el informe se explica por qué no hace falta el Clock Wizard   |
+| La óptima es **menor** que 100 MHz (no cierra a 100)              | Clock Wizard (MMCM) que genera la frecuencia óptima                                                                             |
+| La óptima es **mayor** que 100 MHz y la ganancia es significativa | Clock Wizard que genera la frecuencia óptima; se evalúa si la ganancia justifica la complejidad (se decide al aprobar este ADR) |
 
 5. **Si se usa el MMCM:**
    - salida por BUFG (lo hace el Clock Wizard);
@@ -43,12 +43,12 @@ Referencia previa: el diseño del TP2 cerraba a 100 MHz con WNS = 4,899 ns, pero
 
 ## Alternativas consideradas
 
-| Opción                                          | Ventajas                                                                                     | Desventajas                                                                                                       |
-| ----------------------------------------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| (a) 100 MHz directo, MMCM solo si no cierra     | Lo más simple; sin IP si no hace falta                                                       | Si cierra con mucho margen, no se aprovecha; la consigna de "aplicar la frecuencia óptima" queda solo argumentada  |
-| (b) MMCM siempre, aunque genere 100 MHz         | Cambiar la frecuencia es tocar un parámetro del IP; responde de forma práctica a la consigna | Agrega un IP y la lógica de `locked` aunque no haga falta                                                         |
-| **(c) Decidir con datos según el criterio de arriba** (propuesta) | La decisión queda respaldada por los reportes; el criterio se fija antes de ver los números | Este ADR queda abierto hasta el Hito 6                                                                            |
-| (d) Divisor de reloj con flip-flops             | Sin IP                                                                                       | **Prohibido**: es intervenir el clock; saca el reloj de la red dedicada (ADR-001)                                 |
+| Opción                                                            | Ventajas                                                                                     | Desventajas                                                                                                       |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| (a) 100 MHz directo, MMCM solo si no cierra                       | Lo más simple; sin IP si no hace falta                                                       | Si cierra con mucho margen, no se aprovecha; la consigna de "aplicar la frecuencia óptima" queda solo argumentada |
+| (b) MMCM siempre, aunque genere 100 MHz                           | Cambiar la frecuencia es tocar un parámetro del IP; responde de forma práctica a la consigna | Agrega un IP y la lógica de `locked` aunque no haga falta                                                         |
+| **(c) Decidir con datos según el criterio de arriba** (propuesta) | La decisión queda respaldada por los reportes; el criterio se fija antes de ver los números  | Este ADR queda abierto hasta el Hito 6                                                                            |
+| (d) Divisor de reloj con flip-flops                               | Sin IP                                                                                       | **Prohibido**: es intervenir el clock; saca el reloj de la red dedicada (ADR-001)                                 |
 
 ## Consecuencias
 
@@ -71,10 +71,21 @@ Referencia previa: el diseño del TP2 cerraba a 100 MHz con WNS = 4,899 ns, pero
 
 ## Pendiente para aprobar
 
-- [ ] Resultados de US-601 (camino crítico y skew a 100 MHz).
-- [ ] Tabla del barrido de US-602.
-- [ ] Frecuencia elegida y si se usa el MMCM.
+- [x] Resultados de US-601 (camino crítico y skew a 100 MHz).
+- [x] Tabla del barrido de US-602.
+- [x] Frecuencia elegida y si se usa el MMCM.
 - [ ] Suite completa en placa a la frecuencia final.
+
+## Resultado
+
+Datos completos en [docs/informe/timing.md](../informe/timing.md).
+
+- **A 100 MHz con el reloj directo no cierra:** WNS = −1,316 ns, 76 endpoints fallan, WHS = +0,039 ns. El camino crítico no está en el núcleo sino en la Debug Unit: `du_dumper` calcula la dirección, lee la DMEM por el puerto de depuración (LUTRAM, ADR-005), elige el byte y actualiza el checksum en un solo ciclo, con 64 % de ruteo. El primer camino del núcleo es el esperado (forwarding → `branch_cmp` → PC, ADR-006/007), con −0,443 ns. El skew del peor camino es de −0,034 ns: la red única de reloj (ADR-001) lo mantiene chico.
+- **Barrido** (`make freq-sweep`, sin MMCM): 50 → 4,760; 75 → 0,635; 80 → 0,688; **85 → 0,324**; 90 → 0,028; 95 → −0,306; 100 → −1,145 ns de WNS, con WHS ≥ 0,039 ns en todas.
+- **Decisión: 85 MHz con Clock Wizard** (fila 2 de la tabla). MMCM `clk_wiz_0`: 100 × 40,375 / 4 / 11,875 = 85,000 MHz, salida por BUFG, reset retenido hasta `locked`. `CLK_FREQ_HZ = 85_000_000`, `COUNT_MAX = 277` → 19 179 bps (error 0,11 %). Solo se versiona el `.xci`.
+- **Diseño final (`make impl`):** WNS = +0,345 ns, WHS = +0,054 ns, 0 endpoints que fallen, skew del peor camino de setup −0,111 ns. Costo del MMCM: 0,078 ns más de incertidumbre por jitter y 0,122 W de potencia.
+- **Ajuste en las restricciones:** el `.xdc` del Clock Wizard crea su propio reloj en el pin de entrada. `basys3.xdc` define el de la placa **sin `-add`** para que quede uno solo; con `-add` había dos relojes primarios iguales.
+- Las desventajas que preveía este ADR no se dieron: el `top` se sigue simulando en Icarus, porque el MMCM se instancia solo al sintetizar (macro `SYNTHESIS`).
 
 ## Referencias
 
