@@ -1,0 +1,49 @@
+# Release del TP3: al pushear un tag vX.Y crea el release de GitHub con la seccion
+# "## [X.Y]" de TP3/CHANGELOG.md como notas (sin copiar y pegar).
+#
+# Antes del tag, en el CHANGELOG: renombrar "## [Unreleased]" a "## [X.Y] - AAAA-MM-DD" y dejar
+# un "## [Unreleased]" vacio arriba. Despues, desde main:
+#   git tag -a v1.0 -m "v1.0" && git push origin v1.0
+# El bitstream no se genera aca (no hay Vivado en el runner): se sube a mano con
+#   gh release upload v1.0 TP3/build/vivado_top/top.bit
+name: Release TP3
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: El tag tiene que estar en main
+        run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+      - name: Notas desde el CHANGELOG
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          # v1.0 -> 1.0; imprime desde "## [1.0]" hasta la proxima "## [" (sin incluirla)
+          awk -v v="${VERSION#v}" '
+            /^## \[/ { if (f) exit; f = index($0, "## [" v "]") == 1; next }
+            f && /^\[[^]]+\]: / { next }
+            f
+          ' TP3/CHANGELOG.md > notas.md
+          if ! grep -q '[^[:space:]]' notas.md; then
+            echo "::error::TP3/CHANGELOG.md no tiene una seccion '## [${VERSION#v}]' con contenido"
+            exit 1
+          fi
+          wc -l notas.md
+
+      - name: Crear el release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" --verify-tag --title "TP3 $TAG" --notes-file notas.md

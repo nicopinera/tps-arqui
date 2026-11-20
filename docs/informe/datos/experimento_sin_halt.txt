@@ -1,0 +1,4 @@
+EXPERIMENTO A (IMEM en 0, sin HALT): motivo 2 (2 = ILLEGAL), PC 0x0000000c, x10 = 10, x11 = 11
+EXPERIMENTO B (restos del programa anterior): motivo 1 (1 = HALTED), PC 0x00000018, x1..x5 = 0 0 3 4 5, x10 = 10, x11 = 11
+EXPERIMENTO C (lazo infinito + ABORT): motivo 3 (3 = ABORTED), vueltas x1 = 1881, valid = 0000
+TEST PASSED (39 chequeos)

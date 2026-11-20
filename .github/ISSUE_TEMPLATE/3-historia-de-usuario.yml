@@ -65,7 +65,7 @@ body:
     id: dependencias
     attributes:
       label: Dependencias
-      placeholder: "US-209, ADR-007"
+      placeholder: "US-210, ADR-007"
 
   - type: textarea
     id: objetivo

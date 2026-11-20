@@ -1,0 +1,208 @@
+<mxfile host="65bd71144e">
+    <diagram id="qZaq-nBoVt80HqEvFSQb" name="FSM Debug Unit">
+        <mxGraphModel dx="605" dy="423" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="1050" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="j4DRARVJpTErX-k3ogn5-1" parent="1" style="ellipse;whiteSpace=wrap;html=1;shapeInside=1;aspect=fixed;fontStyle=1;fontSize=11;" value="IDLE" vertex="1">
+                    <mxGeometry height="80" width="80" x="120" y="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="j4DRARVJpTErX-k3ogn5-2" parent="1" style="ellipse;whiteSpace=wrap;html=1;shapeInside=1;aspect=fixed;fontStyle=1;fontSize=11;" value="LOADING" vertex="1">
+                    <mxGeometry height="80" width="80" x="480" y="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="j4DRARVJpTErX-k3ogn5-3" parent="1" style="ellipse;whiteSpace=wrap;html=1;shapeInside=1;aspect=fixed;fontStyle=1;fontSize=11;" value="READY" vertex="1">
+                    <mxGeometry height="80" width="80" x="480" y="420" as="geometry"/>
+                </mxCell>
+                <mxCell id="j4DRARVJpTErX-k3ogn5-4" parent="1" style="ellipse;whiteSpace=wrap;html=1;shapeInside=1;aspect=fixed;fontStyle=1;fontSize=11;" value="RUN" vertex="1">
+                    <mxGeometry height="80" width="80" x="480" y="810" as="geometry"/>
+                </mxCell>
+                <mxCell id="j4DRARVJpTErX-k3ogn5-5" parent="1" style="ellipse;whiteSpace=wrap;html=1;shapeInside=1;aspect=fixed;fontStyle=1;fontSize=11;" value="STEPPING" vertex="1">
+                    <mxGeometry height="80" width="80" x="840" y="420" as="geometry"/>
+                </mxCell>
+                <mxCell id="j4DRARVJpTErX-k3ogn5-6" parent="1" style="ellipse;whiteSpace=wrap;html=1;shapeInside=1;aspect=fixed;fontStyle=1;fontSize=11;" value="DUMPING" vertex="1">
+                    <mxGeometry height="80" width="80" x="120" y="780" as="geometry"/>
+                </mxCell>
+                <mxCell id="j4DRARVJpTErX-k3ogn5-7" parent="1" style="ellipse;whiteSpace=wrap;html=1;shapeInside=1;aspect=fixed;fontStyle=1;fontSize=11;" value="HALTED" vertex="1">
+                    <mxGeometry height="80" width="80" x="120" y="420" as="geometry"/>
+                </mxCell>
+                <mxCell id="fsm-pwr" parent="1" style="ellipse;html=1;fillColor=#000000;strokeColor=#000000;" value="" vertex="1">
+                    <mxGeometry height="16" width="16" x="90" y="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="fsm-1" edge="1" parent="1" source="fsm-pwr" style="html=1;endArrow=classic;rounded=1;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.355;entryY=0.013;entryDx=0;entryDy=0;entryPerimeter=0;" target="j4DRARVJpTErX-k3ogn5-1" value="">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="fsm-2" parent="1" style="text;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;fontSize=8;fontColor=#777777;" value="encendido" vertex="1">
+                    <mxGeometry height="28" width="60" x="68" y="2" as="geometry"/>
+                </mxCell>
+                <mxCell id="fsm-any" parent="1" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fontSize=9;strokeColor=#777777;fontColor=#777777;" value="cualquier estado" vertex="1">
+                    <mxGeometry height="28" width="140" x="210" y="10" as="geometry"/>
+                </mxCell>
+                <mxCell id="fsm-3" edge="1" parent="1" source="fsm-any" style="html=1;endArrow=classic;rounded=1;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#777777;fontColor=#777777;edgeStyle=orthogonalEdgeStyle;dashed=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" target="j4DRARVJpTErX-k3ogn5-1" value="i_reset = &#39;1&#39;">
+                    <mxGeometry relative="1" x="0.4999" y="34" as="geometry">
+                        <mxPoint as="offset"/>
+                        <Array as="points">
+                            <mxPoint x="176" y="24"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="fsm-4" edge="1" parent="1" source="j4DRARVJpTErX-k3ogn5-1" style="html=1;endArrow=classic;rounded=1;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.3;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;" target="j4DRARVJpTErX-k3ogn5-2" value="LOAD">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="fsm-5" edge="1" parent="1" source="j4DRARVJpTErX-k3ogn5-2" style="html=1;endArrow=classic;rounded=1;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#C62828;fontColor=#C62828;edgeStyle=orthogonalEdgeStyle;exitX=0;exitY=0.7;exitDx=0;exitDy=0;entryX=1;entryY=0.7;entryDx=0;entryDy=0;" target="j4DRARVJpTErX-k3ogn5-1" value="checksum inválido / timeout /&lt;br&gt;paridad / N &amp;gt; 256&lt;br&gt;/ IMEM ← HALT, NACK">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="fsm-6" edge="1" parent="1" source="j4DRARVJpTErX-k3ogn5-2" style="html=1;endArrow=classic;rounded=1;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#2E7D32;fontColor=#2E7D32;edgeStyle=orthogonalEdgeStyle;exitX=0.7;exitY=1;exitDx=0;exitDy=0;entryX=0.7;entryY=0;entryDx=0;entryDy=0;" target="j4DRARVJpTErX-k3ogn5-3" value="checksum OK&lt;br&gt;/ limpia DMEM y núcleo, ACK">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="78" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="fsm-7" edge="1" parent="1" source="j4DRARVJpTErX-k3ogn5-3" style="html=1;endArrow=classic;rounded=1;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;edgeStyle=orthogonalEdgeStyle;exitX=0.3;exitY=0;exitDx=0;exitDy=0;entryX=0.3;entryY=1;entryDx=0;entryDy=0;" target="j4DRARVJpTErX-k3ogn5-2" value="LOAD">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="-26" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="fsm-8" edge="1" parent="1" source="j4DRARVJpTErX-k3ogn5-5" style="html=1;endArrow=classic;rounded=1;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="j4DRARVJpTErX-k3ogn5-2" value="LOAD">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="880" y="120"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="fsm-9" edge="1" parent="1" source="j4DRARVJpTErX-k3ogn5-7" style="html=1;endArrow=classic;rounded=1;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;edgeStyle=none;exitX=0.85;exitY=0.15;exitDx=0;exitDy=0;entryX=0.15;entryY=0.85;entryDx=0;entryDy=0;" target="j4DRARVJpTErX-k3ogn5-2" value="LOAD">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="fsm-10" edge="1" parent="1" source="j4DRARVJpTErX-k3ogn5-1" style="html=1;endArrow=classic;rounded=1;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;edgeStyle=orthogonalEdgeStyle;exitX=0.3;exitY=1;exitDx=0;exitDy=0;entryX=0.7;entryY=1;entryDx=0;entryDy=0;innerLoopWaypoints=1;" target="j4DRARVJpTErX-k3ogn5-1" value="RESET / ACK&lt;br&gt;(sin programa)">
+                    <mxGeometry relative="1" x="-0.0153" as="geometry">
+                        <mxPoint y="18" as="offset"/>
+                        <Array as="points">
+                            <mxPoint x="145.1" y="205"/>
+                            <mxPoint x="174.9" y="205"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="fsm-11" edge="1" parent="1" source="j4DRARVJpTErX-k3ogn5-3" style="html=1;endArrow=classic;rounded=1;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.75;exitDx=0;exitDy=0;" target="j4DRARVJpTErX-k3ogn5-3" value="RESET / ACK">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="45" as="offset"/>
+                        <Array as="points">
+                            <mxPoint x="555.8" y="480"/>
+                            <mxPoint x="605" y="480"/>
+                            <mxPoint x="605" y="535"/>
+                            <mxPoint x="544" y="535"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="fsm-12" edge="1" parent="1" source="j4DRARVJpTErX-k3ogn5-5" style="html=1;endArrow=classic;rounded=1;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;edgeStyle=orthogonalEdgeStyle;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="j4DRARVJpTErX-k3ogn5-3" value="RESET / ACK">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="fsm-13" edge="1" parent="1" source="j4DRARVJpTErX-k3ogn5-7" style="html=1;endArrow=classic;rounded=1;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="j4DRARVJpTErX-k3ogn5-3" value="RESET / ACK">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="fsm-14" edge="1" parent="1" source="j4DRARVJpTErX-k3ogn5-3" style="html=1;endArrow=classic;rounded=1;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="j4DRARVJpTErX-k3ogn5-4" value="RUN / ACK,&lt;br&gt;i_enable = 1">
+                    <mxGeometry relative="1" x="0.3" as="geometry"/>
+                </mxCell>
+                <mxCell id="fsm-15" edge="1" parent="1" source="j4DRARVJpTErX-k3ogn5-5" style="html=1;endArrow=classic;rounded=1;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" target="j4DRARVJpTErX-k3ogn5-4" value="RUN / ACK, i_enable = 1">
+                    <mxGeometry relative="1" x="0.0252" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="880" y="850"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="fsm-16" edge="1" parent="1" style="html=1;endArrow=classic;rounded=1;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;edgeStyle=orthogonalEdgeStyle;entryX=1;entryY=0.75;entryDx=0;entryDy=0;" value="o_halted → motivo HALTED / ILLEGAL&lt;br&gt;ABORT / i_stop_fetch, drenado → ABORTED">
+                    <mxGeometry relative="1" x="-0.0082" y="22" as="geometry">
+                        <mxPoint as="offset"/>
+                        <Array as="points">
+                            <mxPoint x="410" y="837.89"/>
+                            <mxPoint x="410" y="837.89"/>
+                        </Array>
+                        <mxPoint x="481.8740246026414" y="837.9000000000001" as="sourcePoint"/>
+                        <mxPoint x="195.7770876399967" y="837.8885438199984" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="fsm-17" edge="1" parent="1" source="j4DRARVJpTErX-k3ogn5-3" style="html=1;endArrow=classic;rounded=1;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;edgeStyle=none;exitX=0.1;exitY=0.8;exitDx=0;exitDy=0;entryX=0.8;entryY=0.1;entryDx=0;entryDy=0;" target="j4DRARVJpTErX-k3ogn5-6" value="STEP / pulso i_enable&lt;br&gt;DUMP, DUMP_MEM">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="-48" y="-6" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="fsm-18" edge="1" parent="1" source="j4DRARVJpTErX-k3ogn5-7" style="html=1;endArrow=classic;rounded=1;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;edgeStyle=orthogonalEdgeStyle;exitX=0.65;exitY=1;exitDx=0;exitDy=0;entryX=0.65;entryY=0;entryDx=0;entryDy=0;" target="j4DRARVJpTErX-k3ogn5-6" value="DUMP,&lt;br&gt;DUMP_MEM">
+                    <mxGeometry relative="1" x="-0.55" as="geometry">
+                        <mxPoint x="32" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="fsm-19" edge="1" parent="1" source="j4DRARVJpTErX-k3ogn5-1" style="html=1;endArrow=classic;rounded=1;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;edgeStyle=orthogonalEdgeStyle;exitX=0;exitY=0.65;exitDx=0;exitDy=0;" target="j4DRARVJpTErX-k3ogn5-6" value="">
+                    <mxGeometry relative="1" x="0.0006" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="60" y="131.5"/>
+                            <mxPoint x="60" y="800"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="fsm-20" parent="1" style="text;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;fontSize=9;fontColor=#000000;" value="DUMP,&lt;br&gt;DUMP_MEM" vertex="1">
+                    <mxGeometry height="28" width="56" x="64" y="286" as="geometry"/>
+                </mxCell>
+                <mxCell id="fsm-21" edge="1" parent="1" source="j4DRARVJpTErX-k3ogn5-5" style="html=1;endArrow=classic;rounded=1;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.6;exitDx=0;exitDy=0;entryX=0.625;entryY=1;entryDx=0;entryDy=0;" target="j4DRARVJpTErX-k3ogn5-6" value="">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="960" y="468"/>
+                            <mxPoint x="960" y="960"/>
+                            <mxPoint x="170" y="960"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="fsm-22" parent="1" style="text;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;fontSize=9;fontColor=#000000;" value="STEP / pulso i_enable · DUMP, DUMP_MEM" vertex="1">
+                    <mxGeometry height="28" width="300" x="450" y="932" as="geometry"/>
+                </mxCell>
+                <mxCell id="fsm-23" edge="1" parent="1" source="j4DRARVJpTErX-k3ogn5-6" style="html=1;endArrow=classic;rounded=1;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;edgeStyle=none;dashed=1;exitX=1;exitY=0.45;exitDx=0;exitDy=0;entryX=0.35;entryY=1;entryDx=0;entryDy=0;" target="j4DRARVJpTErX-k3ogn5-3" value="fin de trama&lt;br&gt;[prev = READY]">
+                    <mxGeometry relative="1" x="0.1036" y="-28" as="geometry">
+                        <mxPoint y="-1" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="fsm-24" edge="1" parent="1" source="j4DRARVJpTErX-k3ogn5-6" style="html=1;endArrow=classic;rounded=1;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;edgeStyle=orthogonalEdgeStyle;dashed=1;exitX=0.35;exitY=0;exitDx=0;exitDy=0;entryX=0.35;entryY=1;entryDx=0;entryDy=0;" target="j4DRARVJpTErX-k3ogn5-7" value="fin de trama&lt;br&gt;[terminó o&lt;br&gt;prev = HALTED]">
+                    <mxGeometry relative="1" x="0.2" as="geometry">
+                        <mxPoint x="-44" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="fsm-25" edge="1" parent="1" source="j4DRARVJpTErX-k3ogn5-6" style="html=1;endArrow=classic;rounded=1;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;edgeStyle=orthogonalEdgeStyle;dashed=1;exitX=0;exitY=0.6;exitDx=0;exitDy=0;" target="j4DRARVJpTErX-k3ogn5-1" value="">
+                    <mxGeometry relative="1" x="0.0001" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="30" y="827.8"/>
+                            <mxPoint x="30" y="100"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="fsm-26" parent="1" style="text;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;fontSize=9;fontColor=#000000;rotation=-90;" value="fin de trama [prev = IDLE]" vertex="1">
+                    <mxGeometry height="28" width="170" x="-69" y="456" as="geometry"/>
+                </mxCell>
+                <mxCell id="fsm-27" edge="1" parent="1" source="j4DRARVJpTErX-k3ogn5-6" style="html=1;endArrow=classic;rounded=1;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;edgeStyle=orthogonalEdgeStyle;dashed=1;exitX=0.375;exitY=1;exitDx=0;exitDy=0;" target="j4DRARVJpTErX-k3ogn5-5" value="">
+                    <mxGeometry relative="1" x="0.0011" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="150.3" y="990"/>
+                            <mxPoint x="990" y="990"/>
+                            <mxPoint x="990" y="440"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="fsm-28" parent="1" style="text;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;fontSize=9;fontColor=#000000;" value="fin de trama [STEP sin fin de ejecución o prev = STEPPING]" vertex="1">
+                    <mxGeometry height="28" width="360" x="420" y="990" as="geometry"/>
+                </mxCell>
+                <mxCell id="fsm-title" parent="1" style="text;html=1;fontSize=14;fontStyle=1;align=left;verticalAlign=middle;" value="FSM de la Debug Unit" vertex="1">
+                    <mxGeometry height="30" width="330" x="1030" y="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="fsm-note-prev" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=10;fillColor=#FFFBEA;strokeColor=#C9B458;" value="&lt;b&gt;r_prev_state&lt;/b&gt;&lt;br&gt;Registro que guarda &lt;i&gt;desde qué estado&lt;/i&gt; se entró a DUMPING. DUMPING es un estado de paso: arma y envía la trama y después vuelve. Como no hay una flecha &quot;volver atrás&quot;, se dibuja una salida por cada estado posible con la condición &lt;b&gt;[prev = X]&lt;/b&gt;. El registro se carga al salir de IDLE, READY, STEPPING o HALTED hacia DUMPING." vertex="1">
+                    <mxGeometry height="115" width="330" x="1030" y="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="fsm-note-any" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=10;fillColor=#FFFBEA;strokeColor=#C9B458;" value="&lt;b&gt;&quot;En cualquier estado&quot;&lt;/b&gt; (no se dibuja como autolazo):&lt;br&gt;• PING / responde PING_INFO (versión)&lt;br&gt;• comando desconocido o inválido para el estado / NACK, sin cambio de estado" vertex="1">
+                    <mxGeometry height="80" width="330" x="1030" y="240" as="geometry"/>
+                </mxCell>
+                <mxCell id="fsm-note-motivo" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=10;fillColor=#FFFBEA;strokeColor=#C9B458;" value="&lt;b&gt;Motivo de terminación (r_motivo)&lt;/b&gt;, viaja en el snapshot:&lt;br&gt;• HALTED: o_halted · !o_illegal&lt;br&gt;• ILLEGAL: o_halted · o_illegal&lt;br&gt;• ABORTED: comando ABORT&lt;br&gt;Los tres terminan en el estado HALTED" vertex="1">
+                    <mxGeometry height="95" width="330" x="1030" y="335" as="geometry"/>
+                </mxCell>
+                <mxCell id="fsm-note-misc" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=10;fillColor=#FFFBEA;strokeColor=#C9B458;" value="&lt;b&gt;Otros detalles&lt;/b&gt;&lt;br&gt;• i_enable = 1 solo en RUN y en el pulso de 1 ciclo de STEP&lt;br&gt;• DUMP_MEM recibe sus 4 B de argumentos dentro de DUMPING; rango inválido o timeout devuelve NACK y vuelve a r_prev_state.&lt;br&gt;• Todo LOAD fallido deja la IMEM rellena con HALT y vuelve a IDLE." vertex="1">
+                    <mxGeometry height="105" width="330" x="1030" y="445" as="geometry"/>
+                </mxCell>
+                <mxCell id="fsm-legend" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=10;fillColor=#FFFFFF;strokeColor=#999999;" value="&lt;b&gt;Notación&lt;/b&gt;: evento [condición] / acción&lt;br&gt;&lt;font color=&#39;#2E7D32&#39;&gt;━ carga correcta&lt;/font&gt; &amp;nbsp; &lt;font color=&#39;#C62828&#39;&gt;━ carga fallida&lt;/font&gt;&lt;br&gt;┅ salida de DUMPING (fin de trama) &amp;nbsp; &lt;font color=&#39;#777777&#39;&gt;┅ reset&lt;/font&gt;" vertex="1">
+                    <mxGeometry height="65" width="330" x="1030" y="910" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

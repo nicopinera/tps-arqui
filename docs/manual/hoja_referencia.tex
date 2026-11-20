@@ -1,0 +1,234 @@
+% Hoja de referencia A4 del juego de instrucciones del TP3 (RV32I, 33 instrucciones).
+% Compilar: pdflatex hoja_referencia.tex
+% Fuentes: PRD §2.2, tools/riscv_toolkit/isa/instrucciones.py (US-105), docs/interfaces/formatos.md,
+% ADR-004/008/013/018. Registros solo x0–x31, sin nombres ABI (ADR-013).
+% Sintaxis contrastada con el ensamblador de US-106 (assembler/parser.py, lexer.py) el 2026-10-29.
+\documentclass[9pt]{extarticle}
+\usepackage[a4paper,margin=9mm]{geometry}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-noshorthands]{babel}
+\usepackage[scaled=0.92]{helvet}
+\renewcommand{\familydefault}{\sfdefault}
+\usepackage[scaled=0.95]{inconsolata}
+\usepackage[table]{xcolor}
+\usepackage{array,tabularx,booktabs,tikz}
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+
+\definecolor{cR}{HTML}{DCE8F7}
+\definecolor{cI}{HTML}{DFF2E0}
+\definecolor{cS}{HTML}{FCE8D2}
+\definecolor{cB}{HTML}{F8DADA}
+\definecolor{cU}{HTML}{E9DFF5}
+\definecolor{cJ}{HTML}{D6F0EF}
+\definecolor{cH}{HTML}{EEEEEE}
+\definecolor{acento}{HTML}{1F4E79}
+
+\newcommand{\mono}[1]{\texttt{#1}}
+\newcommand{\seccion}[1]{{\color{acento}\bfseries\large #1}\par\vspace{1mm}}
+\newcommand{\grupo}[2]{\rowcolor{#1}\multicolumn{7}{l}{\bfseries #2}\\}
+
+% ---- diagrama de formatos: \campo{bit alto}{ancho}{texto}{y}
+\newcommand{\campo}[4]{%
+  \pgfmathsetmacro{\xa}{(31-#1)*\u}
+  \pgfmathsetmacro{\xb}{(31-#1+#2)*\u}
+  \draw[fill=white] (\xa,#4) rectangle (\xb,#4-0.42);
+  \node[font=\ttfamily\footnotesize] at ({(\xa+\xb)/2},#4-0.21) {#3};}
+
+\begin{document}
+
+% ======================================================== encabezado
+{\color{acento}\rule{\linewidth}{1.2pt}}\\[0.5mm]
+{\Large\bfseries\color{acento} RV32I — Hoja de referencia}\hfill
+{\small 33 instrucciones (32 RV32I + \mono{halt}) · Arquitectura de Computadoras 2026 · FCEFyN–UNC}\\[-1mm]
+{\color{acento}\rule{\linewidth}{0.6pt}}
+\vspace{1.5mm}
+
+% ======================================================== formatos
+\seccion{Formatos de instrucción (32 bits)}
+\begin{tikzpicture}
+  \def\u{0.40}
+  % numeración de bits
+  \foreach \b/\t in {31/31,25/25,24/24,20/20,19/19,15/15,14/14,12/12,11/11,7/7,6/6,0/0}{
+    \pgfmathsetmacro{\x}{(31-\b+0.5)*\u}
+    \node[font=\scriptsize\color{gray}] at (\x,0.2) {\t};}
+  % filas
+  \foreach \f/\y/\c in {R/0/cR, I/-0.5/cI, S/-1.0/cS, B/-1.5/cB, U/-2.0/cU, J/-2.5/cJ}{
+    \node[font=\bfseries, fill=\c, minimum width=6mm, minimum height=4mm] at (-0.5,\y-0.21) {\f};}
+  \campo{31}{7}{funct7}{0}  \campo{24}{5}{rs2}{0} \campo{19}{5}{rs1}{0}
+  \campo{14}{3}{funct3}{0} \campo{11}{5}{rd}{0}  \campo{6}{7}{opcode}{0}
+  \campo{31}{12}{imm[11:0]}{-0.5} \campo{19}{5}{rs1}{-0.5}
+  \campo{14}{3}{funct3}{-0.5} \campo{11}{5}{rd}{-0.5} \campo{6}{7}{opcode}{-0.5}
+  \campo{31}{7}{imm[11:5]}{-1.0} \campo{24}{5}{rs2}{-1.0} \campo{19}{5}{rs1}{-1.0}
+  \campo{14}{3}{funct3}{-1.0} \campo{11}{5}{imm[4:0]}{-1.0} \campo{6}{7}{opcode}{-1.0}
+  \campo{31}{7}{imm[12|10:5]}{-1.5} \campo{24}{5}{rs2}{-1.5} \campo{19}{5}{rs1}{-1.5}
+  \campo{14}{3}{funct3}{-1.5} \campo{11}{5}{imm[4:1|11]}{-1.5} \campo{6}{7}{opcode}{-1.5}
+  \campo{31}{20}{imm[31:12]}{-2.0} \campo{11}{5}{rd}{-2.0} \campo{6}{7}{opcode}{-2.0}
+  \campo{31}{20}{imm[20|10:1|11|19:12]}{-2.5} \campo{11}{5}{rd}{-2.5} \campo{6}{7}{opcode}{-2.5}
+\end{tikzpicture}\hfill
+\begin{minipage}[b]{0.2\linewidth}\footnotesize
+\begin{tabular}{@{}ll@{}}
+  \bfseries Fmt & \bfseries Inmediato \\
+  R & — \\
+  I, S & 12 b: $-2048 \ldots 2047$ \\
+  B & 13 b, par: $\pm 4$ KiB \\
+  U & 20 b altos (\mono{<{}<12}) \\
+  J & 21 b, par: $\pm 1$ MiB \\
+\end{tabular}\vspace{1mm}
+\end{minipage}
+
+\vspace{0.5mm}
+{\footnotesize \textbf{Todo inmediato se extiende con signo} (también en \mono{andi/ori/xori/sltiu}). En B y J el bit 0 no se codifica.
+\mono{rd}, \mono{rs1}, \mono{rs2} están siempre en el mismo lugar. Shifts: \mono{imm = (funct7 <{}< 5) | sh}.\par}
+
+\vspace{2mm}
+% ======================================================== tabla de instrucciones
+\seccion{Instrucciones}
+{\renewcommand{\arraystretch}{1.12}\footnotesize
+\begin{tabularx}{\linewidth}{@{}>{\ttfamily\bfseries}l >{\ttfamily}l X c >{\ttfamily}c >{\ttfamily}c >{\ttfamily}c@{}}
+\toprule
+\normalfont\bfseries Instr. & \normalfont\bfseries Sintaxis & \bfseries Operación & \bfseries Fmt & \normalfont\bfseries opcode & \normalfont\bfseries f3 & \normalfont\bfseries f7 \\
+\midrule
+\grupo{cR}{Aritméticas y lógicas entre registros}
+add  & add rd, rs1, rs2  & \mono{rd = rs1 + rs2}                         & R & 0110011 & 000 & 0000000 \\
+sub  & sub rd, rs1, rs2  & \mono{rd = rs1 - rs2}                         & R & 0110011 & 000 & 0100000 \\
+sll  & sll rd, rs1, rs2  & \mono{rd = rs1 <{}< rs2[4:0]}                   & R & 0110011 & 001 & 0000000 \\
+slt  & slt rd, rs1, rs2  & \mono{rd = (rs1 < rs2) ? 1:0} \quad con signo  & R & 0110011 & 010 & 0000000 \\
+sltu & sltu rd, rs1, rs2 & \mono{rd = (rs1 < rs2) ? 1:0} \quad sin signo  & R & 0ab10011 & 011 & 0000000 \\
+xor  & xor rd, rs1, rs2  & \mono{rd = rs1 \^{} rs2}                      & R & 0110011 & 100 & 0000000 \\
+srl  & srl rd, rs1, rs2  & \mono{rd = rs1 >{}> rs2[4:0]} \quad lógico (entran 0) & R & 0110011 & 101 & 0000000 \\
+sra  & sra rd, rs1, rs2  & \mono{rd = rs1 >{}>{}> rs2[4:0]} \quad aritmético (copia signo) & R & 0110011 & 101 & 0100000 \\
+or   & or rd, rs1, rs2   & \mono{rd = rs1 | rs2}                         & R & 0110011 & 110 & 0000000 \\
+and  & and rd, rs1, rs2  & \mono{rd = rs1 \& rs2}                        & R & 0110011 & 111 & 0000000 \\
+\grupo{cI}{Aritméticas y lógicas con inmediato}
+addi  & addi rd, rs1, imm  & \mono{rd = rs1 + imm}                         & I & 0010011 & 000 & — \\
+slti  & slti rd, rs1, imm  & \mono{rd = (rs1 < imm) ? 1:0} \quad con signo  & I & 0010011 & 010 & — \\
+sltiu & sltiu rd, rs1, imm & \mono{rd = (rs1 < imm) ? 1:0} \quad sin signo (imm extendido con signo) & I & 0010011 & 011 & — \\
+xori  & xori rd, rs1, imm  & \mono{rd = rs1 \^{} imm}                      & I & 0010011 & 100 & — \\
+ori   & ori rd, rs1, imm   & \mono{rd = rs1 | imm}                         & I & 0010011 & 110 & — \\
+andi  & andi rd, rs1, imm  & \mono{rd = rs1 \& imm}                        & I & 0010011 & 111 & — \\
+slli  & slli rd, rs1, sh   & \mono{rd = rs1 <{}< sh} \quad (sh = 0…31 en imm[4:0]) & I & 0010011 & 001 & 0000000 \\
+srli  & srli rd, rs1, sh   & \mono{rd = rs1 >{}> sh} \quad lógico            & I & 0010011 & 101 & 0000000 \\
+srai  & srai rd, rs1, sh   & \mono{rd = rs1 >{}>{}> sh} \quad aritmético       & I & 0010011 & 101 & 0100000 \\
+\grupo{cI}{Lecturas de memoria (solo DMEM) \normalfont— dirección = \mono{rs1 + imm}; el offset es obligatorio: \mono{0(x2)}, no \mono{(x2)}}
+lb  & lb rd, imm(rs1)  & \mono{rd = sext(M[a][7:0])}    & I & 0000011 & 000 & — \\
+lh  & lh rd, imm(rs1)  & \mono{rd = sext(M[a][15:0])}   & I & 0000011 & 001 & — \\
+lw  & lw rd, imm(rs1)  & \mono{rd = M[a][31:0]}         & I & 0000011 & 010 & — \\
+lbu & lbu rd, imm(rs1) & \mono{rd = zext(M[a][7:0])}    & I & 0000011 & 100 & — \\
+lhu & lhu rd, imm(rs1) & \mono{rd = zext(M[a][15:0])}   & I & 0000011 & 101 & — \\
+\grupo{cS}{Escrituras en memoria \normalfont— ¡el dato (\mono{rs2}) va primero!}
+sb & sb rs2, imm(rs1) & \mono{M[a][7:0] = rs2[7:0]}    & S & 0100011 & 000 & — \\
+sh & sh rs2, imm(rs1) & \mono{M[a][15:0] = rs2[15:0]}  & S & 0100011 & 001 & — \\
+sw & sw rs2, imm(rs1) & \mono{M[a][31:0] = rs2}        & S & 0100011 & 010 & — \\
+\grupo{cB}{Saltos condicionales \normalfont— destino relativo al PC del branch; solo con etiqueta, no se acepta un offset numérico}
+beq & beq rs1, rs2, etiq & \mono{if (rs1 == rs2) PC = PC + off}  & B & 1100011 & 000 & — \\
+bne & bne rs1, rs2, etiq & \mono{if (rs1 != rs2) PC = PC + off}  & B & 1100011 & 001 & — \\
+\grupo{cJ}{Saltos incondicionales \normalfont— \mono{jal} (y \mono{j}) solo con etiqueta}
+jal  & jal rd, etiq       & \mono{rd = PC + 4; PC = PC + off}                  & J & 1101111 & — & — \\
+jalr & jalr rd, imm(rs1)  & \mono{rd = PC + 4; PC = (rs1 + imm) \& \textasciitilde 1} & I & 1100111 & 000 & — \\
+\grupo{cU}{Inmediato superior y control}
+lui  & lui rd, imm20 & \mono{rd = imm20 <{}< 12} \quad imm20 de \mono{0} a \mono{0xFFFFF} (sin signo) & U & 0110111 & — & — \\
+halt & halt          & Termina el programa · palabra \mono{0x0000000B} (custom-0) & — & 0001011 & — & — \\
+\bottomrule
+\end{tabularx}}
+
+\vspace{0.5mm}
+{\footnotesize \textbf{Sintaxis del ensamblador:} mnemónicos en minúsculas, una instrucción por línea (sin \mono{;}), comentarios con \mono{\#}, etiquetas \mono{nombre:}.
+Inmediatos en decimal o hex con signo (\mono{-4}, \mono{0x1F}, \mono{-0x10}); en I y S van de \mono{-2048} a \mono{2047} (\mono{0xFFF} no entra: usá \mono{-1}).
+\mono{.word v} escribe la palabra cruda \mono{v}. Si el programa no termina en \mono{halt}, el ensamblador lo agrega (con advertencia); máximo 256 palabras contando ese \mono{halt}.\par}
+
+\vspace{2.5mm}
+% ======================================================== tres columnas de abajo
+\begin{minipage}[t]{0.30\linewidth}
+\seccion{Registros}
+{\footnotesize\renewcommand{\arraystretch}{1.05}
+\begin{tabular}{@{}>{\ttfamily}l l@{}}
+x0      & \textbf{siempre 0} (cableado) \\
+x1      & dir. de retorno \\
+x2      & pila (\textbf{arranca en 0}) \\
+x3      & puntero global \\
+x4      & puntero de hilo \\
+x5–7    & temporales \\
+x8      & guardado / marco \\
+x9      & guardado \\
+x10–11  & args / retorno \\
+x12–17  & argumentos \\
+x18–27  & guardados \\
+x28–31  & temporales \\
+\end{tabular}}
+
+\vspace{1.5mm}
+{\footnotesize Tras \mono{LOAD}/\mono{RESET}: PC y registros en 0, DMEM en 0. Sin flags: las comparaciones dejan 0/1 en un registro.\par}
+
+\vspace{2mm}
+\seccion{Memoria (Harvard)}
+{\footnotesize
+\textbf{IMEM}: 256 palabras, \mono{0x000–0x3FC} (solo fetch).\\
+\textbf{DMEM}: 256 palabras, \mono{0x000–0x3FF}.\\
+Loads/stores solo ven la DMEM. Fuera de rango “da la vuelta”.
+\textbf{Little-endian}: byte bajo en la dirección baja.
+Desalineado: se ignoran los bits bajos (\mono{lw} de \mono{0x13} lee \mono{0x10}).\par}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.32\linewidth}
+\seccion{Pseudoinstrucciones}
+{\footnotesize\renewcommand{\arraystretch}{1.05}
+\begin{tabular}{@{}>{\ttfamily}l>{\ttfamily}l@{}}
+nop      & addi x0, x0, 0 \\
+mv rd, rs & addi rd, rs, 0 \\
+j etiq   & jal x0, etiq \\
+ret      & jalr x0, 0(x1) \\
+\end{tabular}}
+
+\vspace{2mm}
+\seccion{Ciclos}
+{\footnotesize\renewcommand{\arraystretch}{1.05}
+\begin{tabular}{@{}l r@{}}
+Caso normal (forwarding)          & 1 \\
+Load + uso inmediato de \mono{rd}   & +1 \\
+\mono{beq}/\mono{bne} tomado (EX)     & +2 \\
+\mono{beq}/\mono{bne} no tomado       & 0 \\
+\mono{jal}, \mono{j} (ID)             & +1 \\
+\mono{jalr}, \mono{ret} (EX)          & +2 \\
+\end{tabular}\\[0.5mm]
+Total = instr. + 4 + stalls + penalidades.}
+
+\vspace{2mm}
+\seccion{Fin de ejecución}
+{\footnotesize
+\mono{halt} → estado \textbf{HALTED}. Palabra no implementada (ej. \mono{0x00000000}) → \textbf{ILLEGAL}.
+Un \mono{halt} o una ilegal detrás de un salto tomado se descarta y no detiene nada.\par}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.34\linewidth}
+\seccion{Recetas}
+{\footnotesize\renewcommand{\arraystretch}{1.05}
+\begin{tabular}{@{}l>{\ttfamily}l@{}}
+Constante chica   & addi rd, x0, k \\
+NOT               & xori rd, rs, -1 \\
+Negar             & sub rd, x0, rs \\
+\mono{rd = (rs==0)} & sltiu rd, rs, 1 \\
+\mono{rd = (rs!=0)} & sltu rd, x0, rs \\
+\mono{rd = rs}·2$^k$ & slli rd, rs, k \\
+\end{tabular}
+
+\vspace{1.5mm}
+\textbf{Constante de 32 bits} (\mono{lui} + \mono{addi}):\\[0.3mm]
+\mono{lui x5, 0x12345 \ \ \# 0x12345000}\\
+\mono{addi x5, x5, 0x678 \# 0x12345678}\\[0.5mm]
+Si los 12 bits bajos son $\geq$ \mono{0x800}, \mono{addi} resta: sumá 1 arriba.\\
+\mono{0x12345FFF} = \mono{lui 0x12346} + \mono{addi -1}.
+
+\vspace{1.5mm}
+\textbf{\mono{blt}/\mono{bge} (no existen):}\\[0.3mm]
+\mono{slt x5, x10, x11 \# x5 = (x10 < x11)}\\
+\mono{bne x5, x0, L \ \ \# < (con beq: >=)}\\
+(sin signo: \mono{sltu})
+
+\vspace{1.5mm}
+\textbf{Subrutina:} \mono{jal x1, f} … \mono{f: … ret}\\
+\textbf{Pila} (\mono{x2}): \mono{addi x2, x0, 0x400}\\
+push: \mono{addi x2, x2, -4}\\
+\phantom{push: }\mono{sw x1, 0(x2)}\par}
+\end{minipage}
+
+\end{document}
