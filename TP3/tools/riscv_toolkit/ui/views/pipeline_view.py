@@ -62,12 +62,13 @@ class _Tarjeta:
         self.texto = _texto("", LETRA_INSTR, no_wrap=True)
         self.palabra = _texto("", LETRA_NOTA, color=ft.Colors.ON_SURFACE_VARIANT)
         self.marcas = ft.Row(spacing=4, wrap=True)
+        self.nombre = ft.Text(etapa, weight=ft.FontWeight.W_600, size=18)
         self.control = ft.Container(
             ft.Column(
                 [
                     ft.Row(
                         [
-                            ft.Text(etapa, weight=ft.FontWeight.W_600, size=18),
+                            self.nombre,
                             ft.Text(
                                 _ORIGEN[etapa],
                                 size=LETRA_NOTA - 1,
@@ -138,6 +139,14 @@ class _Tarjeta:
             decoration=ft.TextDecoration.LINE_THROUGH if c.anulada else ft.TextDecoration.NONE
         )
         self.control.bgcolor = fondo
+        # Los rellenos de riesgo son pasteles claros: en modo oscuro el texto claro no se lee.
+        # El subárbol pasa a tema claro; el texto sin color propio hereda el estilo de la
+        # página, así que se le pide ON_SURFACE (que adentro resuelve oscuro).
+        claro = fondo not in (None, ft.Colors.SURFACE_CONTAINER_HIGH)
+        self.control.theme_mode = ft.ThemeMode.LIGHT if claro else None
+        tinta = ft.Colors.ON_SURFACE if claro else None
+        self.nombre.color = tinta
+        self.texto.color = self.texto.color or tinta
         self.control.border = ft.Border.all(ancho, borde)
         self.marcas.controls = chips
 
@@ -184,24 +193,26 @@ def tabla_latch(nombre: str, snapshot: Snapshot | None, viejos: set[str]) -> ft.
         for c in campos:
             hexa, dec = valores[c.nombre]
             viejo = c.nombre in viejos
+            tinta = ft.Colors.ON_SURFACE if viejo else None  # ver _Tarjeta.mostrar
             filas.append(
                 ft.Container(
                     ft.Row(
                         [
                             ft.Row(
                                 [
-                                    _texto(c.nombre),
+                                    _texto(c.nombre, color=tinta),
                                     _texto(f"·{c.bits}", 11, color=ft.Colors.ON_SURFACE_VARIANT),
                                 ],
                                 spacing=2,
                                 width=150,
                             ),
-                            _texto(hexa, width=118),
-                            _texto(dec, expand=True, no_wrap=True),
+                            _texto(hexa, width=118, color=tinta),
+                            _texto(dec, expand=True, no_wrap=True, color=tinta),
                         ],
                         spacing=6,
                     ),
                     bgcolor=RIESGO["st"][1] if viejo else None,
+                    theme_mode=ft.ThemeMode.LIGHT if viejo else None,
                     tooltip="Valor viejo: lo reemplaza el forwarding" if viejo else None,
                     padding=ft.Padding.symmetric(horizontal=4),
                 )
