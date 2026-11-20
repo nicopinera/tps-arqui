@@ -5,6 +5,8 @@
 # Variables de entorno opcionales:
 #   WAVES=1      genera build/<tb_nombre>.vcd
 #   HEX=<ruta>   pasa +HEX=<ruta> al testbench (programa a cargar con $readmemh)
+#   EXPECTED=<ruta>  pasa +EXPECTED=<ruta> (estado final del golden model, tb_core_programs)
+#   ARGS="..."   plusargs extra, tal cual (por ejemplo ARGS="+ENABLE_ALEATORIO +SEMILLA=7")
 #   QUIET=1      no muestra la salida de la simulacion (la deja en build/<tb_nombre>.log)
 #
 # Codigo de salida: 0 = TEST PASSED, 1 = TEST FAILED o sin veredicto, 2 = error de uso o de compilacion.
@@ -52,6 +54,13 @@ if [ "${WAVES:-0}" = "1" ]; then
 fi
 if [ -n "${HEX:-}" ]; then
   PLUSARGS+=("+HEX=$HEX")
+fi
+if [ -n "${EXPECTED:-}" ]; then
+  PLUSARGS+=("+EXPECTED=$EXPECTED")
+fi
+if [ -n "${ARGS:-}" ]; then
+  read -r -a EXTRA <<< "$ARGS"
+  PLUSARGS+=("${EXTRA[@]}")
 fi
 
 vvp -n "$VVP_FILE" "${PLUSARGS[@]}" >> "$LOG_FILE" 2>&1
