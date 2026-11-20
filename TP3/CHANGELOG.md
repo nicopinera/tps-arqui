@@ -5,6 +5,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 
 ## [Unreleased]
 
+## [1.1] - 2026-11-20
+
 ### Added
 
 - `hw/rtl/top.v`: el sistema integrado (UART + Debug Unit + núcleo) con el Clock Wizard (`hw/ip/clk_wiz_0/clk_wiz_0.xci`, 100 → 85 MHz), reset sincronizado que espera a `locked`, `COUNT_MAX` recalculado para 19200 bps a 85 MHz y LEDs de estado (READY, RUN/STEP, HALTED, error de paridad) (US-411, US-602).
@@ -115,7 +117,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `tools/scripts/verify_rtl.py` y `make verify`: verificación cruzada de todo `asm/` en el núcleo contra el golden model (motivo, PC, registros, memoria usada, firma e instrucciones retiradas); muestra cada diferencia con el valor esperado y el obtenido, imprime la tabla de ciclos, CPI, stalls y flushes y la guarda en `docs/informe/datos/cpi.csv`; termina con código 1 si algún programa falla. `make check` y el CI también la corren (US-305).
 - `tb_core_programs`: cuenta ciclos, instrucciones retiradas, stalls y flushes e imprime un volcado final (`VOLCADO <clave> <valor>`) que parsea `verify_rtl.py` (US-305).
 - `hw/rtl/core/dmem_bitmap.v`: bitmap de memoria usada y contador (ADR-008), separado de `data_mem`; marca con `o_core_we`/`o_core_addr` de `data_mem` (H2-E2).
-- `make synth-ooc` (`hw/scripts/synth_ooc.tcl`): síntesis fuera de contexto de cada módulo de `hw/rtl/core/` con Vivado en modo batch; deja en `build/synth/` el reporte de utilización de cada módulo y una tabla con LUTs, LUTRAM, FF, latches, BRAM y *critical warnings*, y falla si algún módulo infiere latches (H2-E1).
+- `make synth-ooc` (`hw/scripts/synth_ooc.tcl`): síntesis fuera de contexto de cada módulo de `hw/rtl/core/` con Vivado en modo batch; deja en `build/synth/` el reporte de utilización de cada módulo y una tabla con LUTs, LUTRAM, FF, latches, BRAM y _critical warnings_, y falla si algún módulo infiere latches (H2-E1).
 - `hw/rtl/debug/`: Debug Unit completa (`debug_unit` con `du_cmd_fsm`, `du_loader`, `du_exec_ctrl`, `du_dumper`, `du_resp_tx` y `du_tx_mux`): intérprete de comandos con checksum y NACK, carga y reprogramación de la IMEM, modos `RUN`/`STEP`, `ABORT` con drenado del pipeline, snapshot y `DUMP_MEM` según `docs/protocolo.md` (US-403 a US-408).
 - `hw/tb/common/uart_host_model.vh` (modelo de la UART de la PC para los testbenches), `hw/tb/debug/core_stub.v` (núcleo falso sintetizable) y un testbench por módulo de la Debug Unit (`tb_du_*`, `tb_core_stub`, `tb_uart_host_model`) (US-402 a US-408).
 - `hw/scripts/synth_du_ooc.tcl` y `hw/constraints/du_ooc.xdc`: síntesis e implementación de la Debug Unit fuera de contexto a 100 MHz, con los reportes `hw/reports/du_ooc_*.rpt` (US-408).
@@ -166,4 +168,5 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `hw/tb/uart/tb_top_echo.v`: el `top` ya no es el eco de la UART; lo reemplaza `tb_top_system` (US-411).
 - `TP3/clockInfo.txt` y `TP3/dfx_runtime.txt`: archivos sueltos de Vivado versionados por error; `make` ahora corre Vivado dentro de `build/`.
 
-[Unreleased]: https://github.com/nicopinera/tps-arqui/commits/develop
+[Unreleased]: https://github.com/nicopinera/tps-arqui/compare/v1.1...HEAD
+[1.1]: https://github.com/nicopinera/tps-arqui/releases/tag/v1.1
