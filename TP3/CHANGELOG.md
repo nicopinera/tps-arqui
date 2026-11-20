@@ -101,6 +101,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 
 ### Changed
 
+- `tb_core_control`: perro guardián de 20000 ciclos y límite en la espera del `addi` del lazo; con un error en la hazard unit el testbench falla en vez de quedar colgado (en el CI lo cortaría recién el límite de 6 h de GitHub Actions) (US-305).
 - Los programas de `asm/tests/hazards/` se verifican solos con la firma en `0x3FC`; las marcas de camino equivocado pasan a `x30` y `halt_speculative` sale del lazo con un `beq`, así el `halt` que sigue al `bne` siempre es especulativo. `make sim-programs` también corre `asm/tests/instr/` (US-304).
 - `if_stage`: el próximo PC lo elige `pc_sel` (hazard unit) y el PC se frena con `i_stall_f`; la prioridad entre redirecciones y el registro `halt_fetch` pasan de `if_stage`/`riscv_core` a `hazard_unit`. `tb_if_stage` maneja esas señales a mano y las prioridades se prueban en `tb_hazard_unit` (US-303).
 - Timing del núcleo fuera de contexto a 100 MHz: WNS = +0,119 ns (antes +1,286 ns); camino crítico forwarding → `branch_cmp` → redirección → flush de IF/ID (US-303).
