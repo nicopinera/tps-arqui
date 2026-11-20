@@ -1,7 +1,8 @@
 # Makefile del TP3: lint, simulacion y verificaciones de Python (US-102, ADR-015).
 #
 # Se usa desde Linux o WSL, parado en TP3/. La sintesis, implementacion y programacion
-# de la placa se hacen desde la GUI de Vivado 2025.2; synth-ooc usa Vivado en modo batch.
+# de la placa se pueden hacer desde la GUI de Vivado 2025.2; synth-ooc, timing-core, impl y
+# freq-sweep usan Vivado en modo batch (VIVADO=<ejecutable> si no esta en el PATH).
 
 SHELL := /bin/bash
 
@@ -11,6 +12,7 @@ HEX   ?=
 EXPECTED ?=
 ARGS  ?=
 MOD   ?=
+MHZ   ?=
 VIVADO ?= vivado
 
 TOOLS_DIR := tools
@@ -21,8 +23,11 @@ TB_NAMES  := $(filter-out tb_core_programs,$(sort $(basename $(notdir $(shell fi
 PROG_DIRS := h2 hazards instr
 PROGRAMS  := $(sort $(patsubst asm/tests/%.asm,%,$(foreach d,$(PROG_DIRS),$(wildcard asm/tests/$(d)/*.asm))))
 UV_RUN := cd $(TOOLS_DIR) && uv run
+# Programas que corre sim-system por el top completo: todo asm/ salvo los que no ensamblan y
+# el loop infinito (no termina)
+SYSTEM_PROGRAMS := $(sort $(patsubst asm/%.asm,%,$(filter-out asm/errores/% asm/special/infinite_loop.asm,$(shell find asm -name '*.asm' 2>/dev/null))))
 
-.PHONY: help setup lint sim sim-all sim-programs verify synth-ooc timing-core test-py check-py gnu-ref check clean
+.PHONY: help setup lint sim sim-all sim-programs sim-system verify synth-ooc timing-core impl freq-sweep clk-wiz reportes test-py check-py gnu-ref check clean
 
 help:
 	@echo "Objetivos:"
@@ -36,12 +41,19 @@ help:
 	@echo "  make sim-all                   Corre todos los hw/tb/**/tb_*.v (salvo tb_core_programs) y resume el resultado"
 	@echo "  make sim-programs              Ensambla asm/tests/{h2,hazards,instr}, genera el .expected y corre cada programa en el nucleo,"
 	@echo "                                 con enable fijo y con enable aleatorio"
+	@echo "  make sim-system                El sistema completo (top: UART + Debug Unit + nucleo) con cada programa de asm/:"
+	@echo "                                 LOAD y RUN por la UART simulada y el SNAPSHOT contra el golden model (US-411 AC5)"
 	@echo "  make verify                    Verificacion cruzada (US-305): toda asm/ en el nucleo contra el golden model,"
 	@echo "                                 con la tabla de ciclos/CPI en docs/informe/datos/cpi.csv"
 	@echo "  make synth-ooc                 Sintesis fuera de contexto de hw/rtl/core con Vivado (recursos y latches)"
 	@echo "       MOD=\"alu data_mem\"        solo esos modulos (por defecto, todos)"
 	@echo "  make timing-core               Sintesis e implementacion fuera de contexto de riscv_core a 100 MHz"
 	@echo "                                 (deja WNS/WHS en hw/reports/)"
+	@echo "  make impl                      Sistema completo en la Basys 3 con Vivado: bitstream y reportes top_*.rpt"
+	@echo "  make freq-sweep                Barrido de frecuencia (US-602): hw/reports/freq_sweep.csv"
+	@echo "       MHZ=\"50 100\"              solo esas frecuencias"
+	@echo "  make clk-wiz MHZ=85            Regenera el Clock Wizard (hw/ip/clk_wiz_0/clk_wiz_0.xci)"
+	@echo "  make reportes                  Tablas en Markdown de hw/reports/ para el informe (sin Vivado)"
 	@echo "  make test-py                   Tests de Python con cobertura"
 	@echo "  make check-py                  ruff + mypy + pytest + pip-audit"
 	@echo "  make gnu-ref                   Regenera el .hex de referencia del ensamblador con GNU as (US-106)"
@@ -116,6 +128,32 @@ sim-programs:
 	echo "Programas: $$((total - failed)) de $$total corridas pasaron"; \
 	[ $$total -gt 0 ] && [ $$failed -eq 0 ]
 
+# Sistema completo (US-411 AC5): cada programa de asm/ entra por la UART simulada al top (LOAD, RUN)
+# y el SNAPSHOT final se compara con el golden model en tb_top_system. Deja todo en build/system/.
+sim-system:
+	@mkdir -p $(BUILD_DIR)/system
+	@total=0; failed=0; \
+	for p in $(SYSTEM_PROGRAMS); do \
+		total=$$((total + 1)); \
+		src=$(CURDIR)/asm/$$p.asm; out=$(CURDIR)/$(BUILD_DIR)/system/$$p; \
+		mkdir -p $$(dirname $$out); \
+		if ! (cd $(TOOLS_DIR) && uv run python -m riscv_toolkit asm $$src -o $$out.hex > /dev/null 2>&1 \
+				&& uv run python -m riscv_toolkit sim $$src --expect $$out.expected > /dev/null 2>&1); then \
+			failed=$$((failed + 1)); \
+			printf '  FAIL  %-34s no ensambla o no termina en el golden model\n' $$p; continue; \
+		fi; \
+		if QUIET=1 HEX=$$out.hex EXPECTED=$$out.expected bash hw/scripts/sim.sh tb_top_system > /dev/null 2>&1; then \
+			printf '  PASS  %s\n' $$p; \
+		else \
+			failed=$$((failed + 1)); \
+			cp $(BUILD_DIR)/tb_top_system.log $$out.log; \
+			printf '  FAIL  %-34s (ver %s)\n' $$p $(BUILD_DIR)/system/$$p.log; \
+		fi; \
+	done; \
+	echo; \
+	echo "Sistema: $$((total - failed)) de $$total programas pasaron"; \
+	[ $$total -gt 0 ] && [ $$failed -eq 0 ]
+
 # Verificacion cruzada (US-305): ensambla cada programa de asm/, lo corre en el golden model y en
 # tb_core_programs y compara el volcado final (registros, memoria usada, firma, motivo, PC).
 # Muestra la tabla de ciclos, CPI, stalls y flushes y la guarda en docs/informe/datos/cpi.csv.
@@ -141,6 +179,37 @@ timing-core:
 		status=$$?; sed -n '/^riscv_core fuera de contexto/,$$p' vivado.log; \
 		[ $$status -eq 0 ] || echo "Vivado termino con error: ver $(BUILD_DIR)/timing/vivado.log"; \
 		exit $$status
+
+# Sistema completo en la Basys 3 (Hito 6): sintesis, implementacion, bitstream y reportes de timing,
+# recursos y potencia en hw/reports/top_*.rpt, al reloj del Clock Wizard (hw/ip/clk_wiz_0).
+impl:
+	@mkdir -p $(BUILD_DIR)/vivado_top
+	@cd $(BUILD_DIR)/vivado_top && $(VIVADO) -mode batch -nojournal -nolog -notrace \
+		-source ../../hw/scripts/impl_top.tcl > vivado.log 2>&1; \
+		status=$$?; sed -n '/^top en contexto/,$$p' vivado.log; \
+		[ $$status -eq 0 ] || echo "Vivado termino con error o sin cumplir el reloj: ver $(BUILD_DIR)/vivado_top/vivado.log"; \
+		exit $$status
+
+# Barrido de frecuencia (US-602, ADR-016): hw/reports/freq_sweep.csv. MHZ="50 100" elige cuales.
+# Clock Wizard a la frecuencia elegida (ADR-016): make clk-wiz MHZ=85 (y CLK_FREQ_HZ en top.v).
+clk-wiz:
+	@mkdir -p $(BUILD_DIR)/vivado_ip
+	@cd $(BUILD_DIR)/vivado_ip && $(VIVADO) -mode batch -nojournal -nolog -notrace \
+		-source ../../hw/scripts/gen_clk_wiz.tcl -tclargs $(or $(MHZ),85) > vivado.log 2>&1; \
+		status=$$?; sed -n '/^clk_wiz_0:/,$$p' vivado.log; exit $$status
+
+freq-sweep:
+	@mkdir -p $(BUILD_DIR)/vivado_sweep
+	@cd $(BUILD_DIR)/vivado_sweep && $(VIVADO) -mode batch -nojournal -nolog -notrace \
+		-source ../../hw/scripts/freq_sweep.tcl -tclargs $(MHZ) > vivado.log 2>&1; \
+		status=$$?; grep '^>>>' vivado.log; \
+		[ $$status -eq 0 ] || echo "Vivado termino con error: ver $(BUILD_DIR)/vivado_sweep/vivado.log"; \
+		exit $$status
+
+# Tablas en Markdown de los reportes de hw/reports/ (no necesita Vivado): lo que va en
+# docs/informe/timing.md y metricas.md.
+reportes:
+	@$(UV_RUN) python -m scripts.resumen_reportes
 
 # --- Python ------------------------------------------------------------------------------
 
