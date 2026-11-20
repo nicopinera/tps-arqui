@@ -7,7 +7,7 @@ instrucciones retiradas. Al final muestra la tabla de ciclos y CPI y la guarda e
 
 Uso (desde TP3/tools/):
     uv run python -m scripts.verify_rtl                       # toda la suite (make verify)
-    uv run python -m scripts.verify_rtl tests/hazards/load_use demos/burbuja
+    uv run python -m scripts.verify_rtl tests/hazards/load_use.asm demos/burbuja.asm
 
 Código de salida: 0 si todos los programas pasan, 1 si alguno falla (AC1).
 
@@ -256,18 +256,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "programas",
         nargs="*",
-        help="programas relativos a asm/, sin .asm (por defecto, todos)",
+        help="programas relativos a asm/, con la extensión (por ejemplo "
+        "tests/hazards/load_use.asm; por defecto, todos)",
     )
     parser.add_argument(
         "--csv",
         type=Path,
-        help=f"dónde guardar la tabla (por defecto, {RUTA_CSV.relative_to(TP3.parent)} "
-        "si se corre toda la suite)",
+        help=f"archivo o carpeta donde guardar la tabla (por defecto, "
+        f"{RUTA_CSV.relative_to(TP3.parent)} si se corre toda la suite)",
     )
     args = parser.parse_args(argv)
 
     if args.programas:
-        programas = [ASM / f"{p}.asm" for p in args.programas]
+        sin_extension = [p for p in args.programas if not p.endswith(".asm")]
+        if sin_extension:
+            parser.error(f"falta la extensión .asm: {sin_extension[0]}")
+        programas = [ASM / p for p in args.programas]
         faltan = [p for p in programas if not p.is_file()]
         if faltan:
             parser.error(f"no existe {faltan[0]}")
@@ -291,9 +295,12 @@ def main(argv: list[str] | None = None) -> int:
     print(f" ({len(omitidos)} omitidos)" if omitidos else "")
 
     ruta_csv = args.csv or (None if args.programas else RUTA_CSV)
+    if ruta_csv is not None and ruta_csv.is_dir():
+        ruta_csv = ruta_csv / RUTA_CSV.name  # una carpeta: cpi.csv adentro
     if ruta_csv is not None:
         guardar_csv(resultados, ruta_csv)
-        mostrada = ruta_csv.resolve().relative_to(TP3.parent, walk_up=True)
+        ruta = ruta_csv.resolve()
+        mostrada = ruta.relative_to(TP3.parent) if ruta.is_relative_to(TP3.parent) else ruta
         print(f"Tabla de ciclos guardada en {mostrada}")
     return 1 if fallas or not resultados else 0
 
