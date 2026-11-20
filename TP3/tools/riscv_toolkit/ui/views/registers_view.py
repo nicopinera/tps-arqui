@@ -136,7 +136,7 @@ class VistaRegistros:
                     _nota(
                         f"lo escribió {c.quien} (en WB en el ciclo {c.ciclo})"
                         if c.quien is not None
-                        else "no se sabe qué instrucción (hubo un RUN, o el modo simulado)"
+                        else "no se sabe qué instrucción (hubo un RUN)"
                     ),
                 ],
                 spacing=10,
