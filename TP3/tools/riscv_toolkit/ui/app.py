@@ -393,7 +393,7 @@ class App:
         return ok
 
     async def simular(self) -> None:
-        """Usar sin placa: FakeTransport (el golden model contesta como la DU)."""
+        """Usar sin placa: FakeTransport (el modelo del pipeline contesta como la DU)."""
         await self._conectar_a(SIMULADO)
 
     async def conectar(self) -> None:
