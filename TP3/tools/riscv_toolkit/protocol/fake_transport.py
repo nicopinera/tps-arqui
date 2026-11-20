@@ -1,28 +1,24 @@
-"""Placa simulada: el protocolo de la Debug Unit respondido por el golden model (US-409).
+"""Placa simulada: el protocolo de la Debug Unit respondido por el modelo del pipeline (US-409).
 
 Recibe los mismos bytes que la placa y responde las mismas tramas, con las mismas reglas de
-estado (R-DU-1, protocolo §4.1 y §5), pero el procesador es el ISS. Sirve para desarrollar la
-sesión, la CLI y la GUI sin hardware, y para probarlas en el CI.
+estado (R-DU-1, protocolo §4.1 y §5). El procesador es `ModeloPipeline` (agregado US-306): el
+pipeline de 5 etapas ciclo a ciclo, con forwarding, Hazard Unit y flush. Sirve para
+desarrollar la sesión, la CLI y la GUI sin hardware, y para probarlas en el CI.
+
+Como en la placa: un `STEP` es un ciclo, `ciclos` cuenta ciclos, los latches y el byte de
+riesgos son los del modelo, y `ABORT` prende `stop_fetch` y espera a que el pipeline se vacíe.
 
 Diferencias con la placa (por eso el snapshot sale con `simulado = True`):
-- Un `STEP` ejecuta una **instrucción**, no un ciclo; `ciclos` cuenta instrucciones.
-- No hay riesgos: el byte de riesgos siempre es 0.
-- Los latches son una aproximación: en `STEPPING`, IF/ID, ID/EX, EX/MEM y MEM/WB tienen las
-  cuatro últimas instrucciones ejecutadas, de la más reciente a la más vieja (con `pc`,
-  `pc_plus4`, `instr` y `valid`; el resto de los campos en 0), y el PC apunta a la próxima. Así
-  la vista del pipeline (US-502: IF = la del PC, ID = la de IF/ID, …) muestra cinco
-  instrucciones seguidas, como un pipeline lleno sin riesgos. En los demás estados está vacío.
-- `RUN` corre de una, dentro de `write`: si el programa no termina en `max_instr`
-  instrucciones queda en `RUN` hasta un `ABORT`, como un loop infinito en la placa.
+- `RUN` corre de una, dentro de `write`: si el programa no termina en `max_ciclos` ciclos
+  queda en `RUN` hasta un `ABORT`, como un loop infinito en la placa.
 - Sin timeouts de recepción: un comando con argumentos incompletos espera al próximo `write`.
   Un `LOAD` con `N` inválido descarta todo lo recibido (la placa: hasta 100 ms de silencio, §7.2).
 """
 
 import time
-from collections import deque
+from dataclasses import replace
 
-from riscv_toolkit.iss.golden_model import GoldenModel
-from riscv_toolkit.iss.golden_model import Motivo as MotivoISS
+from riscv_toolkit.iss.pipeline_model import ModeloPipeline
 from riscv_toolkit.protocol.codec import checksum, encode_trama
 from riscv_toolkit.protocol.comandos import (
     DMEM_DEPTH,
@@ -34,37 +30,26 @@ from riscv_toolkit.protocol.comandos import (
     Motivo,
     TipoTrama,
 )
-from riscv_toolkit.protocol.snapshot import (
-    LatchEXMEM,
-    LatchIDEX,
-    LatchIFID,
-    LatchMEMWB,
-    MemRange,
-    RiesgosCiclo,
-    Snapshot,
-)
+from riscv_toolkit.protocol.snapshot import MemRange, Snapshot
 
-_MAX_INSTR = 100_000  # como rvsim: un programa de la suite corre en menos de mil
-_MOTIVOS = {MotivoISS.HALTED: Motivo.HALTED, MotivoISS.ILLEGAL: Motivo.ILLEGAL}
+_MAX_CICLOS = 200_000  # un programa de la suite corre en menos de mil
 _PUEDE_EJECUTAR = {EstadoDU.READY, EstadoDU.STEPPING}  # RUN y STEP (§4.1)
 
 
 class FakeTransport:
-    """`Transport` que responde como la Debug Unit, con el golden model como procesador."""
+    """`Transport` que responde como la Debug Unit, con el modelo del pipeline como núcleo."""
 
     simulado = True
 
-    def __init__(self, max_instr: int = _MAX_INSTR) -> None:
-        self._max_instr = max_instr
+    def __init__(self, max_ciclos: int = _MAX_CICLOS) -> None:
+        self._max_ciclos = max_ciclos
         self._entrada = bytearray()  # bytes recibidos que todavía no formaron un comando
         self._salida = bytearray()  # tramas listas para `read`
         self._programa: list[int] = []
-        self._historia: deque[int] = deque(maxlen=4)  # PC de las últimas ejecutadas
         # Los asigna _reiniciar (LOAD, RESET y el encendido):
-        self._modelo: GoldenModel
+        self._modelo: ModeloPipeline
         self._estado: EstadoDU
         self._motivo: Motivo
-        self._ciclos: int
         self._fallo_load(None)  # arranca como después del encendido: IDLE, IMEM con HALT
 
     # --- Transport -------------------------------------------------------------------------
@@ -144,7 +129,7 @@ class FakeTransport:
             self._responder(TipoTrama.PING_INFO, bytes([PROTO_VERSION]))
         elif self._estado is EstadoDU.RUN:
             if comando is Comando.ABORT:
-                self._terminar(Motivo.ABORTED)
+                self._abortar()
             else:
                 self._nack(ErrorNack.ESTADO)
         elif comando is Comando.RESET:
@@ -154,44 +139,49 @@ class FakeTransport:
         elif comando is Comando.DUMP:
             self._enviar_snapshot()
         elif comando is Comando.STEP and self._estado in _PUEDE_EJECUTAR:
-            if not self._ejecutar_una():  # si terminó, _terminar ya mandó el snapshot final
+            if not self._ciclo():  # si terminó, _terminar ya mandó el snapshot final
                 self._estado = EstadoDU.STEPPING
                 self._enviar_snapshot()
         elif comando is Comando.RUN and self._estado in _PUEDE_EJECUTAR:
             self._responder(TipoTrama.ACK)
             self._estado = EstadoDU.RUN
-            for _ in range(self._max_instr):
-                if self._ejecutar_una():
+            for _ in range(self._max_ciclos):
+                if self._ciclo():
                     return
         else:  # STEP o RUN sin programa o ya terminado, ABORT fuera de RUN
             self._nack(ErrorNack.ESTADO)
 
     # --- Ejecución -------------------------------------------------------------------------
 
-    def _ejecutar_una(self) -> bool:
-        """Una instrucción en el ISS. Si con ella terminó, manda el snapshot final y da True."""
-        pc = self._modelo.pc
-        motivo = self._modelo.step()
-        self._ciclos += 1
-        if motivo is None:
-            self._historia.appendleft(pc)
+    def _ciclo(self) -> bool:
+        """Un ciclo del núcleo. Si con él terminó, manda el snapshot final y da True."""
+        self._modelo.ciclo()
+        if self._modelo.motivo is None:
             return False
-        self._terminar(_MOTIVOS[motivo])
+        self._terminar(self._modelo.motivo)
         return True
+
+    def _abortar(self) -> None:
+        """ABORT (R-EJ-5, ADR-010): `stop_fetch` hasta que los 4 latches estén vacíos.
+
+        Lo que ya estaba en EX, MEM y WB termina; si era un HALT, el motivo es HALTED.
+        """
+        modelo = self._modelo
+        modelo.stop_fetch = True
+        while not modelo.vacio and modelo.motivo is None:
+            modelo.ciclo()
+        self._terminar(modelo.motivo or Motivo.ABORTED)
 
     def _terminar(self, motivo: Motivo) -> None:
         self._estado = EstadoDU.HALTED
         self._motivo = motivo
-        self._historia.clear()  # al terminar, el pipeline queda vacío
         self._enviar_snapshot()
 
     def _reiniciar(self) -> None:
         """Programa cargado y todo lo demás limpio: el estado después de LOAD o RESET."""
-        self._modelo = GoldenModel(self._programa)
+        self._modelo = ModeloPipeline(self._programa)
         self._estado = EstadoDU.READY
         self._motivo = Motivo.NINGUNO
-        self._ciclos = 0
-        self._historia.clear()
 
     def _fallo_load(self, error: ErrorNack | None) -> None:
         """IDLE con la IMEM llena de HALT (R-DU-4); responde el NACK si hay error."""
@@ -223,36 +213,7 @@ class FakeTransport:
         self._responder(TipoTrama.SNAPSHOT, self._snapshot().to_bytes())
 
     def _snapshot(self) -> Snapshot:
-        m = self._modelo
-
-        def instr(pc: int) -> int:
-            return m.imem[(pc // 4) % len(m.imem)]
-
-        if_id, id_ex, ex_mem, mem_wb = LatchIFID(), LatchIDEX(), LatchEXMEM(), LatchMEMWB()
-        historia = list(self._historia)  # la más reciente primero: IF/ID, ID/EX, EX/MEM, MEM/WB
-        if len(historia) > 0:
-            pc = historia[0]
-            if_id = LatchIFID(pc, pc + 4, instr(pc), valid=True)
-        if len(historia) > 1:
-            pc = historia[1]
-            id_ex = LatchIDEX(pc=pc, pc_plus4=pc + 4, valid=True, instr=instr(pc))
-        if len(historia) > 2:
-            ex_mem = LatchEXMEM(pc_plus4=historia[2] + 4, valid=True, instr=instr(historia[2]))
-        if len(historia) > 3:
-            mem_wb = LatchMEMWB(pc_plus4=historia[3] + 4, valid=True, instr=instr(historia[3]))
-        return Snapshot(
-            estado=self._estado,
+        return replace(
+            self._modelo.snapshot(self._estado),
             motivo=None if self._motivo is Motivo.NINGUNO else self._motivo,
-            ciclos=self._ciclos,
-            pc=m.pc,
-            riesgos=RiesgosCiclo(),
-            regs=tuple(m.regs),
-            if_id=if_id,
-            id_ex=id_ex,
-            ex_mem=ex_mem,
-            mem_wb=mem_wb,
-            mem_usada={
-                d: int.from_bytes(m.dmem[d : d + 4], "little") for d in sorted(m.mem_escrita)
-            },
-            simulado=True,
         )
