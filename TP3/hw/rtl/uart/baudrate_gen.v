@@ -1,14 +1,19 @@
 module baudrate_gen #(
-    parameter COUNT_MAX = 326,
-    parameter  BITS = 9
+    parameter COUNT_MAX = 326
   )(
     input wire clock,
     input wire i_reset,
     output reg o_baudrate
   );
+  // $clog2 nos da la cantidad de bit que necesitamos para representar un valor
+  localparam BITS = $clog2(COUNT_MAX);
 
-  // Como el clock es de 100 MHz, 100MHz/(19200x16) = 325.52, redondeado a 326
-  reg [BITS-1:0] counter; // 9 bit -> 2**9 = 512, sobra para llegar a
+  // Para que la comparacion sea entre N bits y no N contra 32 bits
+  localparam COUNT_MAX_INTERMEDIO = COUNT_MAX-1;
+  localparam [BITS-1:0] COUNT_LAST  = COUNT_MAX_INTERMEDIO[BITS-1:0];
+
+  // Siempre tenemos la cantidad de bits justa porque se calcula en funcion de COUNT_MAX
+  reg [BITS-1:0] counter;
 
   always@(posedge clock)
   begin
@@ -17,7 +22,7 @@ module baudrate_gen #(
       counter <= 0; // Pongo a cero el contador
       o_baudrate <= 0; //y la salida
     end
-    else if (counter == COUNT_MAX-1)
+    else if (counter == COUNT_LAST)
     begin
       counter <= 0;
       o_baudrate <= 1'b1;
