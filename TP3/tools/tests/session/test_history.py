@@ -76,3 +76,8 @@ def test_limpiar() -> None:
     historial.limpiar()
     assert len(historial) == 0
     assert historial.actual is None
+
+
+def test_se_recorre_en_orden_de_llegada() -> None:
+    historial, snaps = con_tres()
+    assert list(historial) == snaps

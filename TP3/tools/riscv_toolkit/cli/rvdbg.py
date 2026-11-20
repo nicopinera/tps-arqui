@@ -63,7 +63,9 @@ def agregar_subcomando(
     )
     parser.add_argument("--port", help="puerto serie (por defecto, el de la Basys 3 detectado)")
     parser.add_argument(
-        "--fake", action="store_true", help="usa la placa simulada (golden model), sin hardware"
+        "--fake",
+        action="store_true",
+        help="usa la placa simulada (modelo del pipeline), sin hardware",
     )
     parser.add_argument("--json", action="store_true", help="salida en JSON, para scripts")
     acciones = parser.add_subparsers(title="acciones", dest="accion", required=True)

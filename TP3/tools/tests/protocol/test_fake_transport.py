@@ -1,4 +1,4 @@
-"""FakeTransport: la Debug Unit simulada con el golden model (US-409, AC4)."""
+"""FakeTransport: la Debug Unit simulada con el modelo del pipeline (US-409, AC4)."""
 
 from pathlib import Path
 
@@ -61,6 +61,7 @@ def cargado(palabras: list[int] = PROGRAMA, **kwargs: int) -> FakeTransport:
 
 
 # --- AC4: RUN da el mismo estado final que el golden model ---------------------------------
+# El PC no se compara: el núcleo lo deja congelado en HALT + 4 (agregado US-306, D3).
 
 
 @pytest.mark.parametrize("fuente", [*(p.read_text(encoding="utf-8") for p in SUITE), ILEGAL],
@@ -82,7 +83,6 @@ def test_run_igual_al_golden_model(fuente: str) -> None:
     )
     assert snap.regs == esperado.regs
     assert snap.mem_usada == esperado.mem_usada
-    assert snap.pc == esperado.pc
     assert snap.simulado
 
 
@@ -118,19 +118,27 @@ def test_ping_y_desconocido() -> None:
 
 def test_step_a_step_hasta_el_halt() -> None:
     fake = cargado()
+    # Un STEP es un ciclo: addi, sw y halt tardan 3 + 4 = 7 (el halt sale de WB en el 7).
     (s1,) = respuestas(fake, encode_cmd(Comando.STEP))
     snap = snapshot(s1)
     assert snap.estado is EstadoDU.STEPPING
-    assert (snap.ciclos, snap.pc, snap.regs[1]) == (1, 4, 5)
-    assert snap.if_id.instr == PROGRAMA[1]  # la próxima
-    assert (snap.id_ex.instr, snap.id_ex.valid) == (PROGRAMA[0], True)  # la recién ejecutada
+    assert (snap.ciclos, snap.pc, snap.regs[1]) == (1, 4, 0)  # addi recién buscada
+    assert (snap.if_id.instr, snap.if_id.valid) == (PROGRAMA[0], True)
+    assert not snap.id_ex.valid
 
     (s2,) = respuestas(fake, encode_cmd(Comando.STEP))
-    assert snapshot(s2).mem_usada == {0: 5}
-    assert snapshot(s2).ex_mem.instr == PROGRAMA[0]
+    assert snapshot(s2).id_ex.instr == PROGRAMA[0]  # addi avanzó a EX
+    assert snapshot(s2).id_ex.reg_write  # con sus señales de control
+    assert snapshot(s2).riesgos.fwd_b == 0  # sw todavía en ID
 
     (s3,) = respuestas(fake, encode_cmd(Comando.STEP))
-    fin = snapshot(s3)
+    assert snapshot(s3).riesgos.fwd_b == 0b10  # sw en EX: x1 desde EX/MEM (store_data)
+
+    for _ in range(4):
+        (ultimo,) = respuestas(fake, encode_cmd(Comando.STEP))
+    fin = snapshot(ultimo)
+    assert fin.ciclos == 7
+    assert (fin.regs[1], fin.mem_usada) == (5, {0: 5})
     assert (fin.estado, fin.motivo) == (EstadoDU.HALTED, Motivo.HALTED)
     assert not fin.if_id.valid  # pipeline vacío
     assert not fin.id_ex.valid
@@ -148,7 +156,7 @@ def test_step_a_step_hasta_el_halt() -> None:
 
 
 def test_run_que_no_termina_y_abort() -> None:
-    fake = cargado(ensamblar(LOOP).palabras, max_instr=500)
+    fake = cargado(ensamblar(LOOP).palabras, max_ciclos=500)
     assert respuestas(fake, encode_cmd(Comando.RUN)) == [ACK]  # sin snapshot: sigue en RUN
     assert respuestas(fake, encode_cmd(Comando.PING))[0].tipo is TipoTrama.PING_INFO
     for cmd in (Comando.DUMP, Comando.STEP, Comando.RESET, Comando.LOAD, Comando.DUMP_MEM):
@@ -157,7 +165,8 @@ def test_run_que_no_termina_y_abort() -> None:
     (final,) = respuestas(fake, encode_cmd(Comando.ABORT))
     assert final.payload[0] == 0x36  # motivo ABORTED, estado HALTED
     snap = snapshot(final)
-    assert (snap.ciclos, snap.regs[1]) == (500, 1)
+    assert (snap.ciclos, snap.regs[1]) == (500 + 2, 1)  # 2 ciclos de drenado (stop_fetch)
+    assert not any(x.valid for x in (snap.if_id, snap.id_ex, snap.ex_mem, snap.mem_wb))
 
 
 # --- LOAD ----------------------------------------------------------------------------------
@@ -227,13 +236,14 @@ def test_dump_mem_en_pedazos() -> None:
     assert MemRange.from_bytes(datos.payload) == MemRange(0, (0,))
 
 
-def test_latches_con_las_tres_anteriores() -> None:
+def test_latches_con_las_cuatro_anteriores() -> None:
     palabras = ensamblar(
-        "addi x1, x0, 1\naddi x2, x0, 2\naddi x3, x0, 3\naddi x4, x0, 4\n"
+        "addi x1, x0, 1\naddi x2, x0, 2\naddi x3, x0, 3\naddi x4, x0, 4\naddi x5, x0, 5\n"
     ).palabras
     fake = cargado(palabras)
-    *_, ultimo = respuestas(fake, *[encode_cmd(Comando.STEP)] * 3)
+    *_, ultimo = respuestas(fake, *[encode_cmd(Comando.STEP)] * 4)
     snap = snapshot(ultimo)
-    assert snap.if_id.instr == palabras[3]  # IF/ID: la próxima
-    assert [snap.id_ex.instr, snap.ex_mem.instr, snap.mem_wb.instr] == palabras[2::-1]
+    assert snap.pc == 16  # IF: la próxima, la quinta
+    latches = [snap.if_id.instr, snap.id_ex.instr, snap.ex_mem.instr, snap.mem_wb.instr]
+    assert latches == palabras[3::-1]
     assert snap.mem_wb.pc_plus4 == 4  # la primera, en 0x000

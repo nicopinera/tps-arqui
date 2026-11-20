@@ -647,6 +647,8 @@ EX: la ALU calcula `x1 + 0`, se le aplica `& ~1`, se redirige el PC y se hace fl
 
 ## 4. Riesgos de datos
 
+> Más en detalle (entradas y salidas de cada unidad, ejemplos ciclo a ciclo y Verilog): [guía de riesgos, Forwarding Unit y Hazard Unit](guia-riesgos-forwarding-hazard.md).
+
 ### 4.1 El problema
 
 ```asm

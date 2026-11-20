@@ -84,8 +84,8 @@ def test_step_muestra_el_avance_y_los_latches(capsys: Capsys) -> None:
     salida = capsys.readouterr().out
     assert "ciclo     1: pc 0x004" in salida
     assert "STEPPING · 3 ciclos · pc 0x00c" in salida
-    assert "IF/ID   0x00c  addi x4, x0, 12" in salida
-    assert "MEM/WB  0x000  addi x1, x0, 0" in salida
+    assert "IF/ID   0x008  addi x3, x0, 0" in salida  # la última ejecutada
+    assert "EX/MEM  0x000  addi x1, x0, 0" in salida
 
 
 def test_step_frena_al_terminar(capsys: Capsys, tmp_path: Path) -> None:
@@ -93,8 +93,8 @@ def test_step_frena_al_terminar(capsys: Capsys, tmp_path: Path) -> None:
     corto.write_text("addi x1, x0, 1\nhalt\n", encoding="utf-8")
     assert dbg("step", "50", "--load", str(corto)) == 0
     salida = capsys.readouterr().out
-    assert "HALTED · motivo HALTED · 2 ciclos" in salida
-    assert salida.count(": pc 0x") == 1  # el avance del primer STEP; el segundo es el resumen
+    assert "HALTED · motivo HALTED · 6 ciclos" in salida  # 2 instrucciones + 4 de llenado
+    assert salida.count(": pc 0x") == 5  # el avance de los 5 primeros STEP; el 6.º es el resumen
 
 
 def test_dump_ping_y_reset(capsys: Capsys) -> None:

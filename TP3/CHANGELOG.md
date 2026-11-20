@@ -7,6 +7,13 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 
 ### Added
 
+- Página **Datapath** de la GUI: el diagrama `docs/diagramas/datapath_pipeline.svg` con el valor de cada cable en el ciclo que se ve (medido del snapshot o calculado por el modelo), los latches marcados en stall/flush y el camino que elige cada mux (forwarding, PC, ALU, WB) pintado; zoom y arrastre. `scripts/gen_datapath.py` genera el fondo (PNG, con Edge) y el mapa de etiquetas, muxes y redes (`ui/assets/datapath/`); un test avisa si quedaron viejos.
+- `ModeloPipeline.cables()` y `ModeloPipeline.desde_snapshot()`: las señales combinacionales de un ciclo (las de la Hazard Unit incluidas) calculadas desde el estado de un snapshot.
+- `asm/riesgos/`: 12 programas cortos, uno por caso (forwarding EX/MEM, MEM/WB, distancia 3, el más nuevo gana, store, load-use con y sin stall, branch tomado y no tomado, `jal`, `jalr`, load-use + branch), con lo que hay que mirar en la GUI y los ciclos; un test verifica los ciclos del encabezado.
+- `docs/guias/guia-riesgos-forwarding-hazard.md`: guía de estudio de los riesgos (estructurales, de datos, de control), la Forwarding Unit y la Hazard Unit, con cartas de pipeline de `load_use` y `branch_taken`, la cadena de prioridades y el Verilog de cada unidad.
+- `iss/pipeline_model.py` (agregado US-306, pasos 2 a 5): modelo del pipeline ciclo a ciclo con Forwarding Unit, Hazard Unit (load-use), flush de branch/`jalr` en EX y `jal` en ID, HALT con `halt_fetch`, `stop_fetch` y bypass del banco; probado con los AC de US-301 a US-303, cuentas de ciclos a mano y todo `asm/` contra el golden model.
+- `verify_board --step` en lockstep (agregado US-306, paso 7): en cada STEP compara el snapshot de la placa con el del modelo del pipeline y reporta el primer ciclo distinto y los campos que difieren (`comparar_ciclo`).
+- `isa/control.py` (agregado US-306, paso 1): unidad de control (`controlar`) e `imm_gen` (`inmediato`) del pipeline, con tests que leen `docs/interfaces/tabla_control.md` fila por fila.
 - Estructura de carpetas de `TP3/` (`hw/rtl`, `hw/constraints`) y `Makefile` con los objetivos de simulación pendientes de US-102 (US-101).
 - Módulos UART del TP2 migrados sin cambios a `hw/rtl/uart/` (US-101).
 - `hw/rtl/legacy/` con `alu_tp1.v`, `uart_interface.v` y `top_tp2.v` como referencia y prueba de humo de la migración (US-101).
@@ -81,9 +88,45 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `asm/demos/fibonacci.asm` y `asm/special/infinite_loop.asm` (US-410).
 - `tests/session/` (`test_debug_session.py` con `FakeTransport` y con transportes que inyectan errores, `test_history.py`, `test_diff.py`) y `tests/cli/test_rvdbg.py` (US-410).
 - `tools/scripts/verify_board.py`: por cada programa, LOAD → RUN → compara registros, memoria usada y motivo contra el golden model; `--step` corre todo con STEP y lo compara con RUN; carga los programas seguidos sin RESET; reporte Markdown con commit y SHA-256 del bitstream (`--reporte`, `--bitstream`); `--fake` para correrlo sin placa. Probado con `tests/scripts/test_verify_board.py` (US-411, AC1–AC4; falta la corrida en placa).
+- `tools/riscv_toolkit/ui/`: estructura de la GUI en Flet 1.0.5 (`python -m riscv_toolkit ui [--fake]`): barra de conexión (puertos detectados u opción simulada, versión de `PING`), panel de programa (abrir, editar, guardar, ensamblar, error clickeable que lleva a la línea, listado con la línea en IF o WB resaltada), controles Cargar/Correr/Paso/Paso xN/Abortar/Reset habilitados según el estado (espejo de R-DU-1), barra de estado y atajos (F5, Shift+F5, F10, Ctrl+L, Ctrl+R, Ctrl+O, Ctrl+S, Ctrl+B). Las operaciones con la placa corren en otro hilo (`asyncio.to_thread`) y Abortar funciona durante un RUN; cerrar la ventana aborta el RUN en curso (US-501, AC1–AC6).
+- `ui/state.py`: reglas de la GUI sin Flet (`acciones_habilitadas`, `pc_resaltado`, `contar_riesgos`, posiciones en el texto), con `tests/ui/test_state.py` (US-501).
+- `ui/tema.py` y `ui/assets/fonts/`: semilla `#1F7A52`, densidad compacta, Inter y JetBrains Mono con sus licencias OFL, para que la GUI se vea igual en Linux y Windows (US-501).
+- `protocol/serial_transport.listar_puertos()` y `SnapshotHistory.__iter__` (US-501).
+- `docs/manual/checklist_ui.md`: recorrido manual de la GUI en modo simulado y con placa (US-501).
+- Página **Pipeline** de la GUI: las 5 etapas IF…WB con la instrucción desensamblada, el PC y marcas de burbuja, `halt`, ilegal, stall, flush (tachada) y forwarding (`A ← EX/MEM` en EX y `→ A` en la fuente); al tocar una etapa, tabla campo / hex / decimal de su latch con todos los campos (`ui/views/pipeline_view.py`, `ui/views/latch_detail_view.py`) (US-502, AC1–AC5).
+- GUI, historial (US-505): línea de tiempo para volver a ciclos anteriores en todas las vistas (solo lectura); **Exportar** la sesión a JSON (programa y snapshots como payload del protocolo) y **Reabrir**la sin placa; botón **Verificar**, que compara el estado final con el golden model y muestra las diferencias (`ui/views/timeline_view.py`, `ui/views/verify_view.py`, `session/export.py`, `tests/session/test_export_import.py`) (AC1–AC3).
+- `session/verificar.py`: golden model y comparación del estado final, compartidos por `verify_board` y la GUI (US-505).
+- `TP3/asm/errores/`: un programa por tipo de error del ensamblador (y uno con una advertencia), para ver cómo los marca la GUI.
+- Programas de prueba en `TP3/asm/`: `tests/hazards/` (`load_use`, `fwd_ex_mem`, `branch_taken`, `llamadas`), `demos/` (`hola`, `burbuja`, `factorial`) y `special/ilegal.asm`; cada uno con su resultado esperado, verificado por `verify_board` en RUN y STEP.
+- Página **Estado** de la GUI: los 32 registros en hex, decimal con signo y sin signo, y la memoria usada con sus 4 bytes y ASCII, resaltando lo que cambió respecto del snapshot anterior (la palabra y el byte, para un `sb`); rango de la DMEM leído a pedido con `DUMP_MEM`, aparte y validado antes de mandarlo (`ui/arquitectura.py`, `ui/views/registers_view.py`, `ui/views/memory_view.py`, `tests/ui/test_arquitectura.py`) (US-504, AC1–AC3).
+- Página **Carta** de la GUI: carta de pipeline instrucciones × ciclos desde el historial de la sesión, con los colores de stall y flush de la vista del pipeline, una fila por instancia (cada vuelta de un loop en su fila) y la burbuja de un stall como fila propia; avisa si hubo un RUN (`ui/pipeline_chart.py`, `ui/views/pipeline_chart_view.py`, `tests/ui/test_pipeline_chart.py`) (US-503, AC1–AC3).
+- `ui/pipeline.py`: mapeo columna → instrucción (IF desde el PC y la imagen cargada, el resto desde su latch), marcas de riesgo y campos de cada latch, sin Flet, con `tests/ui/test_pipeline.py` (US-502).
 
 ### Changed
 
+- `FakeTransport` usa el modelo del pipeline en vez del golden model (agregado US-306, paso 6): un STEP es un ciclo, `ciclos` cuenta ciclos, los latches y el byte de riesgos son reales, y ABORT drena con `stop_fetch`. `max_instr` pasa a `max_ciclos`. En modo simulado el PC queda en HALT + 4 al terminar (D3).
+- GUI: las tarjetas de etapa y las filas de latch con relleno de riesgo se dibujan en tema claro, para que se lean en modo oscuro.
+- GUI pensada para 1366×768: la ventana abre a ese tamaño; letras más grandes en Pipeline (etapas, latches, campos), Registros, Memoria e Historial, con los tamaños en `tema.LETRA_*`. Registros con tablas que se estiran y las tarjetas arriba; Historial con una columna por etapa (los `│` quedaban desalineados).
+- Resumen: después de un RUN, las cuentas y el CPI son solo de los ciclos vistos paso a paso (antes mezclaba el contador de la DU con las instrucciones contadas: CPI 54,2). El rótulo de navegación muestra "Ciclo N · i/total".
+- GUI rehecha con la maqueta ("Muestrario GUI RISC-V"): pantalla de conexión (aviso del último fallo, Usar sin placa, programas de `TP3/asm`, Abrir sesión); barra superior con el archivo y la píldora de conexión; Abortar en rojo y con Esc; insignia de estado; banner de RUN con el tiempo; navegación de ciclos en los controles; colores fijos por marca (`tema.RIESGO`) en Pipeline, Carta, Historial y Resumen.
+- Página Programa con modo ejecución (fuente de solo lectura, línea marcada, etapa de cada línea) y tarjeta Problemas.
+- Página Pipeline con tres vistas: Etapas (latches entre etapas, flechas de forwarding, "Qué pasó en este ciclo", señales, valores viejos marcados), Latches (los 4 juntos, agrupados) y Campos (qué es cada campo, por qué viaja y quién lo usa: `ui/latch_info.py`).
+- Carta con colores, A/B en EX, ✕ después de un flush, columna del ciclo y clic para ir a ese ciclo.
+- Registros y Memoria en páginas propias: formato elegible, "Cambió en este paso" y "Se escribe al final de este ciclo"; "Última escritura" de cada palabra y rango Desde / Hasta (`rango_desde_hasta`).
+- Historial, Verificar y Resumen como páginas: línea de tiempo con los riesgos, tabla por ciclo; todo lo comparado con "Por dónde empezar"; cuentas y gráficos de la corrida (`ui/historial.py`, `session/verificar.comparacion`).
+- `contar_riesgos` también cuenta los forwardings.
+- `verify_board` saltea `asm/errores/`.
+
+- `FakeTransport`: los 4 latches tienen las 4 últimas instrucciones ejecutadas (antes IF/ID tenía la próxima), así la vista del pipeline muestra 5 instrucciones seguidas sin repetir IF en ID (US-502).
+- `docs/guias/guia-riscv-toolkit.md` §15.7 y `checklist_ui.md`: carta de pipeline (US-503).
+- `docs/guias/guia-riscv-toolkit.md` §15.8 y `checklist_ui.md`: registros y memoria (US-504).
+- `docs/guias/guia-riscv-toolkit.md` §15.9–15.10 y `checklist_ui.md`: historial, exportar, verificar y los programas de prueba (US-505).
+- `scripts/verify_board.py`: `comparar` se mudó a `session/verificar.py` (mismo texto de salida); el test de la suite calcula cuántos programas hay en vez de esperar 5.
+- GUI: el scroll del listado a la línea en ejecución se hace solo con la página Programa a la vista; un `scroll_to` sobre el listado desmontado hacía que Flet cerrara la sesión y la GUI arrancara de cero.
+- `docs/guias/guia-riscv-toolkit.md` §15.6 y `checklist_ui.md`: vista del pipeline y de dónde sale cada columna (US-502).
+- `DebugSession.run(cancelar=None)`: con un `threading.Event` levantado desde otro hilo, manda el `ABORT` desde el hilo que espera y devuelve el snapshot `ABORTED` (cancelación cooperativa para la GUI); sin él, igual que antes (US-501).
+- Dependencia `flet[desktop]==1.0.5`; `mypy` permite llamadas sin tipos solo en `riscv_toolkit.ui.*` (Flet deja métodos sin anotar); `make setup` instala `libsecret-1-0` (lo necesita el cliente de Flet en Linux); `.venv-windows/` en `.gitignore` (US-501).
+- `docs/guias/guia-riscv-toolkit.md`: sección de la GUI (§15) y cancelación del RUN (§13.4) (US-501).
 - `FakeTransport.read` duerme el `timeout` pedido cuando no hay nada para leer, como una placa que no contesta, para que la espera de `RUN` no gire en vacío (US-410).
 - `rvsim`: `volcado(regs, mem_usada)` pasa a ser público y lo usa también `rvdbg` (US-410).
 - `docs/guias/guia-riscv-toolkit.md`: secciones de `session/`, la CLI `dbg` y `verify_board.py` (US-410, US-411).

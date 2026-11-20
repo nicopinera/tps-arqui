@@ -5,6 +5,8 @@ salta al último; la GUI mueve el cursor para volver a ver ciclos anteriores sin
 la placa.
 """
 
+from collections.abc import Iterator
+
 from riscv_toolkit.protocol.snapshot import Snapshot
 
 
@@ -17,6 +19,9 @@ class SnapshotHistory:
 
     def __len__(self) -> int:
         return len(self._snapshots)
+
+    def __iter__(self) -> Iterator[Snapshot]:
+        return iter(self._snapshots)
 
     @property
     def indice(self) -> int:

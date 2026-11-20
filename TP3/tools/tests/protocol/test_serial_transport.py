@@ -15,6 +15,7 @@ from riscv_toolkit.protocol.serial_transport import (
     ErrorPuerto,
     SerialTransport,
     detectar_puerto,
+    listar_puertos,
 )
 from riscv_toolkit.protocol.transport import Transport
 
@@ -144,3 +145,8 @@ def test_los_dos_transportes_cumplen_la_interfaz() -> None:
     fake: Transport = FakeTransport()
     assert fake.simulado
     assert not SerialTransport.simulado
+
+
+def test_lista_todos_los_puertos_ordenados(monkeypatch: pytest.MonkeyPatch) -> None:
+    _puertos(monkeypatch, ("COM7", 0x0403, 0x6010), ("COM3", 0x2341, 0x0043))
+    assert listar_puertos() == ["COM3", "COM7"]

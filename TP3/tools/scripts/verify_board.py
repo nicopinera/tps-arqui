@@ -4,6 +4,12 @@ Para cada programa: ensambla → LOAD → RUN → compara el snapshot final cont
 (registros, memoria usada y motivo de terminación). Con `--step` además lo vuelve a cargar, lo
 corre ciclo a ciclo con STEP hasta que termina y compara contra el resultado de RUN (AC2).
 
+`--step` también es **lockstep** (agregado US-306, paso 7): en cada STEP compara el snapshot de
+la placa con el del modelo del pipeline (`iss/pipeline_model.py`) en el mismo ciclo, campo por
+campo (PC, riesgos, registros, los 4 latches, memoria usada). Si difieren, el detalle dice el
+primer ciclo distinto y qué campos ("ciclo 37: riesgos.fwd_a = 0 (modelo: 2)"): ahí empieza
+el error del RTL, o del modelo.
+
 Los programas se cargan uno detrás de otro **sin RESET**: la corrida de la suite es también la
 prueba de reprogramación (AC3, hacen falta al menos 5 programas). El PC final no se compara:
 en la placa queda congelado unos ciclos después del HALT, y en el golden model en el HALT.
@@ -31,21 +37,21 @@ from pathlib import Path
 
 from riscv_toolkit.assembler.assembler import ensamblar
 from riscv_toolkit.assembler.errores import ErrorEnsamblado
-from riscv_toolkit.iss.golden_model import EstadoArquitectonico, GoldenModel
+from riscv_toolkit.iss.golden_model import GoldenModel
 from riscv_toolkit.iss.golden_model import Motivo as MotivoISS
+from riscv_toolkit.iss.pipeline_model import ModeloPipeline
 from riscv_toolkit.protocol.codec import ErrorTrama
-from riscv_toolkit.protocol.comandos import EstadoDU, Motivo
+from riscv_toolkit.protocol.comandos import EstadoDU
 from riscv_toolkit.protocol.fake_transport import FakeTransport
 from riscv_toolkit.protocol.serial_transport import ErrorPuerto, SerialTransport
 from riscv_toolkit.protocol.snapshot import Snapshot
 from riscv_toolkit.protocol.transport import Transport
 from riscv_toolkit.session.debug_session import DebugSession, ErrorSesion, Timeouts
 from riscv_toolkit.session.diff import diff
+from riscv_toolkit.session.verificar import MAX_INSTR, comparar, nombre_motivo
 
 SUITE = Path(__file__).resolve().parents[2] / "asm"  # TP3/asm/
-_MAX_INSTR = 100_000  # como rvsim: más es un loop infinito
 _TIMEOUT_RUN_S = 10.0  # un programa de la suite termina en microsegundos; más es un cuelgue
-_MOTIVOS = {MotivoISS.HALTED: Motivo.HALTED, MotivoISS.ILLEGAL: Motivo.ILLEGAL}
 
 PASA, FALLA, OMITIDO = "PASA", "FALLA", "OMITIDO"
 
@@ -64,29 +70,13 @@ class Resultado:
 # --- Comparaciones -------------------------------------------------------------------------
 
 
-def comparar(snap: Snapshot, esperado: EstadoArquitectonico) -> list[str]:
-    """Diferencias entre el snapshot de la placa y el golden model (vacía si coinciden)."""
-    diferencias = []
-    motivo = _MOTIVOS.get(esperado.motivo)
-    if snap.motivo is not motivo:
-        diferencias.append(f"motivo {_nombre(snap.motivo)} (esperado {_nombre(motivo)})")
-    for n, (real, ideal) in enumerate(zip(snap.regs, esperado.regs, strict=True)):
-        if real != ideal:
-            diferencias.append(f"x{n} = 0x{real:08x} (esperado 0x{ideal:08x})")
-    # La memoria usada se compara con claves: una palabra escrita de más o de menos es un bug
-    # del registro de palabras usadas, aunque valga 0.
-    for d in sorted(snap.mem_usada.keys() | esperado.mem_usada.keys()):
-        real_m, ideal_m = snap.mem_usada.get(d), esperado.mem_usada.get(d)
-        if real_m != ideal_m:
-            diferencias.append(f"[0x{d:03x}] = {_palabra(real_m)} (esperado {_palabra(ideal_m)})")
-    return diferencias
-
-
 def comparar_step_run(por_step: Snapshot, por_run: Snapshot) -> list[str]:
     """Diferencias entre el final por STEP y el final por RUN (AC2)."""
     diferencias = []
     if por_step.motivo is not por_run.motivo:
-        diferencias.append(f"motivo {_nombre(por_step.motivo)} (RUN: {_nombre(por_run.motivo)})")
+        diferencias.append(
+            f"motivo {nombre_motivo(por_step.motivo)} (RUN: {nombre_motivo(por_run.motivo)})"
+        )
     cambios = diff(por_run, por_step)
     diferencias += [f"x{n} = 0x{s:08x} (RUN: 0x{r:08x})" for n, (r, s) in cambios.regs.items()]
     diferencias += [
@@ -95,12 +85,28 @@ def comparar_step_run(por_step: Snapshot, por_run: Snapshot) -> list[str]:
     return diferencias
 
 
-def _nombre(motivo: Motivo | None) -> str:
-    return motivo.name if motivo is not None else "ninguno"
+def comparar_ciclo(placa: Snapshot, modelo: Snapshot) -> list[str]:
+    """Lockstep: los campos del snapshot de la placa que no coinciden con los del modelo.
 
-
-def _palabra(valor: int | None) -> str:
-    return "no escrita" if valor is None else f"0x{valor:08x}"
+    No se comparan `estado` (es de la Debug Unit, no del núcleo) ni `simulado`.
+    """
+    diferencias = []
+    for campo in ("motivo", "ciclos", "pc"):
+        p, m = getattr(placa, campo), getattr(modelo, campo)
+        if p != m:
+            diferencias.append(f"{campo} = {p} (modelo: {m})")
+    for nombre in ("riesgos", "if_id", "id_ex", "ex_mem", "mem_wb"):
+        p_latch, m_latch = getattr(placa, nombre), getattr(modelo, nombre)
+        for campo in vars(m_latch):
+            p, m = getattr(p_latch, campo), getattr(m_latch, campo)
+            if p != m:
+                diferencias.append(f"{nombre}.{campo} = {p} (modelo: {m})")
+    cambios = diff(modelo, placa)
+    diferencias += [f"x{n} = 0x{p:08x} (modelo: 0x{m:08x})" for n, (m, p) in cambios.regs.items()]
+    diferencias += [
+        f"[0x{d:03x}] = 0x{p:08x} (modelo: 0x{m:08x})" for d, (m, p) in cambios.memoria.items()
+    ]
+    return diferencias
 
 
 # --- Corrida -------------------------------------------------------------------------------
@@ -114,7 +120,7 @@ def verificar_programa(sesion: DebugSession, archivo: Path, con_step: bool) -> l
     except (OSError, ErrorEnsamblado) as error:
         return [Resultado(nombre, "RUN", FALLA, detalle=f"no ensambla: {error}")]
     modelo = GoldenModel(imagen.palabras)
-    if modelo.run(_MAX_INSTR) is MotivoISS.TIMEOUT:
+    if modelo.run(MAX_INSTR) is MotivoISS.TIMEOUT:
         return [Resultado(nombre, "RUN", OMITIDO, detalle="no termina en el golden model")]
     esperado = modelo.estado_final()
 
@@ -132,13 +138,15 @@ def verificar_programa(sesion: DebugSession, archivo: Path, con_step: bool) -> l
         maximo = 4 * modelo.instrucciones_retiradas + 10
         try:
             sesion.load(imagen.palabras)
-            por_step = _correr_por_step(sesion, maximo)
+            por_step, divergencia = _correr_por_step(sesion, maximo, imagen.palabras)
         except (ErrorSesion, ErrorTrama, OSError) as error:
             return [*resultados, Resultado(nombre, "STEP", FALLA, detalle=str(error))]
         if por_step is None:
             detalle = f"no terminó en {maximo} STEP"
             return [*resultados, Resultado(nombre, "STEP", FALLA, detalle=detalle)]
         diferencias = comparar_step_run(por_step, por_run)
+        if divergencia:
+            diferencias.append(f"lockstep: {divergencia}")
         resultados.append(_resultado(nombre, "STEP", por_step, diferencias))
     return resultados
 
@@ -152,12 +160,26 @@ def _correr(sesion: DebugSession) -> Snapshot:
         raise TimeoutError(f"no terminó en {sesion.timeouts.run} s (se mandó ABORT)") from None
 
 
-def _correr_por_step(sesion: DebugSession, maximo: int) -> Snapshot | None:
+def _correr_por_step(
+    sesion: DebugSession, maximo: int, palabras: list[int]
+) -> tuple[Snapshot | None, str]:
+    """STEP hasta que termina, comparando cada ciclo con el modelo del pipeline.
+
+    Devuelve (snapshot final o None si no terminó, primera divergencia o ""). Después de la
+    primera divergencia sigue hasta el final sin comparar: lo que viene ya está contaminado.
+    """
+    modelo = ModeloPipeline(palabras)
+    divergencia = ""
     for _ in range(maximo):
         snap = sesion.step()
+        modelo.ciclo()
+        if not divergencia:
+            diferencias = comparar_ciclo(snap, modelo.snapshot(snap.estado))
+            if diferencias:
+                divergencia = f"ciclo {modelo.ciclos}: " + ", ".join(diferencias[:4])
         if snap.estado is EstadoDU.HALTED:
-            return snap
-    return None
+            return snap, divergencia
+    return None, divergencia
 
 
 def _resultado(nombre: str, modo: str, snap: Snapshot, diferencias: list[str]) -> Resultado:
@@ -179,10 +201,17 @@ def verificar_suite(
 
 
 def programas(rutas: Iterable[Path]) -> list[Path]:
-    """Los .asm de `rutas`: archivos tal cual, carpetas recorridas en orden."""
+    """Los .asm de `rutas`: archivos tal cual, carpetas recorridas en orden.
+
+    Al recorrer una carpeta se saltean las `errores/`: son ejemplos que no ensamblan a
+    propósito (para ver cómo los marca la GUI).
+    """
     archivos: list[Path] = []
     for ruta in rutas:
-        archivos += sorted(ruta.rglob("*.asm")) if ruta.is_dir() else [ruta]
+        if ruta.is_dir():
+            archivos += sorted(a for a in ruta.rglob("*.asm") if "errores" not in a.parts)
+        else:
+            archivos.append(ruta)
     return archivos
 
 
