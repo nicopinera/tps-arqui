@@ -412,28 +412,28 @@ Reglas que aplican a todo el sistema. Las específicas de una historia están de
 
 Cada decisión no trivial tiene su ADR en [`docs/adr/`](adr/) con la estructura Contexto → Decisión → Alternativas consideradas → Consecuencias (positivas / negativas / restricciones). Esta tabla es solo un índice: **el detalle y la justificación viven en cada ADR** y no se duplican acá, para que no diverjan. El índice también está en [`docs/adr/README.md`](adr/README.md).
 
-| ID                                                         | Título                                                    | Estado    | Decisión                                                                                                                          | Bloquea                 |
-| ---------------------------------------------------------- | --------------------------------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| [ADR-001](adr/ADR-001-control-ejecucion-clock-enable.md)   | Control de ejecución por clock enable                     | Aprobado  | `i_enable` como CE de todo el núcleo; sin clock gating ni BUFGCE                                                                  | Hito 2                  |
-| [ADR-002](adr/ADR-002-parametros-uart.md)                  | Parámetros de la UART                                     | Aprobado  | 19200 bps 8E1 como el TP2; paridad validada; `COUNT_MAX` calculado desde `CLK_FREQ_HZ` y `BAUD`                                   | US-401                  |
-| [ADR-003](adr/ADR-003-protocolo-debug-unit.md)             | Protocolo de comandos de la Debug Unit                    | Aprobado  | Comando ASCII de 1 byte + args binarios; respuestas en trama con XOR; `RUN` = `ACK` + snapshot                                    | US-104, Hito 4, US-409  |
-| [ADR-004](adr/ADR-004-codificacion-halt.md)                | Codificación de HALT                                      | Aprobado  | Opcode _custom-0_, palabra `0x0000000B`; detección por opcode                                                                     | US-105, US-203          |
-| [ADR-005](adr/ADR-005-implementacion-memorias.md)          | Implementación de memorias                                | Aprobado  | Memoria distribuida (LUTRAM) inferida, lectura combinacional                                                                      | US-204                  |
-| [ADR-006](adr/ADR-006-resolucion-saltos.md)                | Punto de resolución de saltos                             | Aprobado  | `jal` en ID; `beq`/`bne`/`jalr` en EX; predict not-taken                                                                          | US-206 a US-208, US-303 |
-| [ADR-007](adr/ADR-007-riesgos-datos-banco-registros.md)    | Estrategia de riesgos de datos y banco de registros       | Aprobado  | Forwarding completo + stall load-use; bypass interno en el banco                                                                  | US-202, Hito 3          |
-| [ADR-008](adr/ADR-008-tamanos-memoria-memoria-usada.md)    | Tamaños de memoria y definición de "memoria usada"        | Aprobado  | IMEM y DMEM de 256 palabras; bitmap de escritas + contador; comando `DUMP_MEM`                                                    | US-204, US-405, US-408  |
-| [ADR-009](adr/ADR-009-politica-reprogramacion.md)          | Política de reprogramación                                | Aprobado  | `LOAD` limpia todo y rellena la IMEM con HALT; `RESET` igual sin tocar la IMEM                                                    | US-404                  |
-| [ADR-010](adr/ADR-010-comportamiento-sin-halt.md)          | Comportamiento sin instrucción de parada                  | Aprobado  | Relleno con HALT + HALT automático del ensamblador + `ABORT`                                                                      | US-407                  |
-| [ADR-011](adr/ADR-011-lenguaje-software-pc.md)             | Lenguaje del software de PC                               | Aprobado  | Python 3.13+; identificadores mixtos (dominio en español, términos técnicos en inglés)                                            | Hito 1 (US-105)         |
-| [ADR-012](adr/ADR-012-tecnologia-interfaz-usuario.md)      | Tecnología de la interfaz de usuario                      | Aprobado  | Flet (GUI) + CLI                                                                                                                  | Hito 5                  |
-| [ADR-013](adr/ADR-013-ensamblador-propio.md)               | Ensamblador propio vs. toolchain externo                  | Aprobado  | Propio de dos pasadas; pseudo `nop`, `mv`, `j`, `ret`; GNU solo para validar                                                      | US-106, US-107          |
-| [ADR-014](adr/ADR-014-golden-model.md)                     | Simulador de referencia (golden model)                    | Aprobado  | ISS propio en Python + firma en memoria                                                                                           | US-108, US-305, US-505  |
-| [ADR-015](adr/ADR-015-simulador-hdl-verificacion.md)       | Simulador HDL y framework de verificación                 | Aprobado  | Icarus Verilog para simular y Verilator para lint, en local y en CI; testbenches Verilog-2001; xsim solo manual para IP de Xilinx | US-102                  |
-| [ADR-016](adr/ADR-016-frecuencia-generacion-reloj.md)      | Frecuencia de operación y generación de reloj             | Aprobado  | 85 MHz con Clock Wizard (MMCM): mayor frecuencia del barrido con WNS ≥ 0,3 ns                                                     | Hito 6                  |
-| [ADR-017](adr/ADR-017-formato-volcado-latches.md)          | Formato de volcado de latches                             | Aprobado  | Campo a campo alineado a byte, flags agrupados, LE; `instr` con `DEBUG_TRACE`                                                     | US-103, US-405          |
-| [ADR-018](adr/ADR-018-desalineados-endianness-ilegales.md) | Accesos desalineados, endianness e instrucciones ilegales | Aprobado  | Little-endian; desalineado = ignorar bits bajos; ilegal = detener con estado `ILLEGAL`                                            | US-203, US-204          |
-| [ADR-019](adr/ADR-019-reutilizacion-alu-tp1.md)            | Reutilización de la ALU del TP1                           | Aprobado  | ALU nueva de 32 bits con `alu_ctrl` de 4 bits; comparador de branches aparte                                                      | US-201, US-208          |
-| [ADR-020](adr/ADR-020-version-vivado.md)                   | Versión de Vivado de referencia                           | Aprobado  | Vivado 2025.2                                                                                                                     | US-101                  |
+| ID                                                         | Título                                                    | Estado   | Decisión                                                                                                                          | Bloquea                 |
+| ---------------------------------------------------------- | --------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| [ADR-001](adr/ADR-001-control-ejecucion-clock-enable.md)   | Control de ejecución por clock enable                     | Aprobado | `i_enable` como CE de todo el núcleo; sin clock gating ni BUFGCE                                                                  | Hito 2                  |
+| [ADR-002](adr/ADR-002-parametros-uart.md)                  | Parámetros de la UART                                     | Aprobado | 19200 bps 8E1 como el TP2; paridad validada; `COUNT_MAX` calculado desde `CLK_FREQ_HZ` y `BAUD`                                   | US-401                  |
+| [ADR-003](adr/ADR-003-protocolo-debug-unit.md)             | Protocolo de comandos de la Debug Unit                    | Aprobado | Comando ASCII de 1 byte + args binarios; respuestas en trama con XOR; `RUN` = `ACK` + snapshot                                    | US-104, Hito 4, US-409  |
+| [ADR-004](adr/ADR-004-codificacion-halt.md)                | Codificación de HALT                                      | Aprobado | Opcode _custom-0_, palabra `0x0000000B`; detección por opcode                                                                     | US-105, US-203          |
+| [ADR-005](adr/ADR-005-implementacion-memorias.md)          | Implementación de memorias                                | Aprobado | Memoria distribuida (LUTRAM) inferida, lectura combinacional                                                                      | US-204                  |
+| [ADR-006](adr/ADR-006-resolucion-saltos.md)                | Punto de resolución de saltos                             | Aprobado | `jal` en ID; `beq`/`bne`/`jalr` en EX; predict not-taken                                                                          | US-206 a US-208, US-303 |
+| [ADR-007](adr/ADR-007-riesgos-datos-banco-registros.md)    | Estrategia de riesgos de datos y banco de registros       | Aprobado | Forwarding completo + stall load-use; bypass interno en el banco                                                                  | US-202, Hito 3          |
+| [ADR-008](adr/ADR-008-tamanos-memoria-memoria-usada.md)    | Tamaños de memoria y definición de "memoria usada"        | Aprobado | IMEM y DMEM de 256 palabras; bitmap de escritas + contador; comando `DUMP_MEM`                                                    | US-204, US-405, US-408  |
+| [ADR-009](adr/ADR-009-politica-reprogramacion.md)          | Política de reprogramación                                | Aprobado | `LOAD` limpia todo y rellena la IMEM con HALT; `RESET` igual sin tocar la IMEM                                                    | US-404                  |
+| [ADR-010](adr/ADR-010-comportamiento-sin-halt.md)          | Comportamiento sin instrucción de parada                  | Aprobado | Relleno con HALT + HALT automático del ensamblador + `ABORT`                                                                      | US-407                  |
+| [ADR-011](adr/ADR-011-lenguaje-software-pc.md)             | Lenguaje del software de PC                               | Aprobado | Python 3.13+; identificadores mixtos (dominio en español, términos técnicos en inglés)                                            | Hito 1 (US-105)         |
+| [ADR-012](adr/ADR-012-tecnologia-interfaz-usuario.md)      | Tecnología de la interfaz de usuario                      | Aprobado | Flet (GUI) + CLI                                                                                                                  | Hito 5                  |
+| [ADR-013](adr/ADR-013-ensamblador-propio.md)               | Ensamblador propio vs. toolchain externo                  | Aprobado | Propio de dos pasadas; pseudo `nop`, `mv`, `j`, `ret`; GNU solo para validar                                                      | US-106, US-107          |
+| [ADR-014](adr/ADR-014-golden-model.md)                     | Simulador de referencia (golden model)                    | Aprobado | ISS propio en Python + firma en memoria                                                                                           | US-108, US-305, US-505  |
+| [ADR-015](adr/ADR-015-simulador-hdl-verificacion.md)       | Simulador HDL y framework de verificación                 | Aprobado | Icarus Verilog para simular y Verilator para lint, en local y en CI; testbenches Verilog-2001; xsim solo manual para IP de Xilinx | US-102                  |
+| [ADR-016](adr/ADR-016-frecuencia-generacion-reloj.md)      | Frecuencia de operación y generación de reloj             | Aprobado | 85 MHz con Clock Wizard (MMCM): mayor frecuencia del barrido con WNS ≥ 0,3 ns                                                     | Hito 6                  |
+| [ADR-017](adr/ADR-017-formato-volcado-latches.md)          | Formato de volcado de latches                             | Aprobado | Campo a campo alineado a byte, flags agrupados, LE; `instr` con `DEBUG_TRACE`                                                     | US-103, US-405          |
+| [ADR-018](adr/ADR-018-desalineados-endianness-ilegales.md) | Accesos desalineados, endianness e instrucciones ilegales | Aprobado | Little-endian; desalineado = ignorar bits bajos; ilegal = detener con estado `ILLEGAL`                                            | US-203, US-204          |
+| [ADR-019](adr/ADR-019-reutilizacion-alu-tp1.md)            | Reutilización de la ALU del TP1                           | Aprobado | ALU nueva de 32 bits con `alu_ctrl` de 4 bits; comparador de branches aparte                                                      | US-201, US-208          |
+| [ADR-020](adr/ADR-020-version-vivado.md)                   | Versión de Vivado de referencia                           | Aprobado | Vivado 2025.2                                                                                                                     | US-101                  |
 
 ---
 
@@ -697,22 +697,6 @@ Cada decisión no trivial tiene su ADR en [`docs/adr/`](adr/) con la estructura 
   - **AC4.** Síntesis sin latches inferidos en ambos módulos.
 - **Reglas de Negocio:** aritmética módulo 2³², sin excepción por overflow (RV32I no las tiene).
 - **Testing Mínimo:** `tb_alu.v` (tabla de vectores con los casos de AC1, ≥ 40 vectores), `tb_alu_control.v` (todas las combinaciones válidas de `alu_op`/`funct3`/`funct7_b5`).
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "TP3/"
-        "hw/"
-            "rtl/"
-                "core/"
-                    "alu.v"
-                    "alu_control.v"
-                    "alu_defs.vh"
-            "tb/"
-                "core/"
-                    "tb_alu.v"
-                    "tb_alu_control.v"
-```
 
 #### US-202 — Banco de Registros con Bypass y Puerto de Depuración
 
@@ -733,19 +717,6 @@ treeView-beta
   - **AC4.** Tras `i_clear`, los 32 registros valen 0, también con `i_enable = 0`.
   - **AC5.** El puerto de depuración lee correctamente mientras los otros dos puertos operan.
 - **Testing Mínimo:** `tb_reg_file.v` con los 5 casos de AC.
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "TP3/"
-        "hw/"
-            "rtl/"
-                "core/"
-                    "reg_file.v"
-            "tb/"
-                "core/"
-                    "tb_reg_file.v"
-```
 
 #### US-203 — Unidad de Control Principal y Generador de Inmediatos
 
@@ -769,24 +740,6 @@ treeView-beta
   - **AC4.** `0x00000000`, un opcode no listado y una combinación ilegal de un opcode válido (por ejemplo, `funct3 = 010` con opcode de branch) activan `illegal = 1` y ninguna escritura.
   - **AC5.** `uses_rs1`/`uses_rs2` coinciden con la tabla de control (por ejemplo, `lui` y `jal` no usan ninguno; los tipo I no usan `rs2`).
 - **Testing Mínimo:** `tb_control_unit.v` (una verificación por instrucción + casos ilegales), `tb_imm_gen.v` (vectores cruzados con Python).
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "TP3/"
-        "hw/"
-            "rtl/"
-                "core/"
-                    "control_unit.v"
-                    "imm_gen.v"
-            "tb/"
-                "core/"
-                    "tb_control_unit.v"
-                    "tb_imm_gen.v"
-        "tools/"
-            "scripts/"
-                "gen_imm_vectors.py"
-```
 
 #### US-204 — Memorias de Instrucciones y Datos (LUTRAM) con Bitmap de Memoria Usada
 
@@ -808,21 +761,6 @@ treeView-beta
   - **AC5.** La Debug Unit puede escribir la IMEM y leer cualquier palabra de la DMEM mientras el núcleo está congelado.
   - **AC6.** El reporte de síntesis confirma que ambas memorias se implementaron como LUTRAM (memoria distribuida) y se anota cuántos LUTs ocupan (lo usa US-603).
 - **Testing Mínimo:** `tb_instr_mem.v` (escritura por la Debug Unit, lectura combinacional), `tb_data_mem.v` (AC2–AC5).
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "TP3/"
-        "hw/"
-            "rtl/"
-                "core/"
-                    "instr_mem.v"
-                    "data_mem.v"
-            "tb/"
-                "core/"
-                    "tb_instr_mem.v"
-                    "tb_data_mem.v"
-```
 
 #### US-205 — Alineación de Stores y Extensión de Loads (Byte y Media Palabra)
 
@@ -840,20 +778,6 @@ treeView-beta
   - **AC4.** `lw` en la dirección 2 devuelve la palabra de la dirección 0; `lh` en la dirección 3 devuelve la media palabra de la dirección 2.
   - **AC5.** Las 16 combinaciones tamaño × offset × signo están cubiertas (sección 11.2).
 - **Testing Mínimo:** `tb_load_store_align.v` conectado a `data_mem` (AC1–AC5).
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "TP3/"
-        "hw/"
-            "rtl/"
-                "core/"
-                    "store_align.v"
-                    "load_extend.v"
-            "tb/"
-                "core/"
-                    "tb_load_store_align.v"
-```
 
 ### Épica H2-E2: Etapas, Latches e Integración del Núcleo
 
@@ -874,20 +798,6 @@ treeView-beta
   - **AC5.** Con una redirección, la próxima instrucción buscada es la del destino y la instrucción que estaba en IF queda como burbuja en IF/ID.
   - **AC6.** Si en el mismo ciclo hay redirección de EX y de ID, gana la de EX.
 - **Testing Mínimo:** `tb_if_stage.v` con la IMEM precargada.
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "TP3/"
-        "hw/"
-            "rtl/"
-                "core/"
-                    "if_stage.v"
-                    "if_id_reg.v"
-            "tb/"
-                "core/"
-                    "tb_if_stage.v"
-```
 
 #### US-207 — Etapa ID y Latch ID/EX
 
@@ -903,20 +813,6 @@ treeView-beta
   - **AC3.** `o_halt_detected` se activa solo para HALT o ilegal con `valid = 1`; en el caso ilegal, ID/EX lleva `illegal = 1`.
   - **AC4.** Un `jal` en ID genera `o_redirect_jal` con el destino correcto (offsets positivos y negativos) en el mismo ciclo.
 - **Testing Mínimo:** `tb_id_stage.v`.
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "TP3/"
-        "hw/"
-            "rtl/"
-                "core/"
-                    "id_stage.v"
-                    "id_ex_reg.v"
-            "tb/"
-                "core/"
-                    "tb_id_stage.v"
-```
 
 #### US-208 — Etapa EX y Latch EX/MEM
 
@@ -939,22 +835,6 @@ treeView-beta
   - **AC4.** `store_data` toma el valor forwardeado cuando `i_fwd_b ≠ 00` (preparado para el Hito 3).
   - **AC5.** Un branch con `valid = 0` (burbuja) nunca redirige.
 - **Testing Mínimo:** `tb_ex_stage.v`, `tb_branch_cmp.v`.
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "TP3/"
-        "hw/"
-            "rtl/"
-                "core/"
-                    "ex_stage.v"
-                    "branch_cmp.v"
-                    "ex_mem_reg.v"
-            "tb/"
-                "core/"
-                    "tb_ex_stage.v"
-                    "tb_branch_cmp.v"
-```
 
 #### US-209 — Etapas MEM y WB, y Latch MEM/WB
 
@@ -971,21 +851,6 @@ treeView-beta
   - **AC2.** Un store nunca escribe en el banco de registros.
   - **AC3.** `o_halt_retired` se activa exactamente un ciclo, cuando el HALT (o la ilegal) está en WB; `o_illegal_retired` distingue los dos casos.
 - **Testing Mínimo:** `tb_mem_wb.v`.
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "TP3/"
-        "hw/"
-            "rtl/"
-                "core/"
-                    "mem_stage.v"
-                    "mem_wb_reg.v"
-                    "wb_stage.v"
-            "tb/"
-                "core/"
-                    "tb_mem_wb.v"
-```
 
 #### US-210 — Integración del Núcleo, HALT y Drenado del Pipeline
 
@@ -1011,33 +876,6 @@ treeView-beta
   - **AC6.** Con `i_stop_fetch = 1` e `i_enable = 1`, el pipeline queda vacío (los 4 `valid` en 0) en como máximo 3 ciclos, y la instrucción que estaba en ID no escribe nada.
 - **Reglas de Negocio:** R-EJ-2 a R-EJ-7.
 - **Testing Mínimo:** `tb_core_programs.v` parametrizado por programa; `make sim-programs` corre toda la carpeta.
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "TP3/"
-        "hw/"
-            "rtl/"
-                "core/"
-                    "riscv_core.v"
-            "tb/"
-                "core/"
-                    "tb_core_programs.v"
-            "reports/"
-                "timing_core_ooc.rpt"
-        "Makefile — (objetivo sim-programs)"
-        "asm/"
-            "tests/"
-                "h2/"
-                    "r_type.asm"
-                    "i_arith.asm"
-                    "shifts.asm"
-                    "loads_stores.asm"
-                    "lui.asm"
-                    "branches.asm"
-                    "jumps.asm"
-                    "illegal.asm"
-```
 
 ---
 
@@ -1073,20 +911,6 @@ treeView-beta
   - **AC6.** Forwarding del resultado de `jal` (`pc + 4`) hacia una instrucción que usa su `rd` (ej. `jal x1, f` seguido de `addi x2, x1, 0`).
   - **AC7.** `addi x1,…` seguido de `beq x1, x2, …` compara con el valor nuevo de `x1` (forwarding hacia `branch_cmp`).
 - **Testing Mínimo:** `tb_forwarding_unit.v` (vectores de AC1–AC4) + programas de US-304.
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "TP3/"
-        "hw/"
-            "rtl/"
-                "core/"
-                    "forwarding_unit.v"
-                    "riscv_core.v — (conexión y salidas o_fwd_a/o_fwd_b)"
-            "tb/"
-                "core/"
-                    "tb_forwarding_unit.v"
-```
 
 #### US-302 — Detección de Load-Use y Stall
 
@@ -1104,19 +928,6 @@ treeView-beta
   - **AC4.** `lw x1,…` + `sw x1,…` (el dato cargado se guarda) → exactamente 1 stall y resultado correcto (no hay forwarding MEM→MEM, ADR-007).
   - **AC5.** `lw x0,…` + uso de `x0` → 0 stalls.
 - **Testing Mínimo:** `tb_hazard_unit.v` + programas de US-304.
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "TP3/"
-        "hw/"
-            "rtl/"
-                "core/"
-                    "hazard_unit.v"
-            "tb/"
-                "core/"
-                    "tb_hazard_unit.v"
-```
 
 #### US-303 — Riesgos de Control: Flush en Branches y Saltos
 
@@ -1141,17 +952,6 @@ treeView-beta
   - **AC9.** Una palabra ilegal ubicada inmediatamente después de un `beq` tomado **no** detiene la ejecución.
   - **AC10.** Con `i_stop_fetch = 1` y un branch tomado en EX en el mismo ciclo, el pipeline se vacía sin buscar instrucciones del destino.
 - **Testing Mínimo:** programas de US-304 (grupo control).
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "TP3/"
-        "hw/"
-            "rtl/"
-                "core/"
-                    "hazard_unit.v — (extensión)"
-                    "riscv_core.v — (conexión de flush/stall)"
-```
 
 ### Épica H3-E2: Suite de Programas y Verificación Cruzada
 
@@ -1174,23 +974,6 @@ treeView-beta
   - **AC3.** Cada programa de `tests/instr/` y `tests/hazards/` escribe su firma de éxito/falla en `0x3FC`. Los de `tests/h2/` (US-210) no usan firma: se comparan contra el `.expected` del golden model.
   - **AC4.** Todos ensamblan sin errores y pasan en el golden model.
 - **Testing Mínimo:** `tools/tests/test_asm_suite.py` ensambla y corre toda la carpeta en el golden model.
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "TP3/"
-        "asm/"
-            "README.md — (convención de firma y dirección de resultado)"
-            "tests/"
-                "instr/"
-                    "*.asm"
-                "hazards/"
-                    "*.asm"
-            "demos/"
-                "*.asm"
-            "special/"
-                "*.asm"
-```
 
 #### US-305 — Verificación Cruzada Automática Núcleo vs. Golden Model
 
@@ -1207,28 +990,6 @@ treeView-beta
   - **AC3.** La tabla de ciclos/CPI se guarda en `docs/informe/datos/cpi.csv` para usar en el informe.
   - **AC4.** 100 % de la suite pasa al cerrar el hito.
 - **Testing Mínimo:** el propio script sobre la suite; una prueba negativa (romper a propósito el forwarding) debe hacer fallar programas de `hazards/`.
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "tps-arqui/"
-        ".github/"
-            "workflows/"
-                "ci.yml — (agrega make verify)"
-        "TP3/"
-            "Makefile — (objetivo verify)"
-            "hw/"
-                "tb/"
-                    "core/"
-                        "tb_core_programs.v — (extensión: volcado y contadores)"
-            "tools/"
-                "scripts/"
-                    "verify_rtl.py"
-        "docs/"
-            "informe/"
-                "datos/"
-                    "cpi.csv"
-```
 
 ---
 
@@ -1600,19 +1361,6 @@ treeView-beta
   - **AC2.** Valor de skew de los caminos críticos, con explicación de su origen y consecuencias.
   - **AC3.** Respuesta explícita a las dos preguntas del enunciado.
 - **Testing Mínimo:** no aplica (análisis).
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "tps-arqui/"
-        "docs/"
-            "informe/"
-                "timing.md"
-        "TP3/"
-            "hw/"
-                "reports/"
-                    "timing_*.rpt"
-```
 
 ##### US-602 — Frecuencia Óptima y Clock Wizard
 
@@ -1634,24 +1382,6 @@ treeView-beta
   - **AC4.** Si se usa MMCM, el reset del sistema espera a `locked`.
   - **AC5.** ADR-016 queda aprobado con los datos y la decisión.
 - **Testing Mínimo:** `verify_board.py` completo.
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "tps-arqui/"
-        "TP3/"
-            "hw/"
-                "scripts/"
-                    "freq_sweep.tcl"
-                "ip/"
-                    "clk_wiz_0/"
-                        "clk_wiz_0.xci — (solo si se usa MMCM)"
-                "rtl/"
-                    "top.v — (instancia del MMCM, solo si se usa)"
-        "docs/"
-            "adr/"
-                "ADR-016-frecuencia-generacion-reloj.md — (aprobado)"
-```
 
 #### Épica H6-E2: Métricas del Sistema
 
@@ -1668,20 +1398,6 @@ treeView-beta
 - **Criterios de Aceptación:**
   - **AC1.** Tablas de utilización total y por módulo, potencia y CPI en `docs/informe/metricas.md`.
   - **AC2.** Cada tabla tiene al menos un párrafo de interpretación (qué ocupa más y por qué).
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "tps-arqui/"
-        "docs/"
-            "informe/"
-                "metricas.md"
-        "TP3/"
-            "hw/"
-                "reports/"
-                    "utilization_hier.rpt"
-                    "power.rpt"
-```
 
 #### Épica H6-E3: Documentación y Defensa
 
@@ -1706,21 +1422,6 @@ treeView-beta
   - **AC2.** Todos los ADR aprobados están resumidos con su porqué.
   - **AC3.** Todos los números del informe salen de reportes o scripts versionados (no se escriben a mano).
   - **AC4.** El manual permite a alguien ajeno al equipo instalar y usar la GUI.
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "tps-arqui/"
-        "docs/"
-            "informe/"
-                "informe.md"
-                "timing.md"
-                "metricas.md"
-                "datos/"
-                "img/"
-            "manual/"
-                "usuario.md"
-```
 
 ##### US-605 — Preparación de la Demostración y la Defensa
 
@@ -1734,17 +1435,6 @@ treeView-beta
 - **Criterios de Aceptación:**
   - **AC1.** El guion se ensayó completo al menos una vez en una máquina distinta a la de desarrollo.
   - **AC2.** Las sesiones de plan B están en el repositorio.
-- **Archivos a crear:**
-
-```mermaid
-treeView-beta
-    "tps-arqui/"
-        "docs/"
-            "defensa/"
-                "guion.md"
-                "sesiones/"
-                    "*.json"
-```
 
 ---
 
