@@ -74,7 +74,7 @@ class BarraSuperior:
         self._archivo.value = (archivo or "sin archivo") + (" ●" if con_errores else "")
         self._archivo.color = ft.Colors.ERROR if con_errores else None
         if puerto == SIMULADO:
-            self._luz.color, texto = RIESGO["fa"][0], "Simulado (--fake) · golden model"
+            self._luz.color, texto = RIESGO["fa"][0], "Simulado (--fake) · modelo del pipeline"
         elif puerto is not None:
             self._luz.color = ft.Colors.PRIMARY
             texto = f"{puerto} · 19200 8E1 · conectado · protocolo v{version}"
