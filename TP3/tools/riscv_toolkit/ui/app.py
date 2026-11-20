@@ -69,6 +69,7 @@ from riscv_toolkit.ui.views.controls_view import (
     BarraSuperior,
     Controles,
 )
+from riscv_toolkit.ui.views.datapath_view import VistaDatapath
 from riscv_toolkit.ui.views.editor_view import PanelPrograma
 from riscv_toolkit.ui.views.memory_view import VistaMemoria
 from riscv_toolkit.ui.views.pipeline_chart_view import MAX_CICLOS, VistaCarta
@@ -136,6 +137,7 @@ class App:
         self.banner = BannerRun(self.abortar)
         self.panel = PanelPrograma(self.guardar, self.editado, self.refrescar, self.cambiar_modo)
         self.pipeline = PaginaPipeline(self.refrescar)
+        self.datapath = VistaDatapath()
         self.carta = VistaCarta(self.ir_a_ciclo)
         self.registros = VistaRegistros(self.refrescar)
         self.memoria = VistaMemoria(self.leer_memoria)
@@ -148,6 +150,7 @@ class App:
         self.paginas: list[tuple[str, ft.IconData, ft.Control]] = [
             ("Programa", ft.Icons.CODE, self.panel.control),
             ("Pipeline", ft.Icons.VIEW_COLUMN, self.pipeline.control),
+            ("Datapath", ft.Icons.ACCOUNT_TREE, self.datapath.control),
             ("Carta", ft.Icons.GRID_ON, self.carta.control),
             ("Registros", ft.Icons.TABLE_ROWS, self.registros.control),
             ("Memoria", ft.Icons.MEMORY, self.memoria.control),
@@ -270,6 +273,8 @@ class App:
         self.panel.resaltar(self._pc_resaltado(), etapas)
         if self._viendo(self.pipeline.control):
             self.pipeline.mostrar(snap, columnas)
+        if self._viendo(self.datapath.control):
+            self.datapath.mostrar(snap, imem, columnas)
         if self._viendo(self.carta.control) and not e.ocupado:
             visibles = snaps[-MAX_CICLOS:]
             desde = len(snaps) - len(visibles)
@@ -312,6 +317,8 @@ class App:
         self.menu.selected_index = indice
         self.cuerpo.content = self.paginas[indice][2]
         self.refrescar()
+        if self.cuerpo.content is self.datapath.control:
+            self.page.run_task(self.datapath.ajustar)
 
     def ir_a_conexion(self) -> None:
         self.menu.selected_index = None
