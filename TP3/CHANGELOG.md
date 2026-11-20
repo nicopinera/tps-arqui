@@ -7,6 +7,13 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 
 ### Added
 
+- Página **Datapath** de la GUI: el diagrama `docs/diagramas/datapath_pipeline.svg` con el valor de cada cable en el ciclo que se ve (medido del snapshot o calculado por el modelo), los latches marcados en stall/flush y el camino que elige cada mux (forwarding, PC, ALU, WB) pintado; zoom y arrastre. `scripts/gen_datapath.py` genera el fondo (PNG, con Edge) y el mapa de etiquetas, muxes y redes (`ui/assets/datapath/`); un test avisa si quedaron viejos.
+- `ModeloPipeline.cables()` y `ModeloPipeline.desde_snapshot()`: las señales combinacionales de un ciclo (las de la Hazard Unit incluidas) calculadas desde el estado de un snapshot.
+- `asm/riesgos/`: 12 programas cortos, uno por caso (forwarding EX/MEM, MEM/WB, distancia 3, el más nuevo gana, store, load-use con y sin stall, branch tomado y no tomado, `jal`, `jalr`, load-use + branch), con lo que hay que mirar en la GUI y los ciclos; un test verifica los ciclos del encabezado.
+- `docs/guias/guia-riesgos-forwarding-hazard.md`: guía de estudio de los riesgos (estructurales, de datos, de control), la Forwarding Unit y la Hazard Unit, con cartas de pipeline de `load_use` y `branch_taken`, la cadena de prioridades y el Verilog de cada unidad.
+- `iss/pipeline_model.py` (agregado US-306, pasos 2 a 5): modelo del pipeline ciclo a ciclo con Forwarding Unit, Hazard Unit (load-use), flush de branch/`jalr` en EX y `jal` en ID, HALT con `halt_fetch`, `stop_fetch` y bypass del banco; probado con los AC de US-301 a US-303, cuentas de ciclos a mano y todo `asm/` contra el golden model.
+- `verify_board --step` en lockstep (agregado US-306, paso 7): en cada STEP compara el snapshot de la placa con el del modelo del pipeline y reporta el primer ciclo distinto y los campos que difieren (`comparar_ciclo`).
+- `isa/control.py` (agregado US-306, paso 1): unidad de control (`controlar`) e `imm_gen` (`inmediato`) del pipeline, con tests que leen `docs/interfaces/tabla_control.md` fila por fila.
 - Estructura de carpetas de `TP3/` (`hw/rtl`, `hw/constraints`) y `Makefile` con los objetivos de simulación pendientes de US-102 (US-101).
 - Módulos UART del TP2 migrados sin cambios a `hw/rtl/uart/` (US-101).
 - `hw/rtl/legacy/` con `alu_tp1.v`, `uart_interface.v` y `top_tp2.v` como referencia y prueba de humo de la migración (US-101).
@@ -93,7 +100,18 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `identificar(palabra)` pasa del desensamblador a `isa/instrucciones.py` para que el golden model reconozca las mismas instrucciones legales (US-108).
 - Módulos UART: correcciones para dejar el lint en cero, sin cambio de comportamiento (constantes con el ancho de los contadores, `default` en las máquinas de estado, señal sin usar eliminada en `baudrate_gen`) (US-102).
 - `mypy` también revisa `tools/scripts/` (US-104).
+- `baudrate_gen`: el ancho del contador se deriva de `COUNT_MAX` con `$clog2` (se quita el parámetro `BITS`); el top calcula `COUNT_MAX` redondeando `CLK_FREQ_HZ / (16·BAUD)` (ADR-002) (US-401).
+- `hw/constraints/basys3.xdc` pasa a los puertos de `top.v` (`o_led[3:0]`) y declara `set_false_path -from [get_ports rx]` (US-401).
+- `tb_top_echo.v` usa `uart_host_model.vh` en lugar de sus propias tareas de envío y recepción (US-402).
+- `make lint` también revisa `hw/tb/debug/core_stub.v`, que tiene que seguir siendo sintetizable (US-402).
 - `HALT_OPCODE` y `HALT_WORD` pasan de `protocol/comandos.py` a `isa/instrucciones.py`; `gen_du_defs.py` los toma de ahí y `du_defs.vh` no cambia (US-105).
 - ADR-013: los registros se escriben solo como `x0`–`x31`; los nombres ABI pasan al roadmap. Actualizados PRD (US-105, US-106, US-303, US-504, §13, §14, §15), ADR-012 y guía del datapath (US-105).
 - `make setup` también instala `binutils-riscv64-unknown-elf` (solo para `make gnu-ref`) (US-106).
+- `debug_unit` instancia `du_loader`: se quitan los puertos `o_req_load`/`o_load_*`/`i_load_*`/`o_req_reset`/`i_reset_done` y se agregan los del núcleo (`o_imem_*`, `o_dmem_*`, `o_clear_used`, `o_flush_all`) y `o_load_done`, más los parámetros `IMEM_ADDR_BITS`/`DMEM_ADDR_BITS` (US-404).
+- `tb_du_cmd_fsm.v` usa el `du_loader` real con un `core_stub` en lugar del loader falso; además verifica la palabra cargada en la IMEM y el HALT después de un `LOAD` cortado (US-404).
+- `debug_unit` instancia `du_exec_ctrl`: se quitan `o_req_run`/`o_req_step`/`o_req_abort`/`i_step_done`/`i_run_fin` y `o_load_done` (ahora interno), y se agregan `o_enable`, `o_stop_fetch` y `o_ciclos` (hasta que entre `du_dumper`) (US-406).
+- `tb_du_cmd_fsm.v` usa el `du_exec_ctrl` real moviendo el `core_stub`; el fin del drenado de `ABORT` se emula levantando `i_halted` hasta US-407 (US-406).
+- `debug_unit` recibe `i_latch_valid[3:0]` (bits `valid` de los latches, hasta que entren los buses para `du_dumper`) y `tb_du_cmd_fsm.v` drena de verdad con los `valid` del `core_stub`, sin la emulación de `ABORT` (US-407).
+- `du_dumper` calcula la longitud y la posición del checksum una sola vez al pedido (`r_len`, `r_pos_checksum`) en lugar de en cada ciclo: salen del camino crítico (`r_k` → sumas → comparación → `r_xor`, WNS 0,859 ns en la primera síntesis OOC).
+- `debug_unit` instancia `du_dumper` (canal 1 del mux, `i_ciclos` desde `du_exec_ctrl`): se quitan los puertos del dumper externo, `o_ciclos` e `i_latch_valid` (los `valid` salen de los buses) y se agregan los puertos de lectura del núcleo (PC, registros, DMEM, bitmap, riesgos y latches). `tb_du_cmd_fsm.v` usa el dumper real en lugar del falso (US-405, US-408).
 - PRD US-106: `ensamblar` es una función en vez de la clase `Assembler`, la `Imagen` suma `expansiones` y el fixture de GNU pasa a `tools/tests/assembler/fixtures/` (también en ADR-013) (US-106).

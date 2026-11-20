@@ -49,7 +49,7 @@ help:
 
 setup:
 	sudo apt-get update
-	sudo apt-get install -y make iverilog verilator curl binutils-riscv64-unknown-elf
+	sudo apt-get install -y make iverilog verilator curl binutils-riscv64-unknown-elf libsecret-1-0
 	@command -v uv > /dev/null || curl -LsSf https://astral.sh/uv/install.sh | sh
 	@export PATH="$$HOME/.local/bin:$$PATH" && cd $(TOOLS_DIR) && uv sync
 	@echo
