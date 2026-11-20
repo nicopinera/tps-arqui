@@ -4,7 +4,10 @@ module du_loader #(
     parameter NBIT = 8,
     parameter NBIT_32 = 32,
     parameter IMEM_ADDR_BITS = 8,
-    parameter DMEM_ADDR_BITS = 8
+    parameter DMEM_ADDR_BITS = 8,
+    // 1 = rellena con HALT la IMEM despues del programa (ADR-009/010). 0 solo para el
+    // experimento "que pasa sin HALT" de US-407 (tb_top_sin_halt, con defparam)
+    parameter RELLENO_HALT = 1
   )(
     input wire clock,
     input wire i_reset,
@@ -183,7 +186,8 @@ module du_loader #(
               // r_xor ya tiene todo menos el checksum: tiene que ser igual al que mando la PC
               if (r_xor == i_load_data)
               begin
-                r_inicio <= r_n[8:0];            // HALT solo despues del programa (N=256: nada)
+                // HALT solo despues del programa (N=256: nada); sin relleno, desde 256: nada
+                r_inicio <= RELLENO_HALT ? r_n[8:0] : 9'd256;
                 o_err <= {NBIT{1'b0}};
               end
               else
