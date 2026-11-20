@@ -28,7 +28,7 @@ from scripts.verify_board import (
 
 ISS = Path(__file__).parents[1] / "iss" / "fixtures"
 ASM = Path(__file__).parents[3] / "asm"
-FIBONACCI = ASM / "demos" / "fibonacci.asm"
+FIBONACCI = Path(__file__).parents[1] / "fixtures" / "asm" / "fibonacci.asm"
 
 
 def correr_fake(archivo: Path) -> Snapshot:

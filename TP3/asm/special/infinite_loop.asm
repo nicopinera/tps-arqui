@@ -1,6 +1,7 @@
-# Loop infinito (ADR-010): no termina nunca. Sirve para probar ABORT (US-410, AC5):
-# después del ABORT, x1 dice cuántas vueltas dio.
+# Lazo infinito (ADR-010): nunca llega a un halt. En modo continuo solo se corta con ABORT
+# desde la Debug Unit; el golden model termina con TIMEOUT. x1 cuenta las vueltas.
         addi x1, x0, 0
-loop:
+lazo:
         addi x1, x1, 1
-        j    loop
+        j    lazo
+        halt                    # nunca se llega

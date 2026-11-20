@@ -88,11 +88,30 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `hw/tb/core/tb_core_control.v`: señales de riesgo del flush básico, layout de los buses de latches, ABORT (AC6), núcleo congelado con `o_halted`, `i_flush_all` (no borra bitmap ni DMEM) e `i_reset` (US-210).
 - `make sim-programs`: ensambla `asm/tests/h2`, genera el `.expected` con el golden model y corre cada programa con enable fijo y aleatorio; entra en `make check` y en el CI (US-210).
 - `make timing-core` (`hw/scripts/timing_core_ooc.tcl`): síntesis e implementación fuera de contexto de `riscv_core` a 100 MHz; deja `hw/reports/timing_core_ooc.rpt` y `util_core_ooc.rpt` (primer dato: WNS = +1,286 ns, WHS = +0,097 ns) (US-210).
+- `hw/rtl/core/forwarding_unit.v`: selectores `fwd_a`/`fwd_b` (EX/MEM > MEM/WB > banco); no reenvía desde `x0`, desde burbujas ni desde instrucciones que no escriben el banco. Conectada en `riscv_core` (`o_fwd_a`/`o_fwd_b`) (US-301).
+- `hw/tb/core/tb_forwarding_unit.v`: casos dirigidos y 5000 combinaciones aleatorias contra un modelo de referencia (US-301).
+- `asm/tests/hazards/`: `fwd_ex_mem`, `fwd_mem_wb`, `fwd_doble`, `fwd_store_data`, `fwd_branch`, `x0_no_forward` y `jal_jalr`, sin `nop` entre instrucciones dependientes; `make sim-programs` también los corre (US-301).
+- `hw/rtl/core/hazard_unit.v`: detección de load-use (load válido en EX, `rd ≠ x0`, la instrucción de ID lee ese registro según `uses_rs1`/`uses_rs2`); en `riscv_core` el stall mantiene PC e IF/ID, mete una burbuja en ID/EX y sale por `o_stall` (US-302).
+- `hw/tb/core/tb_hazard_unit.v`: casos dirigidos y 5000 combinaciones aleatorias contra un modelo de referencia (US-302).
+- `asm/tests/hazards/load_use.asm` y `load_use_store.asm`; `tb_core_control` cuenta los ciclos de stall de cada caso de load-use (US-302).
+- `hazard_unit.v` con todo el control de riesgos, como el datapath: elige el próximo PC (`pc_sel`), genera StallF, StallD, FlushD, FlushE y la burbuja de ID/EX con la tabla de prioridades (redirección de EX > ABORT > `jal` > load-use > HALT) y tiene el registro `halt_fetch`; `PC_SEL_*` en `control_defs.vh` (US-303).
+- `asm/tests/hazards/`: `branch_taken`, `branch_not_taken`, `branch_after_load`, `jal_branch_same_cycle`, `halt_after_branch`, `halt_speculative` e `illegal_speculative`; `tb_core_control` verifica la penalidad 0 del branch no tomado y ABORT con un branch tomado en EX (US-303).
+- `asm/README.md`: convención de la firma (ADR-014): `[0x3FC]` = 1 si todos los casos pasan, el número del caso que falló (desde 2) o 0 si el programa no llegó al final; registros reservados (`x31` caso, `x30` marca de camino equivocado, `x28`/`x29` temporales) y plantilla (US-304).
+- `asm/tests/instr/`: un programa por familia (`r_arith`, `r_logic`, `r_shift`, `i_arith`, `i_logic`, `i_shift`, `lui`, `loads`, `stores`, `branches`, `jal`, `jalr`) y `misaligned`, con casos borde y firma; entre todos usan las 33 instrucciones (US-304).
+- `asm/demos/`: `suma_arreglo`, `fibonacci`, `copia_cadena`, `burbuja` y `subrutina` (jal/ret con pila) (US-304).
+- `asm/special/`: `no_halt`, `infinite_loop` (para ABORT) e `illegal` (US-304).
+- `tools/tests/test_asm_suite.py`: ensambla y corre todo `asm/` en el golden model; verifica la firma, el resultado de cada demo y special, que `tests/instr/` cubra las 33 instrucciones y que haya un programa por caso de riesgo (US-304).
+- `tools/scripts/verify_rtl.py` y `make verify`: verificación cruzada de todo `asm/` en el núcleo contra el golden model (motivo, PC, registros, memoria usada, firma e instrucciones retiradas); muestra cada diferencia con el valor esperado y el obtenido, imprime la tabla de ciclos, CPI, stalls y flushes y la guarda en `docs/informe/datos/cpi.csv`; termina con código 1 si algún programa falla. `make check` y el CI también la corren (US-305).
+- `tb_core_programs`: cuenta ciclos, instrucciones retiradas, stalls y flushes e imprime un volcado final (`VOLCADO <clave> <valor>`) que parsea `verify_rtl.py` (US-305).
 - `hw/rtl/core/dmem_bitmap.v`: bitmap de memoria usada y contador (ADR-008), separado de `data_mem`; marca con `o_core_we`/`o_core_addr` de `data_mem` (H2-E2).
 - `make synth-ooc` (`hw/scripts/synth_ooc.tcl`): síntesis fuera de contexto de cada módulo de `hw/rtl/core/` con Vivado en modo batch; deja en `build/synth/` el reporte de utilización de cada módulo y una tabla con LUTs, LUTRAM, FF, latches, BRAM y *critical warnings*, y falla si algún módulo infiere latches (H2-E1).
 
 ### Changed
 
+- `tb_core_control`: perro guardián de 20000 ciclos y límite en la espera del `addi` del lazo; con un error en la hazard unit el testbench falla en vez de quedar colgado (en el CI lo cortaría recién el límite de 6 h de GitHub Actions) (US-305).
+- Los programas de `asm/tests/hazards/` se verifican solos con la firma en `0x3FC`; las marcas de camino equivocado pasan a `x30` y `halt_speculative` sale del lazo con un `beq`, así el `halt` que sigue al `bne` siempre es especulativo. `make sim-programs` también corre `asm/tests/instr/` (US-304).
+- `if_stage`: el próximo PC lo elige `pc_sel` (hazard unit) y el PC se frena con `i_stall_f`; la prioridad entre redirecciones y el registro `halt_fetch` pasan de `if_stage`/`riscv_core` a `hazard_unit`. `tb_if_stage` maneja esas señales a mano y las prioridades se prueban en `tb_hazard_unit` (US-303).
+- Timing del núcleo fuera de contexto a 100 MHz: WNS = +0,119 ns (antes +1,286 ns); camino crítico forwarding → `branch_cmp` → redirección → flush de IF/ID (US-303).
 - `hw/scripts/sim.sh` y `make sim`: aceptan `EXPECTED=<ruta>` (`+EXPECTED`) y `ARGS="..."` (plusargs extra); `make sim-all` ya no corre `tb_core_programs`, que necesita un programa (US-210).
 - CI: el job de HDL instala `uv` y corre `make sim-programs` (US-210).
 - `data_mem.v`: el bitmap y el contador pasan a `dmem_bitmap.v`; `data_mem` saca la marca del store efectivo (`o_core_we`, `o_core_addr`) y pierde `i_clear_used`, `o_dbg_used` y `o_used_count`. Mismo comportamiento: `tb_data_mem` prueba los dos módulos conectados (H2-E2).

@@ -1,38 +1,37 @@
-# Ordenamiento burbuja de 8 números con signo en la DMEM: loads, stores, dos loops anidados y
-# un load-use en cada comparación (el slt usa lo que acaba de cargar el lw).
-# Primero escribe el arreglo desordenado en 0x000…0x01c y después lo ordena en el lugar.
-# Esperado: [0x000…0x01c] = -3 0 1 4 7 9 12 25 (el -3 es 0xfffffffd); x1 = 0, x3 = 0.
-        addi x5, x0, 9
-        sw   x5, 0(x0)
-        addi x5, x0, 4
-        sw   x5, 4(x0)
-        addi x5, x0, -3
-        sw   x5, 8(x0)
-        addi x5, x0, 25
-        sw   x5, 12(x0)
-        sw   x0, 16(x0)         # 0
-        addi x5, x0, 12
-        sw   x5, 20(x0)
-        addi x5, x0, 7
-        sw   x5, 24(x0)
-        addi x5, x0, 1
-        sw   x5, 28(x0)
-# Cada pasada lleva el mayor que queda al final; la siguiente compara uno menos.
-        addi x1, x0, 7          # pasadas que faltan (n - 1)
+# Ordenamiento burbuja de 8 enteros con signo, de menor a mayor (demo).
+# Arreglo en 0x100: 7, -2, 15, 0, -9, 3, 3, 1.
+# Resultado: [0x100 .. 0x11c] = -9, -2, 0, 1, 3, 3, 7, 15.
+        addi x10, x0, 0x100     # base del arreglo
+        addi x1, x0, 7
+        sw   x1, 0(x10)
+        addi x1, x0, -2
+        sw   x1, 4(x10)
+        addi x1, x0, 15
+        sw   x1, 8(x10)
+        sw   x0, 12(x10)
+        addi x1, x0, -9
+        sw   x1, 16(x10)
+        addi x1, x0, 3
+        sw   x1, 20(x10)
+        sw   x1, 24(x10)
+        addi x1, x0, 1
+        sw   x1, 28(x10)
+
+        addi x11, x0, 7         # comparaciones de la pasada (n - 1, despues una menos)
 externo:
-        addi x2, x0, 0          # puntero al par que se compara
-        addi x3, x1, 0          # comparaciones de esta pasada
+        addi x12, x0, 0         # comparacion actual
+        addi x13, x10, 0        # puntero a a[i]
 interno:
-        lw   x6, 0(x2)
-        lw   x7, 4(x2)
-        slt  x8, x7, x6         # load-use: x7 recién cargado. x8 = 1 si están al revés
-        beq  x8, x0, en_orden   # no hay bge en el TP: slt + beq
-        sw   x7, 0(x2)          # intercambio
-        sw   x6, 4(x2)
-en_orden:
-        addi x2, x2, 4
-        addi x3, x3, -1
-        bne  x3, x0, interno
-        addi x1, x1, -1
-        bne  x1, x0, externo
+        lw   x14, 0(x13)        # a[i]
+        lw   x15, 4(x13)        # a[i + 1]
+        slt  x16, x15, x14      # a[i + 1] < a[i]: hay que intercambiar
+        beq  x16, x0, sin_cambio
+        sw   x15, 0(x13)
+        sw   x14, 4(x13)
+sin_cambio:
+        addi x13, x13, 4
+        addi x12, x12, 1
+        bne  x12, x11, interno
+        addi x11, x11, -1       # el mayor ya quedo al final
+        bne  x11, x0, externo
         halt
