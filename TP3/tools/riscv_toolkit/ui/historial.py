@@ -65,8 +65,8 @@ def _seguidos(a: Snapshot | None, b: Snapshot) -> bool:
 def _escribio_reg(a: Snapshot, b: Snapshot, reg: int) -> str | None:
     """La instrucción de WB en `a`, si es la que escribió `reg` (reg_write y el mismo rd).
 
-    Si no cierra (salto de ciclos, o el modo simulado, que no llena los latches como el
-    pipeline), None: mejor "no se sabe" que culpar a la instrucción equivocada.
+    Si no cierra (salto de ciclos por un RUN), None: mejor "no se sabe" que culpar a la
+    instrucción equivocada.
     """
     wb = a.mem_wb
     if _seguidos(a, b) and wb.valid and wb.reg_write and wb.rd == reg:
