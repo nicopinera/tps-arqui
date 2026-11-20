@@ -558,6 +558,27 @@ El CPI resulta `ciclos / instrucciones` (el HALT no cuenta como instrucción út
 
 El panel "Qué pasó en este ciclo" explica con palabras cada uno de estos eventos.
 
+La página **Datapath** muestra lo mismo sobre el diagrama del procesador: los latches en stall o flush marcados, el cable que elige cada mux pintado (forwarding en azul/verde, redirección del PC en rojo) y el valor de cada señal al lado de su rótulo.
+
+### 9.1.1 Programas para practicar (`TP3/asm/riesgos/`)
+
+Uno por caso, de 3 a 8 instrucciones. El encabezado de cada uno dice qué mirar, en qué ciclo y cuántos ciclos tarda (un test verifica ese número).
+
+| Programa                     | Qué muestra                                       |
+| ---------------------------- | ------------------------------------------------- |
+| `01_forwarding_ex_mem`       | Distancia 1: A y B ← EX/MEM                       |
+| `02_forwarding_mem_wb`       | Distancia 2: A ← MEM/WB                           |
+| `03_distancia_3_banco`       | Distancia 3: sin forwarding, lo resuelve el banco |
+| `04_forwarding_el_mas_nuevo` | EX/MEM y MEM/WB con el mismo rd: gana EX/MEM      |
+| `05_forwarding_store`        | El dato de un `sw` por forwarding B               |
+| `06_load_use_stall`          | Load-use: stall + burbuja                         |
+| `07_load_use_evitado`        | El mismo, reordenado: sin stall                   |
+| `08_branch_tomado_flush`     | Branch tomado: flush de 2                         |
+| `09_branch_no_tomado`        | Branch no tomado: sin pérdida                     |
+| `10_jal_flush`               | `jal` en ID: flush de 1                           |
+| `11_jalr_flush`              | `jalr` en EX: flush de 2 (con forwarding)         |
+| `12_load_use_y_branch`       | Los dos: stall y después flush                    |
+
 ### 9.2 En el modelo de Python (`iss/pipeline_model.py`)
 
 | Verilog                               | Python                                                              |

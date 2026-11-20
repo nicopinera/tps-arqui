@@ -64,6 +64,18 @@ De dónde sale cada columna: IF = la instrucción de `Snapshot.pc` en la imagen 
 
 Desde el agregado US-306 el modo simulado corre el modelo del pipeline, así que P4 a P6 también se ven sin placa (en los mismos ciclos que en la placa, si el RTL está bien). Sacar una captura de cada uno para el informe.
 
+## Vista Datapath
+
+El dibujo es `docs/diagramas/datapath_pipeline.svg`. Medido = viene en el snapshot (los latches); calculado = lo combinacional, que el modelo del pipeline recalcula desde ese estado (con placa, si el RTL difiere del modelo, lo calculado puede no coincidir con la placa).
+
+| #  | Paso                                              | Esperado                                                                                              | S   | P   |
+| -- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | --- | --- |
+| D1 | Abrir **Datapath** con cualquier programa cargado | El diagrama entero; rueda = zoom, arrastrar = mover, el botón "Ver entero" lo vuelve a encuadrar      | [ ] | [ ] |
+| D2 | `asm/riesgos/06_load_use_stall.asm`, ciclo 4      | PC, IF/ID e ID/EX en ámbar (stall); los valores medidos en amarillo, los calculados en azul e itálica | [ ] | [ ] |
+| D3 | Mismo programa, ciclo 6                           | Los cables de forwarding A y B pintados desde `ResultW`; `srcA = srcB = 0x7`                          | [ ] | [ ] |
+| D4 | `asm/riesgos/08_branch_tomado_flush.asm`, ciclo 3 | IF/ID e ID/EX en rojo y el camino de `ex_target` al mux del PC                                        | [ ] | [ ] |
+| D5 | Ir a otra página, cambiar de ciclo y volver       | El diagrama muestra el ciclo nuevo (no el de antes de salir)                                          | [ ] | [ ] |
+
 ## Carta de pipeline (US-503)
 
 | #   | Paso                                                                              | Esperado                                                                                   | S   | P   |

@@ -7,6 +7,9 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 
 ### Added
 
+- Página **Datapath** de la GUI: el diagrama `docs/diagramas/datapath_pipeline.svg` con el valor de cada cable en el ciclo que se ve (medido del snapshot o calculado por el modelo), los latches marcados en stall/flush y el camino que elige cada mux (forwarding, PC, ALU, WB) pintado; zoom y arrastre. `scripts/gen_datapath.py` genera el fondo (PNG, con Edge) y el mapa de etiquetas, muxes y redes (`ui/assets/datapath/`); un test avisa si quedaron viejos.
+- `ModeloPipeline.cables()` y `ModeloPipeline.desde_snapshot()`: las señales combinacionales de un ciclo (las de la Hazard Unit incluidas) calculadas desde el estado de un snapshot.
+- `asm/riesgos/`: 12 programas cortos, uno por caso (forwarding EX/MEM, MEM/WB, distancia 3, el más nuevo gana, store, load-use con y sin stall, branch tomado y no tomado, `jal`, `jalr`, load-use + branch), con lo que hay que mirar en la GUI y los ciclos; un test verifica los ciclos del encabezado.
 - `docs/guias/guia-riesgos-forwarding-hazard.md`: guía de estudio de los riesgos (estructurales, de datos, de control), la Forwarding Unit y la Hazard Unit, con cartas de pipeline de `load_use` y `branch_taken`, la cadena de prioridades y el Verilog de cada unidad.
 - `iss/pipeline_model.py` (agregado US-306, pasos 2 a 5): modelo del pipeline ciclo a ciclo con Forwarding Unit, Hazard Unit (load-use), flush de branch/`jalr` en EX y `jal` en ID, HALT con `halt_fetch`, `stop_fetch` y bypass del banco; probado con los AC de US-301 a US-303, cuentas de ciclos a mano y todo `asm/` contra el golden model.
 - `verify_board --step` en lockstep (agregado US-306, paso 7): en cada STEP compara el snapshot de la placa con el del modelo del pipeline y reporta el primer ciclo distinto y los campos que difieren (`comparar_ciclo`).
