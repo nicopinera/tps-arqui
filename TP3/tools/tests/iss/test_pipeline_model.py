@@ -8,6 +8,8 @@ Cuenta de ciclos de un programa que termina (decisiones D2 y D4):
 Las 4 son lo que tarda el HALT en recorrer IF → WB después de buscarse.
 """
 
+import itertools
+import re
 from pathlib import Path
 
 import pytest
@@ -407,3 +409,46 @@ def test_ciclos_de_los_programas_de_riesgos(nombre: str, ciclos: int) -> None:
     ruta = ASM / "tests" / "hazards" / f"{nombre}.asm"
     modelo, _ = correr(ruta.read_text(encoding="utf-8"))
     assert modelo.ciclos == ciclos
+
+
+@pytest.mark.parametrize("ruta", sorted((ASM / "riesgos").glob("*.asm")), ids=lambda p: p.stem)
+def test_ciclos_del_encabezado_de_asm_riesgos(ruta: Path) -> None:
+    # Cada programa de estudio dice en su encabezado cuántos ciclos tarda: tiene que ser cierto.
+    texto = ruta.read_text(encoding="utf-8")
+    dice = re.search(r"^# Ciclos: (\d+)", texto, re.MULTILINE)
+    assert dice is not None, "falta la línea '# Ciclos: N'"
+    modelo, _ = correr(texto)
+    assert modelo.ciclos == int(dice.group(1))
+
+
+# --- Cables y desde_snapshot (vista Datapath de la GUI) --------------------------------------
+
+
+@pytest.mark.parametrize("ruta", PROGRAMAS_REPO, ids=lambda p: p.stem)
+def test_desde_snapshot_reproduce_el_ciclo_siguiente(ruta: Path) -> None:
+    # Si el estado reconstruido desde un snapshot avanza al snapshot siguiente, los cables que
+    # se calculan desde él son los del ciclo de verdad (incluido halt_fetch, que se deduce).
+    palabras = ensamblar(ruta.read_text(encoding="utf-8")).palabras
+    _, snaps = correr(ruta.read_text(encoding="utf-8"))
+    for antes, despues in itertools.pairwise(snaps):
+        modelo = ModeloPipeline.desde_snapshot(antes, palabras)
+        modelo.ciclo()
+        assert modelo.snapshot() == despues, f"ciclo {antes.ciclos}"
+
+
+def test_cables_del_load_use() -> None:
+    asm = (ASM / "tests" / "hazards" / "load_use.asm").read_text(encoding="utf-8")
+    _, snaps = correr(asm)
+    palabras = ensamblar(asm).palabras
+
+    def cables(ciclo: int) -> dict[str, int]:
+        return ModeloPipeline.desde_snapshot(snaps[ciclo], palabras).cables()
+
+    c4 = cables(4)  # lw x2 en EX, add x2,x2,x2 en ID: stall
+    assert (c4["StallF"], c4["StallD"], c4["FlushE"], c4["FlushD"]) == (1, 1, 1, 0)
+    assert (c4["rs1D"], c4["uses_rs1"], c4["pc_sel"]) == (2, 1, 0b00)
+    assert c4["alu_resultE"] == 0  # la dirección del lw: 0(x0)
+    c6 = cables(6)  # add en EX con x2 = 7 desde MEM/WB (el dato del lw)
+    assert (c6["srcA"], c6["srcB"], c6["alu_resultE"]) == (7, 7, 14)
+    assert c6["ResultW"] == 7
+    assert c6["StallF"] == 0
