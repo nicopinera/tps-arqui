@@ -19,11 +19,13 @@ _COLOR_REPARTO = {
 }
 
 
-def _tile(valor: ft.Text, nombre: str, sub: str) -> ft.Container:
+def _tile(valor: ft.Text, nombre: str, sub: str | ft.Text) -> ft.Container:
     return tarjeta(
-        ft.Text(nombre, size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+        ft.Text(nombre, size=13, color=ft.Colors.ON_SURFACE_VARIANT),
         valor,
-        ft.Text(sub, size=11, color=ft.Colors.ON_SURFACE_VARIANT),
+        sub
+        if isinstance(sub, ft.Text)
+        else ft.Text(sub, size=12, color=ft.Colors.ON_SURFACE_VARIANT),
         expand=True,
     )
 
@@ -35,7 +37,8 @@ class VistaResumen:
             for n in ("ciclos", "instr", "cpi", "stalls", "flushes", "fwd")
         }
         v = self._valores
-        self._aviso = ft.Text(size=12, color=RIESGO["st"][0])
+        self._aviso = ft.Text(size=13, color=RIESGO["st"][0])
+        self._sub_ciclos = ft.Text(size=12, color=ft.Colors.ON_SURFACE_VARIANT)
         self._barras = ft.Row(
             spacing=1, height=_ALTO_BARRAS + 14, vertical_alignment=ft.CrossAxisAlignment.END
         )
@@ -48,13 +51,14 @@ class VistaResumen:
                 self._aviso,
                 ft.Row(
                     [
-                        _tile(v["ciclos"], "Ciclos", "del contador de la DU"),
+                        _tile(v["ciclos"], "Ciclos", self._sub_ciclos),
                         _tile(v["instr"], "Instrucciones", "terminadas (pasaron por WB)"),
                         _tile(v["cpi"], "CPI", "ciclos / instrucción; ideal → 1"),
                         _tile(v["stalls"], "Stalls", "load-use: una burbuja cada uno"),
                         _tile(v["flushes"], "Flushes", "instrucciones descartadas"),
                         _tile(v["fwd"], "Forwardings", "operandos adelantados"),
-                    ]
+                    ],
+                    vertical_alignment=ft.CrossAxisAlignment.START,
                 ),
                 tarjeta(
                     titulo("Etapas ocupadas por ciclo"),
@@ -88,20 +92,24 @@ class VistaResumen:
         if r is None or not r.ocupadas:
             for valor in self._valores.values():
                 valor.value = "—"
+            self._sub_ciclos.value = "del contador de la DU"
             self._aviso.value = "Sin historial: cargá un programa y avanzá con Paso."
             self._barras.controls = self._reparto.controls = []
             self._leyenda.controls = self._mezcla.controls = []
             return
         v = self._valores
-        v["ciclos"].value, v["instr"].value = str(r.ciclos), str(r.instrucciones)
+        v["ciclos"].value, v["instr"].value = str(r.vistos), str(r.instrucciones)
+        self._sub_ciclos.value = (
+            "del contador de la DU" if r.completo else f"vistos paso a paso, de {r.ciclos}"
+        )
         v["cpi"].value = f"{r.cpi:.2f}" if r.cpi is not None else "—"
         v["stalls"].value, v["flushes"].value = str(r.stalls), str(r.flushes)
         v["fwd"].value = str(r.forwardings)
         self._aviso.value = (
             ""
             if r.completo
-            else "Hubo un RUN: de esos ciclos llega solo el estado final, así "
-            "que las cuentas de riesgos y etapas son solo de lo que se hizo paso a paso."
+            else "Hubo un RUN: de esos ciclos llega solo el estado final, así que las "
+            "cuentas (CPI incluido) son solo de los ciclos vistos paso a paso."
         )
         ocupadas = r.ocupadas[-MAX_BARRAS:]
         eventos = r.eventos[-MAX_BARRAS:]

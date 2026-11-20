@@ -172,13 +172,15 @@ class App:
     def armar(self) -> None:
         page = self.page
         page.title = "RISC-V TP3 - Debug Unit"
-        page.theme_mode = ft.ThemeMode.LIGHT
+        page.theme_mode = ft.ThemeMode.LIGHT  # DARK
         page.fonts = FUENTES
         page.theme = tema()
         page.padding = 0
         page.spacing = 0
         page.horizontal_alignment = ft.CrossAxisAlignment.STRETCH  # barras a lo ancho
         page.on_keyboard_event = self.tecla
+        page.window.width, page.window.height = 1366, 768  # la resolución de la maqueta
+        page.window.min_width, page.window.min_height = 1280, 720
         page.window.prevent_close = True  # para abortar un RUN antes de cerrar
         page.window.on_event = self.ventana
 

@@ -10,22 +10,47 @@ from collections.abc import Awaitable, Callable
 import flet as ft
 
 from riscv_toolkit.ui.historial import FilaHistorial
-from riscv_toolkit.ui.tema import FUENTE_CODIGO, NOMBRE_RIESGO, RIESGO, chip, tarjeta, titulo
+from riscv_toolkit.ui.tema import (
+    FUENTE_CODIGO,
+    LETRA_NOTA,
+    LETRA_TABLA,
+    NOMBRE_RIESGO,
+    RIESGO,
+    chip,
+    tarjeta,
+    titulo,
+)
 
 MAX_FILAS = (
     300  # shortcut: solo los últimos 300 ciclos en la tabla y la línea; paginar si hace falta
 )
-_ANCHOS = (60, 70, 300, 200)  # ciclo, PC, etapas, riesgos; los cambios se estiran
+_ANCHOS = (64, 80, 220)  # ciclo, PC, riesgos; los cambios se estiran
+_ANCHO_ETAPA = 64  # una celda por etapa: con el texto unido, el "—" desalineaba los │
+_ETAPAS = ("IF", "ID", "EX", "MEM", "WB")
 
 
 def _t(valor: str, ancho: int | None = None, tenue: bool = False) -> ft.Text:
     return ft.Text(
         valor,
         font_family=FUENTE_CODIGO,
-        size=12,
+        size=LETRA_TABLA - 1,
         width=ancho,
         no_wrap=True,
         color=ft.Colors.ON_SURFACE_VARIANT if tenue else None,
+    )
+
+
+def _titulo_col(texto: str, ancho: int | None = None) -> ft.Text:
+    return ft.Text(texto, size=LETRA_TABLA - 1, weight=ft.FontWeight.W_600, width=ancho)
+
+
+def _celda_etapa(contenido: ft.Control) -> ft.Container:
+    """Una etapa de la fila, con una línea a la izquierda como separador."""
+    return ft.Container(
+        contenido,
+        width=_ANCHO_ETAPA,
+        padding=ft.Padding.only(left=6),
+        border=ft.Border(left=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
     )
 
 
@@ -39,7 +64,7 @@ class VistaHistorial:
         """`al_ir(indice)`: mover el cursor del historial (app.py valida el rango)."""
         self._al_ir = al_ir
         self._total = 0
-        self._aviso = ft.Text(size=13, expand=True)
+        self._aviso = ft.Text(size=LETRA_NOTA, expand=True)
         self.banner = ft.Container(
             ft.Row(
                 [
@@ -78,20 +103,16 @@ class VistaHistorial:
             value=0,
             on_change_end=lambda e: al_ir(round(e.control.value)),
         )
-        self._texto = ft.Text(size=12, color=ft.Colors.ON_SURFACE_VARIANT)
+        self._texto = ft.Text(size=LETRA_NOTA, color=ft.Colors.ON_SURFACE_VARIANT)
         leyenda = ft.Row([chip(n, k) for k, n in NOMBRE_RIESGO.items()], spacing=6)
         encabezado = ft.Container(
             ft.Row(
                 [
-                    *(
-                        ft.Text(t, size=12, weight=ft.FontWeight.W_600, width=w)
-                        for t, w in zip(
-                            ("Ciclo", "PC", "IF │ ID │ EX │ MEM │ WB", "Riesgos"),
-                            _ANCHOS,
-                            strict=True,
-                        )
-                    ),
-                    ft.Text("Cambios", size=12, weight=ft.FontWeight.W_600),
+                    _titulo_col("Ciclo", _ANCHOS[0]),
+                    _titulo_col("PC", _ANCHOS[1]),
+                    *(_celda_etapa(_titulo_col(e)) for e in _ETAPAS),
+                    _titulo_col("Riesgos", _ANCHOS[2]),
+                    _titulo_col("Cambios"),
                 ],
             ),
             bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
@@ -171,11 +192,11 @@ class VistaHistorial:
                     [
                         _t(str(f.ciclo), _ANCHOS[0]),
                         _t(f"0x{f.pc:03x}", _ANCHOS[1]),
-                        _t(" │ ".join(e.ljust(4) for e in f.etapas), _ANCHOS[2]),
+                        *(_celda_etapa(_t(e)) for e in f.etapas),
                         ft.Row(
                             [chip(NOMBRE_RIESGO[e], e) for e in f.eventos],
                             spacing=3,
-                            width=_ANCHOS[3],
+                            width=_ANCHOS[2],
                         ),
                         _t(f.cambios, tenue=True),
                     ],

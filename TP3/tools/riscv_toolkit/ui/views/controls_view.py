@@ -197,7 +197,10 @@ class Controles:
         navegable = total > 1 and not ocupado  # mientras opera, la sesión mueve el cursor
         self.anterior.disabled = not navegable or indice <= 0
         self.siguiente.disabled = not navegable or indice >= total - 1
-        self._ciclo.value = f"Ciclo {ciclo} de {total - 1}" if ciclo is not None else "Sin ciclos"
+        # El ciclo de la DU y en qué snapshot se está: después de un RUN no coinciden.
+        self._ciclo.value = (
+            f"Ciclo {ciclo} · {indice + 1}/{total}" if ciclo is not None else "Sin ciclos"
+        )
         en_vivo = indice >= total - 1
         self._modo.value = "En vivo" if en_vivo else "Revisando"
         self._chip.bgcolor = (

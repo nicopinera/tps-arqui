@@ -12,7 +12,7 @@ import flet as ft
 
 from riscv_toolkit.protocol.comandos import DMEM_DEPTH
 from riscv_toolkit.ui.arquitectura import FilaMemoria
-from riscv_toolkit.ui.tema import FUENTE_CODIGO, chip, tarjeta, titulo
+from riscv_toolkit.ui.tema import FUENTE_CODIGO, LETRA_NOTA, LETRA_TABLA, chip, tarjeta, titulo
 from riscv_toolkit.ui.views.registers_view import COLOR_CAMBIO
 
 
@@ -20,7 +20,7 @@ def _texto(valor: str, destacado: bool = False, tenue: bool = False) -> ft.Text:
     return ft.Text(
         valor,
         font_family=FUENTE_CODIGO,
-        size=13,
+        size=LETRA_TABLA,
         color=ft.Colors.ON_PRIMARY
         if destacado
         else ft.Colors.ON_SURFACE_VARIANT
@@ -46,12 +46,15 @@ def _tabla(con_escritura: bool) -> ft.DataTable:
     if con_escritura:
         columnas.append("Última escritura")
     return ft.DataTable(
-        columns=[ft.DataColumn(label=t) for t in columnas],
+        columns=[
+            ft.DataColumn(label=ft.Text(t, size=LETRA_TABLA, weight=ft.FontWeight.W_600))
+            for t in columnas
+        ],
         heading_row_color=ft.Colors.SURFACE_CONTAINER_HIGHEST,
-        data_row_min_height=26,
-        data_row_max_height=26,
-        heading_row_height=30,
-        column_spacing=18,
+        data_row_min_height=30,
+        data_row_max_height=30,
+        heading_row_height=34,
+        column_spacing=22,
     )
 
 
@@ -84,17 +87,19 @@ def _llenar(
 class VistaMemoria:
     def __init__(self, al_leer: Callable[[], Awaitable[None]]) -> None:
         """`al_leer`: el botón Leer (pide el rango con `DUMP_MEM`, en app.py)."""
-        self._usadas = ft.Text(size=12)
+        self._usadas = ft.Text(size=LETRA_NOTA)
         self._barra = ft.ProgressBar(value=0, width=200)
         self._usada = _tabla(con_escritura=True)
-        self._vacia = ft.Text("El programa todavía no escribió la memoria.", size=12, italic=True)
+        self._vacia = ft.Text(
+            "El programa todavía no escribió la memoria.", size=LETRA_NOTA, italic=True
+        )
         self.desde = ft.TextField(value="0x0", label="Desde", width=110, dense=True)
         self.hasta = ft.TextField(value="0x1c", label="Hasta", width=110, dense=True)
         self.leer = ft.OutlinedButton(
             "Leer", icon=ft.Icons.DOWNLOAD, on_click=al_leer, tooltip="DUMP_MEM (no ejecuta nada)"
         )
         self._chip = ft.Row()
-        self._nota_pedido = ft.Text(size=12, color=ft.Colors.ON_SURFACE_VARIANT)
+        self._nota_pedido = ft.Text(size=LETRA_NOTA, color=ft.Colors.ON_SURFACE_VARIANT)
         self._pedido = _tabla(con_escritura=False)
         self.control = ft.Column(
             [
@@ -105,7 +110,7 @@ class VistaMemoria:
                 ft.Text(
                     "Little-endian: el byte +0 es el menos significativo de la palabra (el que "
                     "escribe un sb a esa dirección).",
-                    size=12,
+                    size=LETRA_NOTA,
                     color=ft.Colors.ON_SURFACE_VARIANT,
                 ),
                 self._vacia,

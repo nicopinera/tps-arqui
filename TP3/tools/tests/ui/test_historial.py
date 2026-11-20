@@ -97,7 +97,7 @@ def test_resumen_de_una_corrida_paso_a_paso() -> None:
     assert r.completo
     assert r.ciclos == snaps[-1].ciclos
     assert len(r.ocupadas) == len(snaps)
-    assert sum(r.reparto.values()) == r.ciclos
+    assert sum(r.reparto.values()) == r.ciclos == r.vistos
     assert r.reparto["Útiles"] == r.instrucciones
     if r.instrucciones:  # el fake no simula el pipeline: solo que las cuentas cierran
         assert r.cpi == r.ciclos / r.instrucciones
@@ -121,6 +121,19 @@ def test_resumen_cuenta_riesgos_y_la_mezcla() -> None:
 def test_resumen_con_un_run_no_es_completo() -> None:
     r = resumen([replace(VACIO, ciclos=0), replace(VACIO, ciclos=40)], None)
     assert not r.completo
+
+
+def test_con_un_run_el_cpi_es_solo_de_lo_visto_paso_a_paso() -> None:
+    # 3 ciclos paso a paso (2 instrucciones terminan) y después un RUN hasta el ciclo 271.
+    def con_wb(ciclo: int, valida: bool) -> Snapshot:
+        return replace(VACIO, ciclos=ciclo, mem_wb=LatchMEMWB(instr=ADD, valid=valida))
+
+    snaps = [con_wb(0, False), con_wb(1, False), con_wb(2, True), con_wb(3, True),
+             con_wb(271, True)]  # fmt: skip
+    r = resumen(snaps, PROGRAMA)
+    assert (r.ciclos, r.vistos, r.instrucciones) == (271, 3, 2)
+    assert r.cpi == 1.5
+    assert sum(r.reparto.values()) == r.vistos
 
 
 def test_cada_latch_tiene_explicados_todos_sus_campos_en_orden() -> None:

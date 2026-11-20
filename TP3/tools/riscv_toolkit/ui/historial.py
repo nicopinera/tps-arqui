@@ -182,7 +182,8 @@ _CLASES = {
 
 @dataclass(frozen=True)
 class Resumen:
-    ciclos: int
+    ciclos: int  # el contador de la DU (incluye los ciclos de un RUN)
+    vistos: int  # los que se vieron paso a paso: sobre estos se hacen las cuentas
     instrucciones: int  # las que terminaron (pasaron por WB), sin contar HALT
     stalls: int
     flushes: int  # instrucciones descartadas
@@ -195,7 +196,7 @@ class Resumen:
 
     @property
     def cpi(self) -> float | None:
-        return self.ciclos / self.instrucciones if self.instrucciones else None
+        return self.vistos / self.instrucciones if self.instrucciones else None
 
 
 def resumen(snapshots: Sequence[Snapshot], imem: Sequence[int] | None) -> Resumen:
@@ -204,13 +205,19 @@ def resumen(snapshots: Sequence[Snapshot], imem: Sequence[int] | None) -> Resume
     El reparto de ciclos de un pipeline de 5 etapas: cada instrucción terminada es un ciclo
     útil, cada stall y cada instrucción descartada es un ciclo perdido, y lo que queda es
     llenar y vaciar el pipeline (4 ciclos por corrida, más lo que tarde en arrancar).
+
+    Después de un RUN solo llega el snapshot final: las cuentas (y el CPI) son solo de los
+    ciclos vistos paso a paso. Mezclar el contador de la DU con las instrucciones contadas
+    en los snapshots daba un CPI sin sentido (271 ciclos / 5 instrucciones).
     """
-    instrucciones = stalls = flushes = forwardings = 0
+    instrucciones = stalls = flushes = forwardings = vistos = 0
     mezcla: dict[str, int] = {}
     completo = True
     for i, s in enumerate(snapshots):
         if i > 0 and not _seguidos(snapshots[i - 1], s):
             completo = False
+            continue  # el snapshot final de un RUN: su ciclo no se vio llegar
+        vistos += i > 0
         r = s.riesgos
         stalls += r.stall
         flushes += r.flush_if_id + r.flush_id_ex
@@ -221,9 +228,12 @@ def resumen(snapshots: Sequence[Snapshot], imem: Sequence[int] | None) -> Resume
             mezcla[clase] = mezcla.get(clase, 0) + 1
             instrucciones += not (wb.halt or wb.illegal)
     ciclos = snapshots[-1].ciclos if snapshots else 0
-    llenado = max(0, ciclos - instrucciones - stalls - flushes)
+    if completo:
+        vistos = ciclos  # paso a paso desde el principio: también cuenta el arranque
+    llenado = max(0, vistos - instrucciones - stalls - flushes)
     return Resumen(
         ciclos=ciclos,
+        vistos=vistos,
         instrucciones=instrucciones,
         stalls=stalls,
         flushes=flushes,

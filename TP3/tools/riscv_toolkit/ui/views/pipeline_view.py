@@ -26,7 +26,17 @@ from riscv_toolkit.ui.pipeline import (
     latches,
     senales,
 )
-from riscv_toolkit.ui.tema import FUENTE_CODIGO, RIESGO, chip, rayado, tarjeta, titulo
+from riscv_toolkit.ui.tema import (
+    FUENTE_CODIGO,
+    LETRA_INSTR,
+    LETRA_NOTA,
+    LETRA_TABLA,
+    RIESGO,
+    chip,
+    rayado,
+    tarjeta,
+    titulo,
+)
 
 # De dónde sale la instrucción de cada etapa (el snapshot no tiene un latch antes de IF).
 _ORIGEN = {
@@ -39,7 +49,7 @@ _ORIGEN = {
 _OPERANDO = {"A": "fa", "B": "fb"}
 
 
-def _texto(valor: str, size: int = 13, **kw: object) -> ft.Text:
+def _texto(valor: str, size: int = LETRA_TABLA, **kw: object) -> ft.Text:
     return ft.Text(valor, font_family=FUENTE_CODIGO, size=size, **kw)  # type: ignore[arg-type]
 
 
@@ -48,17 +58,21 @@ class _Tarjeta:
 
     def __init__(self, etapa: str) -> None:
         self.etapa = etapa
-        self.pc = _texto("", 12, color=ft.Colors.ON_SURFACE_VARIANT)
-        self.texto = _texto("", 14, no_wrap=True)
-        self.palabra = _texto("", 11, color=ft.Colors.ON_SURFACE_VARIANT)
+        self.pc = _texto("", 14, color=ft.Colors.ON_SURFACE_VARIANT)
+        self.texto = _texto("", LETRA_INSTR, no_wrap=True)
+        self.palabra = _texto("", LETRA_NOTA, color=ft.Colors.ON_SURFACE_VARIANT)
         self.marcas = ft.Row(spacing=4, wrap=True)
         self.control = ft.Container(
             ft.Column(
                 [
                     ft.Row(
                         [
-                            ft.Text(etapa, weight=ft.FontWeight.W_600, size=16),
-                            ft.Text(_ORIGEN[etapa], size=10, color=ft.Colors.ON_SURFACE_VARIANT),
+                            ft.Text(etapa, weight=ft.FontWeight.W_600, size=18),
+                            ft.Text(
+                                _ORIGEN[etapa],
+                                size=LETRA_NOTA - 1,
+                                color=ft.Colors.ON_SURFACE_VARIANT,
+                            ),
                         ],
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                     ),
@@ -70,7 +84,7 @@ class _Tarjeta:
                 spacing=3,
             ),
             expand=True,
-            height=150,
+            height=170,
             padding=10,
             border_radius=8,
         )
@@ -134,13 +148,13 @@ def _franja(nombre: str, al_tocar: Callable[[str], None]) -> ft.Container:
         # Una letra por renglón: rotado, Flet lo recorta al ancho de la franja ("EX/M").
         ft.Text(
             "\n".join(nombre),
-            size=11,
+            size=13,
             weight=ft.FontWeight.W_600,
             text_align=ft.TextAlign.CENTER,
             style=ft.TextStyle(height=1.0),
         ),
-        width=26,
-        height=150,
+        width=28,
+        height=170,
         border_radius=6,
         alignment=ft.Alignment.CENTER,
         on_click=lambda _: al_tocar(nombre),
@@ -160,7 +174,12 @@ def tabla_latch(nombre: str, snapshot: Snapshot | None, viejos: set[str]) -> ft.
         if not campos:
             continue
         filas.append(
-            ft.Text(grupo, size=11, weight=ft.FontWeight.W_600, color=ft.Colors.ON_SURFACE_VARIANT)
+            ft.Text(
+                grupo,
+                size=LETRA_NOTA,
+                weight=ft.FontWeight.W_600,
+                color=ft.Colors.ON_SURFACE_VARIANT,
+            )
         )
         for c in campos:
             hexa, dec = valores[c.nombre]
@@ -171,14 +190,14 @@ def tabla_latch(nombre: str, snapshot: Snapshot | None, viejos: set[str]) -> ft.
                         [
                             ft.Row(
                                 [
-                                    _texto(c.nombre, 12),
-                                    _texto(f"·{c.bits}", 10, color=ft.Colors.ON_SURFACE_VARIANT),
+                                    _texto(c.nombre),
+                                    _texto(f"·{c.bits}", 11, color=ft.Colors.ON_SURFACE_VARIANT),
                                 ],
                                 spacing=2,
-                                width=120,
+                                width=150,
                             ),
-                            _texto(hexa, 12, width=96),
-                            _texto(dec, 12, expand=True, no_wrap=True),
+                            _texto(hexa, width=118),
+                            _texto(dec, expand=True, no_wrap=True),
                         ],
                         spacing=6,
                     ),
@@ -260,7 +279,7 @@ class VistaEtapas:
                 ft.Row(
                     [
                         ft.Icon(ft.Icons.SUBDIRECTORY_ARROW_LEFT, color=color, size=16),
-                        _texto(f"{operando} ← {latch} ({fuente.texto})", 12, color=color),
+                        _texto(f"{operando} ← {latch} ({fuente.texto})", 14, color=color),
                     ],
                     spacing=4,
                 )
@@ -270,7 +289,7 @@ class VistaEtapas:
             self._frases.controls = [ft.Text("Sin snapshot: conectá y cargá un programa.")]
             self._senales.controls = []
         else:
-            self._frases.controls = [ft.Text(f, size=13) for f in explicar(snapshot, cols)]
+            self._frases.controls = [ft.Text(f, size=LETRA_TABLA) for f in explicar(snapshot, cols)]
             self._senales.controls = [
                 chip(texto, None, punteado=not activa) if not activa else chip(texto, "st")
                 for texto, activa in senales(snapshot)
@@ -310,17 +329,17 @@ def _vista_campos() -> ft.Control:
             "Cada latch guarda lo que la etapa siguiente necesita de la anterior. Un campo viaja "
             "hasta la última etapa que lo usa: por eso rd llega a WB y imm no pasa de EX. "
             "instr viaja solo para la Debug Unit.",
-            size=13,
+            size=LETRA_TABLA,
         )
     ]
     for nombre in LATCHES:
         filas = [
             ft.DataRow(
                 [
-                    ft.DataCell(_texto(f"{c.nombre}·{c.bits}", 12)),
-                    ft.DataCell(ft.Text(c.que, size=12)),
-                    ft.DataCell(ft.Text(c.por_que, size=12)),
-                    ft.DataCell(ft.Text(c.quien, size=12)),
+                    ft.DataCell(_texto(f"{c.nombre}·{c.bits}", 14)),
+                    ft.DataCell(ft.Text(c.que, size=14)),
+                    ft.DataCell(ft.Text(c.por_que, size=14)),
+                    ft.DataCell(ft.Text(c.quien, size=14)),
                 ]
             )
             for c in CAMPOS[nombre]
@@ -330,14 +349,16 @@ def _vista_campos() -> ft.Control:
                 titulo(nombre),
                 ft.DataTable(
                     columns=[
-                        ft.DataColumn(label=t)
+                        ft.DataColumn(
+                            label=ft.Text(t, size=LETRA_TABLA, weight=ft.FontWeight.W_600)
+                        )
                         for t in ("Campo", "Qué es", "Por qué viaja", "Quién lo usa")
                     ],
                     rows=filas,
                     heading_row_color=ft.Colors.SURFACE_CONTAINER_HIGHEST,
-                    data_row_min_height=28,
+                    data_row_min_height=32,
                     data_row_max_height=float("inf"),
-                    heading_row_height=30,
+                    heading_row_height=34,
                     column_spacing=16,
                 ),
             )
@@ -366,7 +387,7 @@ class PaginaPipeline:
                 chip("forwarding B", "fb"),
                 chip("HALT", "ht"),
                 ft.Container(
-                    ft.Text("burbuja", size=11),
+                    ft.Text("burbuja", size=12),
                     gradient=rayado(),
                     border_radius=4,
                     padding=ft.Padding.symmetric(horizontal=6, vertical=1),

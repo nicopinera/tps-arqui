@@ -15,6 +15,10 @@ ASSETS = Path(__file__).parent / "assets"
 SEMILLA = "#1F7A52"
 FUENTE = "Inter"
 FUENTE_CODIGO = "JetBrains Mono"  # registros, latches, memoria, el editor y el listado
+# Tamaños de letra de las vistas, pensados para 1366x768 (la resolución de la maqueta).
+LETRA_TABLA = 15  # celdas: latches, registros, memoria, historial, campos
+LETRA_NOTA = 13  # textos secundarios: de dónde sale, quién escribió, leyendas
+LETRA_INSTR = 18  # la instrucción de cada tarjeta de etapa
 # Nombre de la familia → archivo, relativo a ASSETS. shortcut: solo el peso Regular (el
 # negrito lo sintetiza Flutter); si se nota feo, sumar Inter-SemiBold como otra familia.
 FUENTES = {
