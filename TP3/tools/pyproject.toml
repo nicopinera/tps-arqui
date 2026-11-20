@@ -8,7 +8,10 @@ authors = [
     { name = "Julian Krede" },
 ]
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "flet[desktop]==1.0.5",
+    "pyserial>=3.5",
+]
 
 [dependency-groups]
 dev = [
@@ -17,6 +20,7 @@ dev = [
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
     "ruff>=0.17.0",
+    "types-pyserial>=3.5",
 ]
 
 # Proyecto no instalable: uv solo maneja el entorno y las dependencias; el código se
@@ -61,6 +65,12 @@ warn_unreachable = true
 files = ["riscv_toolkit", "scripts", "tests"]
 explicit_package_bases = true
 mypy_path = "."
+
+# Flet 1.0 deja varios métodos sin anotar (`focus`, `window.destroy`, `NumbersOnlyInputFilter`):
+# en la GUI se permite llamarlos. El resto del código sigue en strict.
+[[tool.mypy.overrides]]
+module = ["riscv_toolkit.ui.*"]
+disallow_untyped_calls = false
 
 # --- pytest y cobertura ------------------------------------------------------------------
 

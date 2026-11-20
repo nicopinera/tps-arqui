@@ -41,6 +41,7 @@ xsim.dir/
 __pycache__/
 .venv/
 .venv-wsl/
+.venv-windows/
 .mypy_cache/
 *.pyc
 .pytest_cache/

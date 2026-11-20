@@ -1,0 +1,32 @@
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+-------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2025.2 (win64) Build 6299465 Fri Nov 14 19:35:11 GMT 2025
+| Date         : Sun Nov 15 17:58:21 2026
+| Host         : nico-pc-w running 64-bit major release  (build 9200)
+| Command      : report_utilization -hierarchical -file C:/Users/Nico/desktop/Carpetas/Facu/Arqui/tps-arqui/TP3/hw/reports/du_ooc_util_synth.rpt
+| Design       : debug_unit
+| Device       : xc7a35tcpg236-1
+| Speed File   : -1
+| Design State : Synthesized
+-------------------------------------------------------------------------------------------------------------------------------------------------
+
+Utilization Design Information
+
+Table of Contents
+-----------------
+1. Utilization by Hierarchy
+
+1. Utilization by Hierarchy
+---------------------------
+
++----------------+------------+------------+------------+---------+------+------+--------+--------+------------+
+|    Instance    |   Module   | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs | RAMB36 | RAMB18 | DSP Blocks |
++----------------+------------+------------+------------+---------+------+------+--------+--------+------------+
+| debug_unit     |      (top) |        936 |        936 |       0 |    0 | 1049 |      0 |      0 |          0 |
+|   (debug_unit) |      (top) |          0 |          0 |       0 |    0 |    0 |      0 |      0 |          0 |
+|   u_cmd        | du_cmd_fsm |        167 |        167 |       0 |    0 |  100 |      0 |      0 |          0 |
+|   u_dumper     |  du_dumper |        640 |        640 |       0 |    0 |  769 |      0 |      0 |          0 |
+|   u_loader     |  du_loader |         96 |         96 |       0 |    0 |  130 |      0 |      0 |          0 |
++----------------+------------+------------+------------+---------+------+------+--------+--------+------------+
+
+

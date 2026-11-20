@@ -12,12 +12,13 @@ ilegal es un resultado válido) y con 1 ante un error de ensamblado o de archivo
 
 import argparse
 import sys
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from riscv_toolkit.assembler.assembler import ensamblar
 from riscv_toolkit.assembler.errores import ErrorEnsamblado
 from riscv_toolkit.iss.expected import a_expected
-from riscv_toolkit.iss.golden_model import EstadoArquitectonico, GoldenModel, Motivo
+from riscv_toolkit.iss.golden_model import GoldenModel, Motivo
 
 _MAX_INSTR = 100_000  # un programa de la suite corre en menos de mil; más es un loop infinito
 
@@ -77,7 +78,7 @@ def ejecutar(args: argparse.Namespace) -> int:
         f"{modelo.instrucciones_retiradas} instrucciones"
     )
     if args.dump:
-        print(_volcado(estado), end="")
+        print(volcado(estado.regs, estado.mem_usada), end="")
     if args.expect is not None:
         try:
             args.expect.write_text(a_expected(estado), encoding="utf-8")
@@ -87,10 +88,10 @@ def ejecutar(args: argparse.Namespace) -> int:
     return _EXITO
 
 
-def _volcado(estado: EstadoArquitectonico) -> str:
-    """Registros en 4 columnas y las palabras usadas, una por renglón."""
-    celdas = [f"x{n:<2} = 0x{valor:08x}" for n, valor in enumerate(estado.regs)]
+def volcado(regs: Sequence[int], mem_usada: Mapping[int, int]) -> str:
+    """Registros en 4 columnas y las palabras usadas, una por renglón (también lo usa `rvdbg`)."""
+    celdas = [f"x{n:<2} = 0x{valor:08x}" for n, valor in enumerate(regs)]
     renglones = ["   ".join(celdas[i : i + 4]) for i in range(0, 32, 4)]
-    renglones.append(f"memoria usada ({len(estado.mem_usada)} palabras):")
-    renglones += [f"  0x{d:03x}: 0x{dato:08x}" for d, dato in estado.mem_usada.items()]
+    renglones.append(f"memoria usada ({len(mem_usada)} palabras):")
+    renglones += [f"  0x{d:03x}: 0x{dato:08x}" for d, dato in mem_usada.items()]
     return "\n".join(renglones) + "\n"
