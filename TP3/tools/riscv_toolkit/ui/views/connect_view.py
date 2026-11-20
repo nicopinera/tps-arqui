@@ -41,7 +41,7 @@ class PantallaConexion:
             "Usar sin placa (simulado)",
             icon=ft.Icons.COMPUTER,
             on_click=al_simular,
-            tooltip="FakeTransport: el golden model hace de placa (sin Hazard Unit)",
+            tooltip="FakeTransport: el modelo del pipeline hace de placa (con riesgos)",
         )
         conexion = tarjeta(
             ft.Text("Paso 1 de 2", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
