@@ -243,6 +243,15 @@ end
 
 Este bloque instancia e implementa los sub-bloques de la etapa IF, el cual sera instanciado en un superbloque core
 
+### Concepto Stall, Flush y burbuja
+
+|           | Qué le hace al latch en el flanco              | Qué pasa con la instrucción                | Cuándo                                           |
+| --------- | ---------------------------------------------- | ------------------------------------------ | ------------------------------------------------ |
+| **Stall** | **No carga**: se queda con lo que tenía        | **Espera** un ciclo y no se pierde         | load-use (IF/ID con `stall_d`; PC con `stall_f`) |
+| **Flush** | Carga una **burbuja** en lugar de lo que venía | **Se descarta**: era del camino equivocado | redirección (`flush_d`, `flush_e`)               |
+
+Tanto el flush como el stall generan una burbuja. Con un flush, la instrucción que iba a entrar al latch se descarta (era del camino equivocado) y en su lugar entra una burbuja. Con un stall, el latch conserva su instrucción para que espere a que avance una más antigua (el lw), y la burbuja entra en el latch siguiente para no duplicar la instrucción que espera.
+
 ### 8.1 Entradas de `if_stage`
 
 El stall es activado por la hazard unit cuando hay un riesgo tipo load-use, por ejemplo:
@@ -462,3 +471,335 @@ RV32I está pensada para no cambiar cuando se agrega C, y por eso tiene detalles
 En nuestro caso como usamos solamente instrucciones del 32 bits, la IMEM ignora `pc[1:0]` (explicado en la seccion 6.2), así que con PC = `0x102` lee la palabra de `0x100`, y las instrucciones que se ejecutan son las mismas.
 
 Pero fue agregado para respetar la especificacion, ademas para que lo que muestra el hardware en los snapshots (el PC y registros como x1) coincida con el golden model, que sigue la spec.
+
+## 11. Forwarding unit (US-301)
+
+En la forwarding unit ingresan las direcciones de los registros que se usan en la etapa de EX y se comparan contra rd en MEM y rd en WB osea lo que se hace es verifica que en la etapa de EX se va a usar registros (rs1 y rs2) que van a ser escritos (reg_write) en MEM o WB y que la operacion no es una burbuja mediante el valid. Luego notar tambien que el registro en MEM tiene mayor prioridad en la toma de la decision porque es el valor mas reciente, podria darse el caso que las instrucciones en MEM y en WB escriban el mismo registro, y el valor correcto es el de la mas reciente. Ademas se verifica que el registro no sea x0, que siempre debe valer 0: hay instrucciones con rd = x0 y reg_write = 1 (jal x0, addi x0) y, si se reenviaran, la que lee x0 recibiria un valor distinto de 0
+
+```verilog
+// forwarding_unit.v:41-49
+// Aca solo se verifica si hay escritura del registro en esas etapas
+wire w_escribe_mem = i_ex_mem_valid && i_ex_mem_reg_write && (i_ex_mem_rd != X0);
+wire w_escribe_wb = i_mem_wb_valid && i_mem_wb_reg_write && (i_mem_wb_rd != X0);
+
+// Operando A
+// Aca se verifica que el registro que se va a escribir es el que se necesita en EX
+always @(*) begin
+    o_fwd_a = FWD_ID_EX;
+    if (w_escribe_mem && (i_ex_mem_rd == i_id_ex_rs1)) o_fwd_a = FWD_EX_MEM;
+    else if (w_escribe_wb && (i_mem_wb_rd == i_id_ex_rs1)) o_fwd_a = FWD_MEM_WB;
+end
+// lo mismo para el operando B
+```
+
+## 12. Hazard unit (US-302)
+
+La hazard unit resuelve un problema que la forwarding unit no puede resolver, es el tema de load-use por ejemplo:
+
+```
+lw  x1, 0(x2)      ← el dato sale de la DMEM al final de MEM
+add x3, x1, x4     ← lo necesita al principio de EX
+```
+
+El valor de x1 esta disponible recien a la salida de la fase de recuperar el dato osea a la salida del bloque Load-extend en la etapa de MEM, cuando el add ya esta en EX y lo necesita en ese mismo ciclo. Por eso no se puede reenviar: en EX/MEM todavia esta la direccion, no el dato. Para detectar este tipo de riesgo se hace lo siguiente:
+
+1. ver si la instrucción que está en EX es válida, y lee la memoria (es un load), y su registro destino no es x0.
+2. La instruccion que esta en ID necesita el registro que se carga en la instruccion anterior (que estaria en EX), y la instruccion de verdad lee ese operando (uses_rs1/uses_rs2) (en un addi, lui o jal los bits de rs pueden ser parte del inmediato)
+3. Si se cumplen las dos, se hace un stall: el PC e IF/ID se mantienen (la instrucción espera en ID) y en ID/EX entra una burbuja (no se ejecuta nada en EX en el ciclo siguiente). Al ciclo siguiente el load ya está en WB y el dato llega a EX por forwarding desde MEM/WB
+
+```verilog
+// hazard_unit.v:34-39
+//1.
+// Load valido en EX que escribe un registro distinto de x0
+wire w_load_en_ex = i_id_ex_valid && i_id_ex_mem_read && (i_id_ex_rd != X0);
+//2.
+// La instruccion de ID necesita el registro que carga el load
+wire w_usa_rd = (i_uses_rs1 && (i_if_id_rs1 == i_id_ex_rd)) || (i_uses_rs2 && (i_if_id_rs2 == i_id_ex_rd));
+//3.
+assign o_stall = w_load_en_ex && w_usa_rd;
+```
+
+---
+
+En este punto se hicieron cambiamos retroactivos a otros bloques. Con el fin de completar la funcionalidad de la hazard unit se cambiaron las siguientes cosas:
+control_defs: Se agregaron las codificaciones para el PC_SEL en el mux de PC: PC_SEL_PLUS4, PC_SEL_JAL, PC_SEL_EX
+if_stage: antes manejaba el las prioridades dentro del mux del PC, ahora obedece lo que le dice la hazard unit
+hazard_unit: hasta la us-302 lo unico que manejaba era el hazard load-use, a partir de ahora pasa a manejar todo esto, que antes estaba en otros módulos:
+
+| Qué                                                | Dónde estaba antes                                        | Ahora en la hazard unit                                                      |
+| -------------------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Elegir el próximo PC (EX > `jal` > +4)             | `if_stage` (su `always` de prioridad)                     | `o_pc_sel`                                                                   |
+| Flush de IF/ID (por `jal` o por redirección de EX) | `riscv_core` (`w_flush_if_id`)                            | `o_flush_d`                                                                  |
+| Flush de ID/EX (redirección de EX)                 | `riscv_core` (`w_flush_id_ex`)                            | `o_flush_e`                                                                  |
+| Burbuja de ID/EX por ABORT                         | `riscv_core` (`w_bubble_id_ex = stall \|\| i_stop_fetch`) | `o_bubble_e`                                                                 |
+| Frenar la búsqueda por HALT o ABORT                | `riscv_core` (`w_halt_fetch`) + `if_stage`                | `o_stall_f`                                                                  |
+| Registro `halt_fetch` (recordar el HALT)           | `riscv_core` (`r_halt_fetch`)                             | adentro de la unidad, por eso ahora tiene `c uwlock`, `i_reset` e `i_enable` |
+| Prioridades entre eventos simultáneos              | implícitas, repartidas en los tres lugares                | explícitas, en una sola cadena `if` / `else if`                              |
+
+---
+
+## 13 Hazard unit (us-303)
+
+### 13.1 ABORT
+
+El ABORT es una señal que le envia la DU al core, existe para los programas que nunca llegan a un HALT. Por ejemplo:
+
+```
+
+loop: addi x1, x1, 1
+j loop
+```
+
+En modo continuo este programa corre para siempre: ningún HALT llega a WB. El relleno con HALT de la IMEM y el HALT automático del ensamblador no ayudan, porque el lazo nunca sale. ABORT es la salida de emergencia para cortarlo desde afuera.
+
+Tanto el HALT como ABORT funciona igual, ambos activan stallF, lo que hace frenar al PC y rellenar con burbujas las siguientes etapas
+
+### 13.2 Funcionalidades de la Hazard unit
+
+Desde la us-303, la hazard unit decide en cada ciclo tres cosas:
+
+- De dónde sale el próximo PC;
+- Que hace cada latch del frente del pipeline (PC, IF/ID e ID/EX): carga, mantiene o mete una burbuja;
+- Si la búsqueda de instrucciones sigue o se detiene.
+
+Para eso tiene dos `always`:
+
+- uno **combinacional**, que es la tabla de prioridades y decide las salidas del ciclo actual;
+- uno **secuencial**, que es el registro `r_halt_fetch` y recuerda que se vio un HALT.
+
+Las salidas y a dónde van:
+
+| Salida       | Va a                     | Efecto                                                                 |
+| ------------ | ------------------------ | ---------------------------------------------------------------------- |
+| `o_pc_sel`   | mux del PC (`if_stage`)  | `00` = PC + 4, `01` = destino del `jal`, `10` = destino de EX          |
+| `o_stall_f`  | `if_stage`               | el PC no se escribe y `o_valid = 0` (IF manda burbujas)                |
+| `o_stall_d`  | `if_id_reg`              | IF/ID mantiene su instrucción                                          |
+| `o_flush_d`  | `if_id_reg`              | IF/ID carga una burbuja en lugar de la instrucción de IF               |
+| `o_flush_e`  | `id_ex_reg` (`i_flush`)  | ID/EX carga una burbuja en lugar de la instrucción de ID (redirección) |
+| `o_bubble_e` | `id_ex_reg` (`i_bubble`) | ID/EX carga una burbuja (load-use o ABORT)                             |
+
+### 13.3 `always` combinacional: la tabla de prioridades
+
+```verilog
+// Tabla de prioridades
+always @(*) begin
+    o_pc_sel   = PC_SEL_PLUS4;
+    o_stall_f  = 1'b0;
+    o_stall_d  = 1'b0;
+    o_flush_d  = 1'b0;
+    o_flush_e  = 1'b0;
+    o_bubble_e = 1'b0;
+    if (i_redirect_ex) begin
+        // 1. Redireccion de EX: lo de IF e ID era especulativo
+        o_pc_sel  = PC_SEL_EX;
+        o_flush_d = 1'b1;  // Flush IF/ID: burbuja en lugar de la instruccion de IF
+        o_flush_e = 1'b1;  // Flush ID/EX: burbuja en lugar de la instruccion de ID
+        o_stall_f = i_stop_fetch;  // con ABORT no se busca el destino
+    end else if (i_stop_fetch) begin
+        // 2. ABORT: deja de buscar y descarta la instruccion de ID
+        o_stall_f  = 1'b1;  // StallF: PC quieto, IF manda burbujas a IF/ID
+        o_bubble_e = 1'b1;  // Burbuja en ID/EX: se descarta la instruccion de ID
+    end else if (i_redirect_jal) begin
+        // 3. jal en ID
+        o_pc_sel  = PC_SEL_JAL;
+        o_flush_d = 1'b1;  // Flush IF/ID: burbuja en lugar de la instruccion de IF
+    end else if (w_load_use) begin
+        // 4. Load-use: la instruccion de ID espera un ciclo
+        o_stall_f  = 1'b1;  // StallF: PC quieto
+        o_stall_d  = 1'b1;  // StallD: IF/ID mantiene la instruccion que espera
+        o_bubble_e = 1'b1;  // Burbuja en ID/EX para no duplicarla en EX
+    end else if (w_halt_fetch) begin
+        // 5. HALT/ilegal: deja de buscar
+        o_stall_f = 1'b1;  // StallF: PC quieto, IF manda burbujas a IF/ID
+    end
+end
+```
+
+A continuacion se detalla cada caso:
+
+#### Load-use: `stall_f` + `stall_d` + `bubble_e`
+
+```asm
+0c  lw   x3, 0(x10)
+10  add  x4, x3, x3      # usa x3 justo después del load
+14  addi x5, x0, 1
+```
+
+```
+c | IF                | ID (IF/ID)        | EX (ID/EX)        | MEM (EX/MEM)       | WB (MEM/WB)          | hazard unit
+5 | 10 add x4, x3, x3 | 0c lw x3, 0(x10)  | 08 sw x1, 0(x10)  | 04 addi x1, x0, 40 | 00 addi x10, x0, 256 | —
+6 | 14 addi x5, x0, 1 | 10 add x4, x3, x3 | 0c lw x3, 0(x10)  | 08 sw x1, 0(x10)   | 04 addi x1, x0, 40   | stall_f stall_d bubble_e
+7 | 14 addi x5, x0, 1 | 10 add x4, x3, x3 | ·                 | 0c lw x3, 0(x10)   | 08 sw x1, 0(x10)     | —
+8 | 18 halt           | 14 addi x5, x0, 1 | 10 add x4, x3, x3 | ·                  | 0c lw x3, 0(x10)     | —
+```
+
+- **Ciclo 6:** el `lw` está en EX (load válido, `rd = x3`, distinto de `x0`) y el `add` en ID lee `x3` (`uses_rs1 = 1`). Se cumple `w_load_use` y la unidad pone `stall_f`, `stall_d` y `bubble_e`.
+- **Ciclo 7:** IF sigue en `14` (el PC no avanzó), ID sigue con el `add` (IF/ID no cargó) y en EX entró una burbuja. El `lw` avanzó normalmente a MEM.
+- **Ciclo 8:** el `add` entra a EX con el `lw` ya en WB, y el dato llega por forwarding desde MEM/WB (`fwd = 01`). Costo: 1 ciclo.
+
+Si el `add` hubiera entrado a EX en el ciclo 7, el `lw` estaría en MEM y el dato recién saldría de la DMEM al final de ese ciclo, pero el `add` lo necesita al principio. Por eso el forwarding solo no alcanza.
+
+#### Branch tomado (o `jalr`): `pc_sel = EX` + `flush_d` + `flush_e`
+
+```asm
+04  beq  x1, x1, destino   # tomado
+08  addi x2, x0, 2         # no se tiene que ejecutar
+0c  addi x3, x0, 3         # no se tiene que ejecutar
+10  destino: addi x4, x0, 4
+```
+
+```
+c | IF                  | ID (IF/ID)          | EX (ID/EX)          | MEM (EX/MEM)        | WB (MEM/WB)         | hazard unit
+3 | 08 addi x2, x0, 2   | 04 beq x1, x1, 0x10 | 00 addi x1, x0, 1   | ·                   | ·                   | —
+4 | 0c addi x3, x0, 3   | 08 addi x2, x0, 2   | 04 beq x1, x1, 0x10 | 00 addi x1, x0, 1   | ·                   | pc_sel=EX flush_d flush_e
+5 | 10 addi x4, x0, 4   | ·                   | ·                   | 04 beq x1, x1, 0x10 | 00 addi x1, x0, 1   | —
+6 | 14 halt             | 10 addi x4, x0, 4   | ·                   | ·                   | 04 beq x1, x1, 0x10 | —
+```
+
+- **Ciclo 4:** el `beq` está en EX y salta (`redirect_ex = 1`, destino `0x10`). Como la predicción es _not-taken_, ya se buscaron dos instrucciones del camino equivocado: `0c` en IF y `08` en ID. La unidad pone `pc_sel = EX` (el PC carga `0x10`), `flush_d` (burbuja en IF/ID en lugar de `0c`) y `flush_e` (burbuja en ID/EX en lugar de `08`).
+- **Ciclo 5:** IF busca el destino y en ID y EX hay burbujas: `08` y `0c` desaparecieron sin escribir nada. Costo: 2 ciclos.
+
+Un `jalr` se comporta igual, porque también se resuelve en EX. Un branch **no tomado** no activa nada (`redirect_ex = 0`): lo que se buscó era lo correcto y no hay costo.
+
+#### `jal`: `pc_sel = JAL` + `flush_d`
+
+```asm
+00  jal  x1, destino
+04  addi x2, x0, 2     # no se tiene que ejecutar
+08  addi x3, x0, 3
+0c  destino: addi x4, x0, 4
+```
+
+```
+c | IF                | ID (IF/ID)        | EX (ID/EX)        | MEM (EX/MEM)   | WB (MEM/WB) | hazard unit
+1 | 00 jal x1, 0xc    | ·                 | ·                 | ·              | ·           | —
+2 | 04 addi x2, x0, 2 | 00 jal x1, 0xc    | ·                 | ·              | ·           | pc_sel=JAL flush_d
+3 | 0c addi x4, x0, 4 | ·                 | 00 jal x1, 0xc    | ·              | ·           | —
+4 | 10 halt           | 0c addi x4, x0, 4 | ·                 | 00 jal x1, 0xc | ·           | —
+```
+
+- **Ciclo 2:** el `jal` está en ID. Su destino (`pc + imm`) se calcula en `id_stage`, sin registros ni ALU, así que solo la instrucción de IF (`04`) es del camino equivocado. La unidad pone `pc_sel = JAL` y `flush_d`.
+- **Ciclo 3:** IF ya busca el destino y en ID hay una burbuja. El `jal` sigue a EX porque tiene que escribir `x1 = 0x04`: por eso no hay `flush_e`. Costo: 1 ciclo (la ventaja de resolverlo en ID, ADR-006).
+
+#### HALT: `stall_f` + `r_halt_fetch`
+
+Es el final del programa del ejemplo de load-use:
+
+```
+c  | IF      | ID (IF/ID) | EX (ID/EX)        | MEM (EX/MEM)      | WB (MEM/WB)       | hazard unit | registro
+9  | 1c halt | 18 halt    | 14 addi x5, x0, 1 | 10 add x4, x3, x3 | ·                 | stall_f     |
+10 | 1c halt | ·          | 18 halt           | 14 addi x5, x0, 1 | 10 add x4, x3, x3 | stall_f     | r_halt_fetch=1
+11 | 1c halt | ·          | ·                 | 18 halt           | 14 addi x5, x0, 1 | stall_f     | r_halt_fetch=1
+12 | 1c halt | ·          | ·                 | ·                 | 18 halt           | stall_f     | r_halt_fetch=1
+13 | 1c halt | ·          | ·                 | ·                 | ·                 | stall_f     | r_halt_fetch=1  HALTED
+```
+
+- **Ciclo 9:** el HALT (`18`) está en ID, así que `w_halt_fetch = r_halt_fetch || i_halt_detected = 0 || 1 = 1` y la unidad pone `stall_f`. El PC no avanza (se queda en `1c`), IF manda `valid = 0` (lo de `1c` entra a IF/ID como burbuja) y en el flanco `r_halt_fetch` pasa a 1.
+- **Ciclos 10 a 12:** el HALT ya no está en ID (`i_halt_detected = 0`), pero `r_halt_fetch = 1` mantiene `stall_f`. Mientras tanto, el HALT viaja por EX, MEM y WB, y lo que tenía adelante termina.
+- **Ciclo 13:** el HALT pasó por WB, `riscv_core` pone `o_halted = 1` y todo se congela (`w_en = 0`). Los 4 latches están vacíos y el PC queda en `HALT + 4` (`1c`).
+
+El HALT no pone `bubble_e`: tiene que llegar a WB, porque es su llegada la que detiene el núcleo.
+
+#### HALT especulativo: la redirección le gana al HALT
+
+```asm
+04  beq  x1, x1, destino   # tomado
+08  halt                   # especulativo: del camino equivocado
+0c  addi x2, x0, 2
+10  destino: addi x4, x0, 4
+```
+
+```
+c | IF                | ID (IF/ID)          | EX (ID/EX)          | MEM (EX/MEM)        | WB (MEM/WB)         | hazard unit
+3 | 08 halt           | 04 beq x1, x1, 0x10 | 00 addi x1, x0, 1   | ·                   | ·                   | —
+4 | 0c addi x2, x0, 2 | 08 halt             | 04 beq x1, x1, 0x10 | 00 addi x1, x0, 1   | ·                   | pc_sel=EX flush_d flush_e
+5 | 10 addi x4, x0, 4 | ·                   | ·                   | 04 beq x1, x1, 0x10 | 00 addi x1, x0, 1   | —
+6 | 14 halt           | 10 addi x4, x0, 4   | ·                   | ·                   | 04 beq x1, x1, 0x10 | —
+```
+
+- **Ciclo 4:** hay un HALT en ID (`i_halt_detected = 1`) y un branch tomado en EX (`redirect_ex = 1`) a la vez. Gana la redirección (prioridad 1 contra 5), porque es la instrucción más vieja: si el `beq` salta, el HALT nunca debió entrar. En el registro pasa lo mismo: `if (i_redirect_ex) r_halt_fetch <= 0` va antes que la condición que lo prende.
+- **Ciclo 5:** el HALT desapareció (`flush_e` lo convirtió en burbuja), `r_halt_fetch` sigue en 0 y la búsqueda continúa en el destino. El programa termina con el HALT de `14`.
+
+#### `jal` y branch en el mismo ciclo: gana el branch
+
+```asm
+04  beq  x2, x2, destino   # tomado
+08  jal  x1, mal           # especulativo: no tiene que saltar ni escribir x1
+0c  addi x3, x0, 3
+10  destino: addi x10, x0, 10
+```
+
+```
+c | IF                  | ID (IF/ID)          | EX (ID/EX)          | MEM (EX/MEM)        | WB (MEM/WB)       | hazard unit
+3 | 08 jal x1, 0x18     | 04 beq x2, x2, 0x10 | 00 addi x2, x0, 1   | ·                   | ·                 | —
+4 | 0c addi x3, x0, 3   | 08 jal x1, 0x18     | 04 beq x2, x2, 0x10 | 00 addi x2, x0, 1   | ·                 | pc_sel=EX flush_d flush_e
+5 | 10 addi x10, x0, 10 | ·                   | ·                   | 04 beq x2, x2, 0x10 | 00 addi x2, x0, 1 | —
+```
+
+- **Ciclo 4:** el `jal` en ID quiere `pc_sel = JAL` y el `beq` en EX quiere `pc_sel = EX`. Sale `pc_sel = EX`: gana el branch, otra vez por ser la instrucción más vieja. `flush_e` descarta el `jal`, que nunca escribe `x1`, y el PC va a `0x10`, no a `mal` (`0x18`).
+
+Si la prioridad estuviera al revés, el PC iría a `mal`. Es lo que verifica `asm/tests/hazards/jal_branch_same_cycle.asm`.
+
+#### ABORT: `stall_f` + `bubble_e`
+
+Un lazo infinito, con `i_stop_fetch = 1` desde el ciclo 10 y mantenido por la Debug Unit:
+
+```asm
+04  lazo: addi x1, x1, 1
+08        addi x2, x2, 1
+0c        addi x3, x3, 1
+10        j    lazo
+```
+
+```
+c  | IF                | ID (IF/ID)        | EX (ID/EX)        | MEM (EX/MEM)      | WB (MEM/WB)       | hazard unit      |
+9  | 0c addi x3, x3, 1 | 08 addi x2, x2, 1 | 04 addi x1, x1, 1 | ·                 | 10 jal x0, 0x4    | —                |
+10 | 10 jal x0, 0x4    | 0c addi x3, x3, 1 | 08 addi x2, x2, 1 | 04 addi x1, x1, 1 | ·                 | stall_f bubble_e | ABORT
+11 | 10 jal x0, 0x4    | ·                 | ·                 | 08 addi x2, x2, 1 | 04 addi x1, x1, 1 | stall_f bubble_e | ABORT
+12 | 10 jal x0, 0x4    | ·                 | ·                 | ·                 | 08 addi x2, x2, 1 | stall_f bubble_e | ABORT
+13 | 10 jal x0, 0x4    | ·                 | ·                 | ·                 | ·                 | stall_f bubble_e | ABORT
+```
+
+- **Ciclo 10:** llega el ABORT. `stall_f` deja el PC en `10` (el `j` de IF entra como burbuja) y `bubble_e` descarta el `addi x3` de ID.
+- **Ciclo 11:** ID y EX están vacíos. Lo que ya estaba en EX y MEM (`addi x2`, `addi x1`) sigue y termina.
+- **Ciclo 13:** los 4 latches están vacíos, 3 ciclos después del ABORT. La Debug Unit ve los 4 `valid` en 0 y reporta `ABORTED`. A diferencia del HALT, `o_halted` no se prende: es la DU la que decide que terminó.
+
+Si en el ciclo del ABORT hubiera un branch tomado en EX, entraría por la prioridad 1: `flush_d` y `flush_e` igual, pero con `stall_f = i_stop_fetch = 1`, así que el PC no saltaría al destino, porque con ABORT no hay que buscar nada nuevo.
+
+### 13.4 `always` secuencial: `r_halt_fetch`
+
+```verilog
+// Busqueda detenida por un HALT/ilegal: el de este ciclo en ID o uno detectado antes
+wire w_halt_fetch = r_halt_fetch || i_halt_detected;
+
+// halt_fetch pegajoso
+always @(posedge clock) begin
+    if (i_reset) begin
+        r_halt_fetch <= 1'b0;
+    end else if (i_enable) begin
+        if (i_redirect_ex) r_halt_fetch <= 1'b0;
+        else if (i_halt_detected && !i_stop_fetch) r_halt_fetch <= 1'b1;
+    end
+end
+```
+
+`i_halt_detected` vale 1 **solo mientras el HALT está en ID**, o sea, un ciclo. Pero la búsqueda tiene que seguir detenida hasta que el HALT llegue a WB y el core se congele. Por eso hace falta un registro "pegajoso" que recuerde que se vio un HALT.
+
+`w_halt_fetch` junta dos términos, uno para cada momento:
+
+| Ciclo            | `i_halt_detected`         | `r_halt_fetch`                         | `w_halt_fetch` |
+| ---------------- | ------------------------- | -------------------------------------- | -------------- |
+| HALT en ID       | **1**                     | 0 (todavía no se cargó)                | 1              |
+| HALT en EX       | 0 (en ID hay una burbuja) | **1** (se cargó en el flanco anterior) | 1              |
+| HALT en MEM y WB | 0                         | **1**                                  | 1              |
+
+- **Sin `i_halt_detected`:** en el ciclo en que el HALT está en ID, la instrucción que viene detrás (en IF) entraría a IF/ID como válida.
+- **Sin `r_halt_fetch`:** desde el ciclo siguiente el PC volvería a buscar instrucciones.
+
+Cuando el HALT llega a WB, `riscv_core` pone `o_halted = 1` y `w_en = 0`. Como `w_en` es el `i_enable` de la hazard unit, el registro queda congelado en 1 hasta un reset.
+
+Condiciones del registro:
+
+- **Reset** (`i_reset`, que en el core es `i_reset || i_flush_all`): vuelve a 0. Actúa aunque `i_enable = 0`, igual que en los latches.
+- **Redirección de EX**: no se prende, o se borra. Si un branch más viejo salta, el HALT de ID era especulativo y `flush_e` lo descarta, así que no hay que detener la búsqueda. En el `always` combinacional pasa lo mismo: la redirección (prioridad 1) le gana al HALT (prioridad 5), así que en ese ciclo tampoco hay `stall_f` por el HALT.
+- **HALT en ID con ABORT**: no se prende. Ese HALT se descarta con `bubble_e`, y la búsqueda ya está detenida por `i_stop_fetch`, que la DU mantiene en 1. No hay nada que recordar.
