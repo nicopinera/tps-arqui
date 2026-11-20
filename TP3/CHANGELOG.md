@@ -54,6 +54,21 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `hw/rtl/debug/du_tx_mux.v`: multiplexor de `uart_tx` entre las respuestas cortas y el futuro `du_dumper`, con el `o_tx_done` dirigido solo al canal elegido (US-403).
 - `hw/rtl/debug/debug_unit.v`: wrapper que conecta los tres módulos y expone los puertos de `du_loader`, `du_exec_ctrl` y `du_dumper` hasta sus historias (US-403).
 - `tb_du_tx_mux.v`, `tb_du_resp_tx.v` (las 9 tramas fijas de §8.1) y `tb_du_cmd_fsm.v` (la Debug Unit por la UART con submódulos emulados; AC1 a AC6) (US-403).
+- `hw/rtl/debug/du_loader.v`: recibe `N` y las palabras de `LOAD` (little-endian), las escribe en la IMEM y verifica el checksum XOR. Al terminar recorre las 256 direcciones: HALT en la IMEM desde `N` (o en toda, con error o cancelación) y 0 en la DMEM; después pulsa `flush_all`, `clear_used` y `load_done`. `RESET` hace la misma limpieza sin tocar la IMEM (ADR-009, R-DU-4) (US-404).
+- `hw/tb/debug/tb_du_loader.v`: carga válida, `N = 256`, checksum incorrecto, cancelación en medio de la carga y durante la limpieza, `ERR_TAMANO` con `N = 0` y `N > 256`, `RESET` y cinco cargas seguidas, contra `core_stub` (AC3, AC5, AC7) (US-404).
+- `docs/guias/guia-estudio-debug-unit.md`: Parte 3 sobre `du_loader` (estados, registros, ejemplo ciclo a ciclo, errores comunes) (US-404).
+- `hw/rtl/debug/du_exec_ctrl.v`: modos `RUN` (enable sostenido hasta `o_halted`, fin como nivel `o_run_fin`) y `STEP` (un solo ciclo de enable, `o_step_done` un ciclo después); `i_enable` sale de un flip-flop (ADR-001, R-EJ-1, R-EJ-2) y contador de ciclos de 32 bits que solo suma cuando el núcleo avanza y vuelve a 0 con `load_done`. `ABORT` (`i_stop_fetch`) queda para US-407 (US-406).
+- `hw/tb/debug/tb_du_exec_ctrl.v`: con dos `core_stub` (fin por HALT y por ilegal) verifica un ciclo por STEP, STEP repetido = RUN (R-EJ-7), `o_run_fin` como nivel y la terminación por ilegal en ambos modos (AC1, AC2, AC6) (US-406).
+- `docs/guias/guia-estudio-debug-unit.md`: Parte 5 sobre `du_exec_ctrl` (estados, ejemplo ciclo a ciclo, contador, errores comunes) (US-406).
+- `du_exec_ctrl.v`: `ABORT` con estado `DRAIN`: `o_stop_fetch = 1` con el enable en 1 hasta que los 4 `valid` de los latches (`i_valid`) valen 0, o hasta `i_halted` si un HALT llega a WB durante el drenado; después `o_run_fin` como un RUN (ADR-010) (US-407).
+- `hw/tb/debug/tb_du_abort.v`: loop infinito + `ABORT` (drenado en 3 ciclos, latches vacíos, PC congelado), HALT durante el drenado, `ABORT` junto con `i_halted` y `ABORT` en `IDLE` (AC1) (US-407).
+- `docs/guias/guia-estudio-debug-unit.md`: §47 sobre el drenado de `ABORT` (US-407).
+- `du_dumper.v`: trama `MEM_DATA` de `DUMP_MEM` (`A5 05 len | dir | n | n palabras | XOR`) con el mismo serializador del snapshot (registro `r_modo`); valida el rango en 17 bits (alineada, `n ≥ 1`, `dir/4 + n ≤ 256`) y, si está mal, termina sin mandar nada con `o_err = ERR_RANGO` (US-408).
+- `hw/tb/debug/tb_du_dump_mem.v`: `DUMP_MEM` de punta a punta por la UART con `core_stub`: las palabras coinciden con la DMEM, rangos inválidos → `NACK(ERR_RANGO)` sin cambio de estado, `NACK(ERR_ESTADO)` en `RUN` y los ejemplos de `protocolo.md` §8.9 byte a byte (AC1–AC4) (US-408).
+- `tb_du_dumper.v`: casos de `MEM_DATA` (bordes, DMEM entera, ejemplo §8.9) y de rechazo (no alineada, `n = 0`, se pasa del final, desborde con `n = FFFF`) (US-408).
+- `docs/guias/guia-estudio-debug-unit.md`: §37 sobre la trama `MEM_DATA` (US-408).
+- `docs/guias/guia-caso-timing-debug-unit.md`: caso de estudio de la síntesis OOC de la DU (primer reporte, camino crítico por la longitud recalculada, el cambio a `r_len`/`r_pos_checksum`, antes y después: WNS 0,859 → 1,873 ns, 12 → 7 niveles de lógica).
+- `hw/scripts/synth_du_ooc.tcl` y `hw/constraints/du_ooc.xdc`: síntesis e implementación _out-of-context_ de `debug_unit` a 100 MHz en la xc7a35t, con reportes de utilización y timing en `hw/reports/du_ooc_*.rpt` (ADR-016).
 
 ### Changed
 
@@ -68,4 +83,11 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - `HALT_OPCODE` y `HALT_WORD` pasan de `protocol/comandos.py` a `isa/instrucciones.py`; `gen_du_defs.py` los toma de ahí y `du_defs.vh` no cambia (US-105).
 - ADR-013: los registros se escriben solo como `x0`–`x31`; los nombres ABI pasan al roadmap. Actualizados PRD (US-105, US-106, US-303, US-504, §13, §14, §15), ADR-012 y guía del datapath (US-105).
 - `make setup` también instala `binutils-riscv64-unknown-elf` (solo para `make gnu-ref`) (US-106).
+- `debug_unit` instancia `du_loader`: se quitan los puertos `o_req_load`/`o_load_*`/`i_load_*`/`o_req_reset`/`i_reset_done` y se agregan los del núcleo (`o_imem_*`, `o_dmem_*`, `o_clear_used`, `o_flush_all`) y `o_load_done`, más los parámetros `IMEM_ADDR_BITS`/`DMEM_ADDR_BITS` (US-404).
+- `tb_du_cmd_fsm.v` usa el `du_loader` real con un `core_stub` en lugar del loader falso; además verifica la palabra cargada en la IMEM y el HALT después de un `LOAD` cortado (US-404).
+- `debug_unit` instancia `du_exec_ctrl`: se quitan `o_req_run`/`o_req_step`/`o_req_abort`/`i_step_done`/`i_run_fin` y `o_load_done` (ahora interno), y se agregan `o_enable`, `o_stop_fetch` y `o_ciclos` (hasta que entre `du_dumper`) (US-406).
+- `tb_du_cmd_fsm.v` usa el `du_exec_ctrl` real moviendo el `core_stub`; el fin del drenado de `ABORT` se emula levantando `i_halted` hasta US-407 (US-406).
+- `debug_unit` recibe `i_latch_valid[3:0]` (bits `valid` de los latches, hasta que entren los buses para `du_dumper`) y `tb_du_cmd_fsm.v` drena de verdad con los `valid` del `core_stub`, sin la emulación de `ABORT` (US-407).
+- `du_dumper` calcula la longitud y la posición del checksum una sola vez al pedido (`r_len`, `r_pos_checksum`) en lugar de en cada ciclo: salen del camino crítico (`r_k` → sumas → comparación → `r_xor`, WNS 0,859 ns en la primera síntesis OOC).
+- `debug_unit` instancia `du_dumper` (canal 1 del mux, `i_ciclos` desde `du_exec_ctrl`): se quitan los puertos del dumper externo, `o_ciclos` e `i_latch_valid` (los `valid` salen de los buses) y se agregan los puertos de lectura del núcleo (PC, registros, DMEM, bitmap, riesgos y latches). `tb_du_cmd_fsm.v` usa el dumper real en lugar del falso (US-405, US-408).
 - PRD US-106: `ensamblar` es una función en vez de la clase `Assembler`, la `Imagen` suma `expansiones` y el fixture de GNU pasa a `tools/tests/assembler/fixtures/` (también en ADR-013) (US-106).

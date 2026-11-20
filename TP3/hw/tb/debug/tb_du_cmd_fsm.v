@@ -2,13 +2,13 @@
 
 // Prueba de la Debug Unit de US-403 a traves de la UART, como en la placa:
 //   host model -> uart_rx -> debug_unit -> uart_tx -> host model
-// Los submodulos que todavia no existen los emula el testbench:
-//   loader falso   cuenta los bytes de LOAD (N, palabras, checksum) y responde ok,
-//                  ERR_CHECKSUM o ERR_TAMANO como lo haria du_loader
-//   exec falso     STEP termina a los 3 ciclos; RUN termina cuando el test levanta
-//                  r_fin_tb, o 4 ciclos despues de un ABORT
-//   dumper falso   otra instancia de du_resp_tx en el canal 1 del mux: manda una trama
-//                  SNAPSHOT (03) con el byte de estado como payload, o MEM_DATA (05)
+// du_loader (US-404) y du_exec_ctrl (US-406) son los reales, adentro de debug_unit, y mueven
+// un core_stub. El o_halted / o_illegal que ve la Debug Unit lo maneja el test (cfg_halted,
+// cfg_illegal) para elegir en que STEP o en que momento del RUN termina el programa. ABORT
+// drena de verdad con los valid de los latches del stub (US-407). du_dumper tambien es el
+// real (US-405/408): los SNAPSHOT y MEM_DATA son las tramas completas, y aca se mira el
+// sobre, la longitud y el primer byte del payload (el contenido lo prueban tb_du_dumper y
+// tb_du_dump_mem).
 //
 //   AC1  PING responde PING_INFO en cualquier estado
 //   AC2  STEP en IDLE responde NACK(ERR_ESTADO) y el estado no cambia
@@ -33,26 +33,24 @@ module tb_du_cmd_fsm;
   wire [7:0] w_rx_data, w_tx_data;
   wire [3:0] w_estado;
 
-  wire        w_req_load, w_load_byte, w_load_cancel, w_req_reset;
-  wire [7:0]  w_load_data;
-  wire        w_req_run, w_req_step, w_req_abort;
-  wire        w_req_dump, w_req_dump_mem;
-  wire [15:0] w_dm_addr, w_dm_n;
-  wire [7:0]  w_snap_estado;
-  wire        w_dump_tx_start, w_dump_tx_done;
-  wire [7:0]  w_dump_tx_data;
+  wire        w_imem_we, w_dmem_we, w_clear_used, w_flush_all;
+  wire [7:0]  w_imem_addr, w_dmem_addr;
+  wire [31:0] w_imem_wdata;
+  wire        w_enable, w_stop_fetch;
+  wire [103:0] w_if_id;
+  wire [247:0] w_id_ex;
+  wire [151:0] w_ex_mem;
+  wire [143:0] w_mem_wb;
+  wire [3:0]   w_valid = {w_mem_wb[104], w_ex_mem[112], w_id_ex[200], w_if_id[96]};
+  wire [31:0]  w_pc, w_reg_data, w_mem_data;
+  wire [4:0]   w_reg_addr;
+  wire [7:0]   w_mem_addr;
+  wire         w_mem_used, w_stall, w_fl_ifid, w_fl_idex;
+  wire [8:0]   w_used_count;                 // K del stub: la longitud del SNAPSHOT es 221 + 6K
+  wire [1:0]   w_fwd_a, w_fwd_b;
 
-  reg        r_load_done = 1'b0;
-  reg  [7:0] r_load_err = 8'h00;
-  reg        r_reset_done = 1'b0;
-  reg        r_step_done = 1'b0;
-  reg        r_fin_abort = 1'b0;    // el exec falso termino el drenado de ABORT
-  reg        r_fin_tb = 1'b0;       // el test dice "el programa llego al HALT"
   reg        cfg_halted = 1'b0;     // o_halted / o_illegal del nucleo
   reg        cfg_illegal = 1'b0;
-  reg        cfg_dm_err = 1'b0;     // el dumper falso responde ERR_RANGO a DUMP_MEM
-  wire       w_dump_done;
-  wire [7:0] w_dump_err;
 
   baudrate_gen #(.COUNT_MAX(COUNT_MAX)) u_baud (
     .clock(clock), .i_reset(i_reset), .o_baudrate(w_s_tick)
@@ -67,17 +65,17 @@ module tb_du_cmd_fsm;
     .clock(clock), .i_reset(i_reset),
     .i_rx_done(w_rx_done), .i_rx_data(w_rx_data), .i_parity_err(w_parity_err),
     .o_tx_start(w_tx_start), .o_tx_data(w_tx_data), .i_tx_done(w_tx_done),
-    .o_req_load(w_req_load), .o_load_byte(w_load_byte), .o_load_data(w_load_data),
-    .o_load_cancel(w_load_cancel), .i_load_done(r_load_done), .i_load_err(r_load_err),
-    .o_req_reset(w_req_reset), .i_reset_done(r_reset_done),
-    .o_req_run(w_req_run), .o_req_step(w_req_step), .o_req_abort(w_req_abort),
-    .i_step_done(r_step_done), .i_run_fin(r_fin_abort || r_fin_tb),
+    .o_imem_we(w_imem_we), .o_imem_addr(w_imem_addr), .o_imem_wdata(w_imem_wdata),
+    .o_dmem_we(w_dmem_we), .o_dmem_addr(w_dmem_addr),
+    .o_clear_used(w_clear_used), .o_flush_all(w_flush_all),
+    .o_enable(w_enable), .o_stop_fetch(w_stop_fetch),
     .i_halted(cfg_halted), .i_illegal(cfg_illegal),
-    .o_req_dump(w_req_dump), .o_req_dump_mem(w_req_dump_mem),
-    .o_dm_addr(w_dm_addr), .o_dm_n(w_dm_n), .o_snap_estado(w_snap_estado),
-    .i_dump_done(w_dump_done), .i_dump_err(w_dump_err),
-    .i_dump_tx_start(w_dump_tx_start), .i_dump_tx_data(w_dump_tx_data),
-    .o_dump_tx_done(w_dump_tx_done),
+    .i_pc(w_pc), .o_dbg_reg_addr(w_reg_addr), .i_dbg_reg_data(w_reg_data),
+    .o_dbg_mem_addr(w_mem_addr), .i_dbg_mem_data(w_mem_data), .i_dbg_mem_used(w_mem_used),
+    .i_dbg_used_count(w_used_count),
+    .i_stall(w_stall), .i_flush_if_id(w_fl_ifid), .i_flush_id_ex(w_fl_idex),
+    .i_fwd_a(w_fwd_a), .i_fwd_b(w_fwd_b),
+    .i_if_id(w_if_id), .i_id_ex(w_id_ex), .i_ex_mem(w_ex_mem), .i_mem_wb(w_mem_wb),
     .o_estado(w_estado)
   );
 
@@ -88,143 +86,37 @@ module tb_du_cmd_fsm;
 
   always #5 clock = ~clock;
 
-  // --- Loader falso (du_loader, US-404) ----------------------------------------------------
-  reg [7:0] ld_buf [0:15];
-  reg [7:0] ld_xor;
-  reg       ld_activo = 1'b0;
-  integer   ld_count, ld_n, ld_total;
-  integer   n_req_load = 0, n_cancel = 0, n_huerfanos = 0;
-
-  always @(posedge clock)
-  begin
-    r_load_done <= 1'b0;
-    if (w_req_load)
-    begin
-      ld_activo = 1'b1;
-      ld_count  = 0;
-      ld_total  = 1000;
-      ld_xor    = 8'h00;
-      n_req_load = n_req_load + 1;
-    end
-    if (w_load_cancel)
-    begin
-      ld_activo = 1'b0;
-      n_cancel  = n_cancel + 1;
-    end
-    if (w_load_byte)
-    begin
-      if (!ld_activo)
-        n_huerfanos = n_huerfanos + 1;   // la FSM no deberia reenviar bytes al terminar
-      else
-      begin
-        if (ld_count < 16)
-          ld_buf[ld_count] = w_load_data;
-        if (ld_count == ld_total - 1)
-        begin
-          ld_activo   = 1'b0;            // ultimo byte: el checksum
-          r_load_done <= 1'b1;
-          r_load_err  <= (ld_xor == w_load_data) ? 8'h00 : `DU_ERR_CHECKSUM;
-        end
-        else
-          ld_xor = ld_xor ^ w_load_data;
-        if (ld_count == 1)
-        begin
-          ld_n     = {w_load_data, ld_buf[0]};
-          ld_total = 2 + 4 * ld_n + 1;
-          if (ld_n == 0 || ld_n > `DU_IMEM_DEPTH)
-          begin
-            ld_activo   = 1'b0;          // error antes de que termine la carga
-            r_load_done <= 1'b1;
-            r_load_err  <= `DU_ERR_TAMANO;
-          end
-        end
-        ld_count = ld_count + 1;
-      end
-    end
-  end
-
-  // --- RESET y exec falsos (du_loader y du_exec_ctrl) ----------------------------------------
-  integer rst_cnt = 0, step_cnt = 0, abort_cnt = 0;
-  integer n_req_run = 0, n_req_reset = 0;
-  always @(posedge clock)
-  begin
-    r_reset_done <= 1'b0;
-    r_step_done  <= 1'b0;
-    if (w_req_reset)
-    begin
-      rst_cnt = 5;
-      n_req_reset = n_req_reset + 1;
-    end
-    else if (rst_cnt > 0)
-    begin
-      rst_cnt = rst_cnt - 1;
-      if (rst_cnt == 0)
-        r_reset_done <= 1'b1;
-    end
-    if (w_req_step)
-      step_cnt = 3;
-    else if (step_cnt > 0)
-    begin
-      step_cnt = step_cnt - 1;
-      if (step_cnt == 0)
-        r_step_done <= 1'b1;
-    end
-    if (w_req_run)
-    begin
-      r_fin_abort <= 1'b0;             // contrato: i_run_fin baja con o_req_run
-      n_req_run = n_req_run + 1;
-    end
-    if (w_req_abort)
-      abort_cnt = 4;                   // drenado del pipeline
-    else if (abort_cnt > 0)
-    begin
-      abort_cnt = abort_cnt - 1;
-      if (abort_cnt == 0)
-        r_fin_abort <= 1'b1;
-    end
-  end
-
-  // --- Dumper falso (du_dumper, US-405): trama corta por el canal 1 ----------------------------
-  reg        r_dp_send = 1'b0, r_dp_err = 1'b0;
-  reg  [7:0] r_dp_tipo = 8'h00, r_dp_cod = 8'h00;
-  wire       w_dp_done;
-  reg [15:0] dm_addr_cap, dm_n_cap;
-  integer    n_dump = 0;
-
-  du_resp_tx u_dump (
-    .clock(clock), .i_reset(i_reset),
-    .i_send(r_dp_send), .i_tipo(r_dp_tipo), .i_codigo(r_dp_cod), .o_done(w_dp_done),
-    .o_tx_start(w_dump_tx_start), .o_tx_data(w_dump_tx_data), .i_tx_done(w_dump_tx_done)
+  // --- Nucleo falso: lo que escribe du_loader queda en su IMEM -----------------------------
+  core_stub u_core (
+    .clock(clock), .i_reset(i_reset), .i_enable(w_enable),
+    .i_flush_all(w_flush_all), .i_stop_fetch(w_stop_fetch),
+    .o_halted(), .o_illegal(), .o_pc(w_pc),
+    .i_imem_we(w_imem_we), .i_imem_addr(w_imem_addr), .i_imem_wdata(w_imem_wdata),
+    .i_dbg_dmem_we(w_dmem_we), .i_dbg_dmem_addr(w_dmem_addr), .i_clear_used(w_clear_used),
+    .i_dbg_reg_addr(w_reg_addr), .o_dbg_reg_data(w_reg_data),
+    .i_dbg_mem_addr(w_mem_addr), .o_dbg_mem_data(w_mem_data), .o_dbg_mem_used(w_mem_used),
+    .o_dbg_used_count(w_used_count),
+    .o_stall(w_stall), .o_flush_if_id(w_fl_ifid), .o_flush_id_ex(w_fl_idex),
+    .o_fwd_a(w_fwd_a), .o_fwd_b(w_fwd_b),
+    .o_if_id(w_if_id), .o_id_ex(w_id_ex), .o_ex_mem(w_ex_mem), .o_mem_wb(w_mem_wb)
   );
 
-  assign w_dump_done = w_dp_done || r_dp_err;
-  assign w_dump_err  = r_dp_err ? `DU_ERR_RANGO : 8'h00;
-
+  // --- Lo que pasa entre du_cmd_fsm y du_loader (senales internas de debug_unit) -----------
+  // Huerfano: la FSM reenvia un byte cuando el loader no esta recibiendo (IDLE, LIMPIAR, FIN)
+  integer n_cancel = 0, n_huerfanos = 0, n_req_reset = 0;
   always @(posedge clock)
   begin
-    r_dp_send <= 1'b0;
-    r_dp_err  <= 1'b0;
-    if (w_req_dump)
-    begin
-      r_dp_send <= 1'b1;
-      r_dp_tipo <= `DU_TIPO_SNAPSHOT;
-      r_dp_cod  <= w_snap_estado;      // el byte 0 del snapshot real
-      n_dump = n_dump + 1;
-    end
-    if (w_req_dump_mem)
-    begin
-      dm_addr_cap = w_dm_addr;
-      dm_n_cap    = w_dm_n;
-      if (cfg_dm_err)
-        r_dp_err <= 1'b1;              // valida el rango y no manda nada
-      else
-      begin
-        r_dp_send <= 1'b1;
-        r_dp_tipo <= `DU_TIPO_MEM_DATA;
-        r_dp_cod  <= w_dm_n[7:0];
-      end
-    end
+    if (u_du.w_load_cancel) n_cancel = n_cancel + 1;
+    if (u_du.w_req_reset)   n_req_reset = n_req_reset + 1;
+    if (u_du.w_load_byte && (u_du.u_loader.r_state == 3'd0 || u_du.u_loader.r_state >= 3'd5))
+      n_huerfanos = n_huerfanos + 1;
   end
+
+  // --- Pedidos a du_exec_ctrl ---------------------------------------------------------------
+  integer n_req_run = 0;
+  always @(posedge clock)
+    if (u_du.w_req_run)
+      n_req_run = n_req_run + 1;
 
   // --- Tareas del host ---------------------------------------------------------------------
   reg r_ok;
@@ -256,8 +148,12 @@ module tb_du_cmd_fsm;
     begin
       check_eq(nombre, {31'd0, r_ok}, 32'd1);
       check_eq(nombre, {24'd0, host_tipo}, {24'd0, tipo});
-      check_eq(nombre, {16'd0, host_len}, len);
-      if (len == 1)
+      // SNAPSHOT: 221 + 6K (el nucleo esta congelado, K es el mismo que vio el dumper)
+      if (tipo == `DU_TIPO_SNAPSHOT)
+        check_eq(nombre, {16'd0, host_len}, 221 + 6 * w_used_count);
+      else
+        check_eq(nombre, {16'd0, host_len}, len);
+      if (len >= 1)
         check_eq(nombre, {24'd0, host_payload[0]}, {24'd0, payload});
       repeat (3 * host_ciclos_bit) @(negedge clock);   // que termine de salir la trama
       check_eq(nombre, {28'd0, w_estado}, {28'd0, estado});
@@ -389,6 +285,7 @@ module tb_du_cmd_fsm;
     enviar(`DU_CMD_LOAD, 4);
     verificar("LOAD cortado: timeout", `DU_TIPO_NACK, 1, `DU_ERR_TIMEOUT, `DU_ESTADO_IDLE);
     check_eq("LOAD cortado: cancela la carga", n_cancel, 1);
+    check_eq("LOAD cortado: IMEM con HALT", u_core.r_imem[0], `DU_HALT_WORD);   // US-404 AC7
     ping(`DU_ESTADO_IDLE);
 
     // Checksum incorrecto: lo detecta el loader, NACK(ERR_CHECKSUM) y a IDLE
@@ -420,22 +317,18 @@ module tb_du_cmd_fsm;
 
     // === LOAD correcto -> READY ==========================================================
     cargar;
-    check_eq("loader recibio la palabra", {ld_buf[5], ld_buf[4], ld_buf[3], ld_buf[2]},
-             32'h00500093);
+    check_eq("LOAD: palabra en IMEM[0]", u_core.r_imem[0], 32'h00500093);
+    check_eq("LOAD: HALT en IMEM[1]", u_core.r_imem[1], `DU_HALT_WORD);
     ping(`DU_ESTADO_READY);
     nack_estado(`DU_CMD_ABORT, `DU_ESTADO_READY);
     dump(8'h02, `DU_ESTADO_READY);
 
     // DUMP_MEM: argumentos, MEM_DATA y vuelta al estado previo
     dump_mem(16'h0000, 16'h0002);
-    verificar("DUMP_MEM", `DU_TIPO_MEM_DATA, 1, 8'h02, `DU_ESTADO_READY);
-    check_eq("DUMP_MEM: direccion", {16'd0, dm_addr_cap}, 32'h0000);
-    check_eq("DUMP_MEM: cantidad", {16'd0, dm_n_cap}, 32'h0002);
-    cfg_dm_err = 1'b1;
+    verificar("DUMP_MEM", `DU_TIPO_MEM_DATA, 12, 8'h00, `DU_ESTADO_READY);   // len 4 + 4n
+    check_eq("DUMP_MEM: n LE", {16'd0, host_payload[3], host_payload[2]}, 32'h0002);
     dump_mem(16'h03FC, 16'h0002);
-    cfg_dm_err = 1'b0;
     verificar("DUMP_MEM fuera de rango", `DU_TIPO_NACK, 1, `DU_ERR_RANGO, `DU_ESTADO_READY);
-    check_eq("DUMP_MEM: direccion 0x3FC", {16'd0, dm_addr_cap}, 32'h03FC);
     host_args[0] = 8'h00;                                     // cortado despues de 1 byte
     enviar(`DU_CMD_DUMP_MEM, 1);
     verificar("DUMP_MEM cortado", `DU_TIPO_NACK, 1, `DU_ERR_TIMEOUT, `DU_ESTADO_READY);
@@ -486,17 +379,10 @@ module tb_du_cmd_fsm;
     verificar("paridad en RUN", `DU_TIPO_NACK, 1, `DU_ERR_PARIDAD, `DU_ESTADO_RUN);
 
     // El programa termina por instruccion ilegal -> snapshot con motivo ILLEGAL
-    cfg_halted  = 1'b1;
     cfg_illegal = 1'b1;
-    fork
-      recv_frame(r_ok);
-      begin
-        repeat (10) @(negedge clock);
-        r_fin_tb = 1'b1;
-      end
-    join
+    cfg_halted  = 1'b1;
+    recv_frame(r_ok);
     verificar("RUN -> ILLEGAL", `DU_TIPO_SNAPSHOT, 1, 8'h26, `DU_ESTADO_HALTED);
-    r_fin_tb    = 1'b0;
     cfg_halted  = 1'b0;
     cfg_illegal = 1'b0;
 
@@ -504,7 +390,6 @@ module tb_du_cmd_fsm;
     enviar(`DU_CMD_RESET, 0);
     verificar("RESET", `DU_TIPO_ACK, 0, 8'h00, `DU_ESTADO_READY);
     correr;
-    cfg_halted = 1'b1;
     fork
       send_byte(`DU_CMD_PING);
       begin
@@ -514,11 +399,10 @@ module tb_du_cmd_fsm;
       end
       begin
         repeat (11 * host_ciclos_bit + 1000) @(negedge clock);  // con la respuesta saliendo
-        r_fin_tb = 1'b1;
+        cfg_halted = 1'b1;
       end
     join
     verificar("fin durante PING: snapshot", `DU_TIPO_SNAPSHOT, 1, 8'h16, `DU_ESTADO_HALTED);
-    r_fin_tb   = 1'b0;
     cfg_halted = 1'b0;
 
     // ABORT: sin respuesta inmediata; despues del drenado, snapshot con motivo ABORTED
@@ -527,6 +411,8 @@ module tb_du_cmd_fsm;
     correr;
     enviar(`DU_CMD_ABORT, 0);
     verificar("ABORT", `DU_TIPO_SNAPSHOT, 1, 8'h36, `DU_ESTADO_HALTED);
+    check_eq("ABORT: latches vacios", {28'd0, w_valid}, 32'd0);
+    check_eq("ABORT: stop_fetch baja", {31'd0, w_stop_fetch}, 32'd0);
 
     // Otro RUN despues del ABORT: el i_run_fin viejo no lo termina en el primer ciclo
     enviar(`DU_CMD_RESET, 0);
@@ -536,6 +422,7 @@ module tb_du_cmd_fsm;
     check_eq("RUN tras ABORT sigue corriendo", {28'd0, w_estado}, {28'd0, `DU_ESTADO_RUN});
     enviar(`DU_CMD_ABORT, 0);
     verificar("ABORT", `DU_TIPO_SNAPSHOT, 1, 8'h36, `DU_ESTADO_HALTED);
+    check_eq("ABORT 2: latches vacios", {28'd0, w_valid}, 32'd0);
 
     // LOAD desde HALTED borra el motivo y vuelve a READY
     cargar;
