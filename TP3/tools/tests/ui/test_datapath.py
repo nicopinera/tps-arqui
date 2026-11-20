@@ -17,7 +17,7 @@ from riscv_toolkit.ui.datapath import (
     valores_datapath,
 )
 
-HAZARDS = Path(__file__).parents[3] / "asm" / "tests" / "hazards"
+HAZARDS = Path(__file__).parents[1] / "fixtures" / "asm"
 NOMBRES = {nombre_de(e["texto"]) for e in cargar_mapa()["etiquetas"]}
 
 

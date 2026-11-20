@@ -16,7 +16,7 @@ from riscv_toolkit.protocol.snapshot import RiesgosCiclo, Snapshot
 from riscv_toolkit.protocol.transport import Transport
 
 ASM = Path(__file__).parents[3] / "asm"
-FIBONACCI = str(ASM / "demos" / "fibonacci.asm")
+FIBONACCI = str(Path(__file__).parents[1] / "fixtures" / "asm" / "fibonacci.asm")
 INFINITO = str(ASM / "special" / "infinite_loop.asm")
 FIXTURES = Path(__file__).parents[1] / "protocol" / "fixtures"
 

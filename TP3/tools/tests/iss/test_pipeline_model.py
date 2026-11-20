@@ -382,6 +382,7 @@ def test_stop_fetch_vacia_el_pipeline_sin_buscar_mas() -> None:
 # --- Paso 5: todos los programas del repo contra el golden model ----------------------------
 
 ASM = Path(__file__).resolve().parents[3] / "asm"
+FIXTURES_ASM = Path(__file__).resolve().parents[1] / "fixtures" / "asm"
 PROGRAMAS_REPO = sorted(
     p for p in ASM.rglob("*.asm") if "errores" not in p.parts and p.stem != "infinite_loop"
 )
@@ -406,7 +407,7 @@ def test_programa_del_repo_igual_al_golden(ruta: Path) -> None:
     ],
 )
 def test_ciclos_de_los_programas_de_riesgos(nombre: str, ciclos: int) -> None:
-    ruta = ASM / "tests" / "hazards" / f"{nombre}.asm"
+    ruta = FIXTURES_ASM / f"{nombre}.asm"
     modelo, _ = correr(ruta.read_text(encoding="utf-8"))
     assert modelo.ciclos == ciclos
 
@@ -437,7 +438,7 @@ def test_desde_snapshot_reproduce_el_ciclo_siguiente(ruta: Path) -> None:
 
 
 def test_cables_del_load_use() -> None:
-    asm = (ASM / "tests" / "hazards" / "load_use.asm").read_text(encoding="utf-8")
+    asm = (FIXTURES_ASM / "load_use.asm").read_text(encoding="utf-8")
     _, snaps = correr(asm)
     palabras = ensamblar(asm).palabras
 

@@ -41,7 +41,8 @@ from riscv_toolkit.session.debug_session import (
 )
 
 ASM = Path(__file__).parents[3] / "asm"
-FIBONACCI = ensamblar((ASM / "demos" / "fibonacci.asm").read_text(encoding="utf-8")).palabras
+FIXTURES_ASM = Path(__file__).parents[1] / "fixtures" / "asm"
+FIBONACCI = ensamblar((FIXTURES_ASM / "fibonacci.asm").read_text(encoding="utf-8")).palabras
 LOOP = ensamblar("addi x1, x0, 1\nloop: j loop\n").palabras
 RAPIDO = Timeouts(respuesta=0.05, snapshot=0.05, sondeo=0.01)
 
