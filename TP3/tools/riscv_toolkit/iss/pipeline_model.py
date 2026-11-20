@@ -116,6 +116,9 @@ class _Siguiente:
     escritura_mem: tuple[int, bytes] | None  # (índice en la DMEM, bytes): store_align
     halt_fetch: bool
     riesgos: RiesgosCiclo
+    # Los cables combinacionales con el nombre del diagrama (datapath_pipeline.drawio), antes
+    # de que un stall o un flush los tape: los muestra la vista Datapath de la GUI.
+    cables: dict[str, int]
 
 
 class ModeloPipeline:
@@ -257,9 +260,9 @@ class ModeloPipeline:
         c = controlar(f.instr) if f.valid else Control()  # una burbuja no prende nada
         campos = decode_r(f.instr)  # rs1, rs2, rd, funct3, funct7: mismo lugar en todo formato
         imm = inmediato(f.instr, c.imm_type)
+        rs1_data, rs2_data = self._leer(campos.rs1), self._leer(campos.rs2)
         id_ex = LatchIDEX(
-            pc=f.pc, pc_plus4=f.pc_plus4,
-            rs1_data=self._leer(campos.rs1), rs2_data=self._leer(campos.rs2), imm=imm,
+            pc=f.pc, pc_plus4=f.pc_plus4, rs1_data=rs1_data, rs2_data=rs2_data, imm=imm,
             rs1=campos.rs1, rs2=campos.rs2, rd=campos.rd, funct3=campos.funct3,
             alu_op=c.alu_op, valid=f.valid, reg_write=bool(c.reg_write),
             mem_read=bool(c.mem_read), mem_write=bool(c.mem_write), alu_src=bool(c.alu_src),
@@ -300,6 +303,34 @@ class ModeloPipeline:
             if_id, id_ex = LatchIFID(), LatchIDEX()
             stall = False
 
+        cables = {
+            # IF
+            "pcF": self.pc, "pc_plus4F": (self.pc + 4) & _MASCARA_32,
+            "instrF": self.imem[(self.pc // 4) % len(self.imem)], "validF": 1,
+            # ID: lo que sale de la unidad de control, el banco y imm_gen hacia ID/EX
+            "op": f.instr & 0x7F, "funct3": campos.funct3, "funct7": campos.funct7,
+            "rs1D": campos.rs1, "rs2D": campos.rs2, "rdD": campos.rd,
+            "funct3D": campos.funct3, "funct7_b5D": campos.funct7 >> 5 & 1,
+            "rs1_dataD": rs1_data, "rs2_dataD": rs2_data, "immD": imm,
+            "imm_type": c.imm_type, "reg_writeD": c.reg_write, "result_srcD": c.result_src,
+            "mem_readD": c.mem_read, "mem_writeD": c.mem_write, "alu_srcD": c.alu_src,
+            "alu_opD": c.alu_op, "branchD": c.branch, "jumpD": c.jump, "jalrD": c.jalr,
+            "haltD": c.halt, "illegalD": c.illegal, "uses_rs1": c.uses_rs1,
+            "uses_rs2": c.uses_rs2, "jal_target": (f.pc + imm) & _MASCARA_32,
+            # EX
+            "srcA": a, "srcB": e.imm if e.alu_src else b, "store_data": b,
+            "alu_resultE": alu_result, "eq": int(a == b),
+            "branch_target": (e.pc + e.imm) & _MASCARA_32, "jalr_target": alu_result & ~1,
+            "ex_target": destino_ex, "redirect_ex": int(redirige_ex),
+            # MEM y WB
+            "mem_dataM": mem_data, "ResultW": _valor_wb(wb),
+            # Hazard Unit (guía de riesgos §7.1)
+            "pc_sel": 0b10 if redirige_ex else 0b01 if salta_jal else 0b00,
+            "StallF": int(stall or halt_fetch or self.stop_fetch), "StallD": int(stall),
+            "FlushD": int(redirige_ex or salta_jal or halt_fetch or self.stop_fetch),
+            "FlushE": int(redirige_ex or stall or self.stop_fetch),
+        }  # fmt: skip
+
         return _Siguiente(
             pc=pc, if_id=if_id, id_ex=id_ex, ex_mem=ex_mem, mem_wb=mem_wb,
             escritura_reg=escritura_reg, escritura_mem=escritura_mem, halt_fetch=halt_fetch,
@@ -307,6 +338,7 @@ class ModeloPipeline:
                 stall=stall, flush_if_id=redirige_ex or salta_jal, flush_id_ex=redirige_ex,
                 fwd_a=fwd_a, fwd_b=fwd_b,
             ),
+            cables=cables,
         )  # fmt: skip
 
     # --- Flanco -----------------------------------------------------------------------------
@@ -359,6 +391,34 @@ class ModeloPipeline:
             mem_usada=self._mem_usada(),
             simulado=True,
         )
+
+    def cables(self) -> dict[str, int]:
+        """Los cables combinacionales de este ciclo, con el nombre del diagrama."""
+        return self._combinacional().cables
+
+    @classmethod
+    def desde_snapshot(cls, snap: Snapshot, imem_words: list[int]) -> "ModeloPipeline":
+        """El modelo en el estado de un snapshot (de la placa o del fake), para recalcular los
+        cables combinacionales que el snapshot no trae.
+
+        `halt_fetch` no viaja en el snapshot, pero se deduce: se prende con el HALT en ID, y
+        al ciclo siguiente ese HALT está en EX; desde ahí hasta que sale de WB hay un HALT
+        válido en ID/EX, EX/MEM o MEM/WB. `stop_fetch` (ABORT) no se puede deducir: queda en 0.
+        """
+        modelo = cls(imem_words)
+        modelo.regs, modelo.pc, modelo.ciclos = list(snap.regs), snap.pc, snap.ciclos
+        modelo.if_id, modelo.id_ex, modelo.ex_mem, modelo.mem_wb = (
+            snap.if_id,
+            snap.id_ex,
+            snap.ex_mem,
+            snap.mem_wb,
+        )
+        modelo.halt_fetch = any(x.valid and x.halt for x in (snap.id_ex, snap.ex_mem, snap.mem_wb))
+        modelo.motivo = snap.motivo
+        for direccion, palabra in snap.mem_usada.items():  # el resto de la DMEM vale 0 (ADR-008)
+            modelo.dmem[direccion : direccion + 4] = palabra.to_bytes(4, "little")
+            modelo.mem_escrita.add(direccion)
+        return modelo
 
     def _mem_usada(self) -> dict[int, int]:
         return {d: int.from_bytes(self.dmem[d : d + 4], "little") for d in sorted(self.mem_escrita)}
