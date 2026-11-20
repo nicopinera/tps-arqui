@@ -180,15 +180,18 @@ def test_ac5_if_despues_de_un_salto_tomado_es_el_destino() -> None:
     assert columnas_pipeline(s, PROGRAMA)[0].texto == "addi x4, x0, 4"
 
 
-def test_con_el_fake_se_ven_cinco_instrucciones_seguidas() -> None:
+def test_con_el_fake_se_ven_el_stall_el_forwarding_y_el_flush() -> None:
+    # El fake corre el modelo del pipeline: PROGRAMA tiene un load-use y un beq tomado.
     sesion = DebugSession(FakeTransport())
     sesion.load(PROGRAMA)
-    for _ in range(4):
-        s = sesion.step()
-    cols = columnas_pipeline(s, PROGRAMA)
-    # El fake ejecuta de a una instrucción: lw, add, beq (tomado → 0x10), addi x4.
-    assert [c.pc for c in cols] == [0x14, 0x10, 0x08, 0x04, 0x00]
-    assert not any(c.burbuja for c in cols)
+    s = [sesion.dump(), *(sesion.step() for _ in range(6))]
+    assert s[2].riesgos.stall  # lw en EX, add en ID
+    cols = columnas_pipeline(s[3], PROGRAMA)
+    assert [c.pc for c in cols] == [0x08, 0x04, None, 0x00, None]  # add sigue en ID; burbuja
+    assert cols[2].burbuja
+    assert (s[4].riesgos.fwd_a, s[4].riesgos.fwd_b) == (0b01, 0b01)  # add en EX, x1 de MEM/WB
+    assert (s[5].riesgos.flush_if_id, s[5].riesgos.flush_id_ex) == (True, True)  # beq en EX
+    assert s[6].pc == 0x10  # IF busca el destino
 
 
 def test_sin_snapshot_los_latches_estan_vacios() -> None:

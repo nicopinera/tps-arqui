@@ -86,7 +86,7 @@ def test_ac3_un_loop_da_una_fila_por_vuelta() -> None:
     sesion = DebugSession(FakeTransport())
     sesion.load(programa)
     sesion.dump()
-    for _ in range(6):
+    for _ in range(9):  # cada vuelta son 3 ciclos: addi, j y la burbuja del flush del j
         sesion.step()
     carta = carta_pipeline(sesion.historial, programa)
     textos = [f.texto for f in carta.filas]

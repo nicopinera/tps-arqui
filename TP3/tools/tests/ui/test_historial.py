@@ -99,8 +99,8 @@ def test_resumen_de_una_corrida_paso_a_paso() -> None:
     assert len(r.ocupadas) == len(snaps)
     assert sum(r.reparto.values()) == r.ciclos == r.vistos
     assert r.reparto["Útiles"] == r.instrucciones
-    if r.instrucciones:  # el fake no simula el pipeline: solo que las cuentas cierran
-        assert r.cpi == r.ciclos / r.instrucciones
+    assert r.instrucciones == 3  # addi, sw y lw (el halt no cuenta)
+    assert r.ciclos == 4 + 4  # sin stalls (sw toma x1 por forwarding): CPI = 8 / 3
 
 
 def test_resumen_cuenta_riesgos_y_la_mezcla() -> None:

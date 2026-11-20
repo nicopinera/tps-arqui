@@ -93,8 +93,8 @@ def test_step_frena_al_terminar(capsys: Capsys, tmp_path: Path) -> None:
     corto.write_text("addi x1, x0, 1\nhalt\n", encoding="utf-8")
     assert dbg("step", "50", "--load", str(corto)) == 0
     salida = capsys.readouterr().out
-    assert "HALTED · motivo HALTED · 2 ciclos" in salida
-    assert salida.count(": pc 0x") == 1  # el avance del primer STEP; el segundo es el resumen
+    assert "HALTED · motivo HALTED · 6 ciclos" in salida  # 2 instrucciones + 4 de llenado
+    assert salida.count(": pc 0x") == 5  # el avance de los 5 primeros STEP; el 6.º es el resumen
 
 
 def test_dump_ping_y_reset(capsys: Capsys) -> None:

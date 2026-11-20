@@ -88,7 +88,7 @@ class CtrlC(FakeTransport):
     """El fake, pero la primera vez que no hay nada para leer simula un Ctrl+C."""
 
     def __init__(self) -> None:
-        super().__init__(max_instr=50)
+        super().__init__(max_ciclos=50)
         self.armado = True
 
     def read(self, n: int, timeout: float | None) -> bytes:
@@ -220,7 +220,7 @@ def test_load_durante_run_no_manda_la_trama() -> None:
 
 
 def test_dump_mem_con_estado_desconocido_pregunta_antes() -> None:
-    fake = FakeTransport(max_instr=10)
+    fake = FakeTransport(max_ciclos=10)
     otra = DebugSession(fake, RAPIDO)  # otro proceso dejó la placa corriendo
     otra.load(LOOP)
     fake.write(bytes([Comando.RUN]))
@@ -275,7 +275,7 @@ def test_ctrl_c_durante_run_y_abort() -> None:
 
 
 def test_run_con_bandera_levantada_aborta() -> None:
-    sesion = DebugSession(FakeTransport(max_instr=10), RAPIDO)
+    sesion = DebugSession(FakeTransport(max_ciclos=10), RAPIDO)
     sesion.load(LOOP)
     cancelar = threading.Event()
     cancelar.set()
@@ -288,7 +288,7 @@ def test_run_con_bandera_levantada_aborta() -> None:
 
 def test_run_cancelado_desde_otro_hilo() -> None:
     # Lo que hace la GUI: el worker espera en run() y el botón Abortar levanta la bandera.
-    sesion = DebugSession(FakeTransport(max_instr=10), RAPIDO)
+    sesion = DebugSession(FakeTransport(max_ciclos=10), RAPIDO)
     sesion.load(LOOP)
     cancelar = threading.Event()
     threading.Timer(0.1, cancelar.set).start()
@@ -305,7 +305,7 @@ def test_run_que_termina_ignora_la_bandera() -> None:
 
 
 def test_run_con_limite_corta_con_timeout() -> None:
-    sesion = DebugSession(FakeTransport(max_instr=10), Timeouts(run=0.05, sondeo=0.01))
+    sesion = DebugSession(FakeTransport(max_ciclos=10), Timeouts(run=0.05, sondeo=0.01))
     sesion.load(LOOP)
     with pytest.raises(TimeoutError, match="RUN no terminó"):
         sesion.run()

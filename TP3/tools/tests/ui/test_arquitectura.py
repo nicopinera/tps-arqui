@@ -19,8 +19,10 @@ from tests.ui.test_pipeline import VACIO
 def test_ac1_addi_menos_uno_en_los_tres_formatos_y_resaltado() -> None:
     sesion = DebugSession(FakeTransport())
     sesion.load(ensamblar("addi x5, x0, -1\nhalt\n").palabras)
-    antes = sesion.dump()
-    despues = sesion.step()  # el fake ejecuta una instrucción por paso
+    sesion.dump()
+    for _ in range(4):  # un Paso es un ciclo: addi llega a WB en el 4…
+        antes = sesion.step()
+    despues = sesion.step()  # …y escribe x5 en el flanco del 5
     x5 = filas_registros(despues, antes)[5]
     assert (x5.nombre, x5.hexa, x5.con_signo, x5.sin_signo) == (
         "x5", "0xffffffff", "-1", "4294967295",

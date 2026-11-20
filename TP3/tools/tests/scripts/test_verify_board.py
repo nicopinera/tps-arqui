@@ -7,6 +7,7 @@ import pytest
 
 from riscv_toolkit.assembler.assembler import ensamblar
 from riscv_toolkit.iss.golden_model import GoldenModel
+from riscv_toolkit.iss.pipeline_model import ModeloPipeline
 from riscv_toolkit.protocol.comandos import EstadoDU, Motivo
 from riscv_toolkit.protocol.fake_transport import FakeTransport
 from riscv_toolkit.protocol.serial_transport import ErrorPuerto
@@ -19,6 +20,7 @@ from scripts.verify_board import (
     FALLA,
     OMITIDO,
     PASA,
+    comparar_ciclo,
     comparar_step_run,
     main,
     verificar_programa,
@@ -93,7 +95,7 @@ def test_comparar_step_run() -> None:
 
 
 def test_run_colgado_falla_y_aborta() -> None:
-    sesion = DebugSession(FakeTransport(max_instr=5), Timeouts(run=0.05, sondeo=0.01))
+    sesion = DebugSession(FakeTransport(max_ciclos=5), Timeouts(run=0.05, sondeo=0.01))
     [resultado] = verificar_programa(sesion, ISS / "loop.asm", con_step=False)
     assert resultado.resultado == FALLA
     assert "se mandó ABORT" in resultado.detalle
@@ -119,7 +121,8 @@ def test_un_error_de_la_sesion_es_una_falla_del_programa() -> None:
 def test_pasa() -> None:
     [resultado] = verificar_programa(DebugSession(FakeTransport()), FIBONACCI, con_step=False)
     assert resultado.resultado == PASA
-    assert resultado.ciclos == 89
+    # A mano: 89 instrucciones + 4 de llenado + 2 por cada bne tomado (11): 115.
+    assert resultado.ciclos == 89 + 4 + 2 * 11
 
 
 def test_omitidos_no_cuentan(tmp_path: Path) -> None:
@@ -163,3 +166,35 @@ def test_comparacion_trae_tambien_lo_que_coincide() -> None:
     assert [f for f in comparacion(roto, esperado) if not f.ok] == [
         Diferencia("x1", "0x00000001", "0x00000090")
     ]
+
+
+# --- Lockstep (agregado US-306, paso 7) -----------------------------------------------------
+
+
+def test_comparar_ciclo_nombra_cada_campo_distinto() -> None:
+    modelo = ModeloPipeline(ensamblar("addi x1, x0, 5\nadd x2, x1, x1\nhalt\n").palabras)
+    modelo.correr(3)  # add en EX: forwarding A y B desde EX/MEM
+    bien = modelo.snapshot()
+    assert comparar_ciclo(bien, bien) == []
+    placa = replace(bien, riesgos=replace(bien.riesgos, fwd_a=0), regs=(0, 9, *bien.regs[2:]))
+    assert comparar_ciclo(placa, bien) == [
+        "riesgos.fwd_a = 0 (modelo: 2)",
+        "x1 = 0x00000009 (modelo: 0x00000000)",
+    ]
+
+
+class FakeSinForwardingA(FakeTransport):
+    """Una "placa" con un bug: la Forwarding Unit nunca adelanta el operando A."""
+
+    def _snapshot(self) -> Snapshot:
+        snap = super()._snapshot()
+        return replace(snap, riesgos=replace(snap.riesgos, fwd_a=0))
+
+
+def test_lockstep_encuentra_el_primer_ciclo_distinto(tmp_path: Path) -> None:
+    programa = tmp_path / "fwd.asm"
+    programa.write_text("addi x1, x0, 5\nadd x2, x1, x1\nhalt\n", encoding="utf-8")
+    sesion = DebugSession(FakeSinForwardingA())
+    _, step = verificar_programa(sesion, programa, con_step=True)
+    assert step.resultado == FALLA
+    assert step.detalle == "lockstep: ciclo 3: riesgos.fwd_a = 0 (modelo: 2)"

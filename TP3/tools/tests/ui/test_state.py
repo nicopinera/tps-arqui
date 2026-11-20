@@ -113,9 +113,9 @@ def test_illegal_resalta_la_ilegal_en_mem_wb(etapa: Etapa) -> None:
 
 
 def test_illegal_con_pipeline_vacio_usa_el_pc() -> None:
-    # Así queda el FakeTransport: el golden model deja el PC en la instrucción ilegal.
+    # Así queda al terminar: pipeline vacío y PC congelado en (la ilegal) + 4 (D3).
     snap = replace(BASE, estado=EstadoDU.HALTED, motivo=Motivo.ILLEGAL)
-    assert pc_resaltado(snap, Etapa.WB) == 0x10
+    assert pc_resaltado(snap, Etapa.WB) == 0x10 - 4
 
 
 def test_contar_riesgos() -> None:
