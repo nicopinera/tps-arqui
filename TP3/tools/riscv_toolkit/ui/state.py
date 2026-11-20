@@ -89,14 +89,13 @@ def pc_resaltado(snapshot: Snapshot, etapa: Etapa) -> int | None:
     - IF: el registro PC, que es lo que se está buscando en ese ciclo.
     - WB: la del latch MEM/WB (`pc_plus4 - 4`), si no es burbuja.
     - Terminó por ILLEGAL (AC6): la instrucción ilegal, sin importar la etapa elegida. Si
-      todavía está en MEM/WB se toma de ahí; si no, del PC (el golden model se queda en ella).
+      todavía está en MEM/WB se toma de ahí; si no, del PC - 4: `halt_fetch` congela el PC
+      en (la ilegal) + 4 (agregado US-306, D3).
     - Terminó por HALT o ABORT: ninguna.
     """
     wb = snapshot.mem_wb
     if snapshot.motivo is Motivo.ILLEGAL:
-        # shortcut: en la placa el PC puede quedar unos ciclos más adelante si MEM/WB ya se
-        # vació; verificar con el núcleo real (Hito 3) y, si hace falta, que la DU lo guarde.
-        return wb.pc_plus4 - 4 if wb.valid and wb.illegal else snapshot.pc
+        return wb.pc_plus4 - 4 if wb.valid and wb.illegal else snapshot.pc - 4
     if snapshot.motivo is not None:
         return None
     if etapa is Etapa.IF:
