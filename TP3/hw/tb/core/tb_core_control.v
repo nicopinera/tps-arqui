@@ -38,6 +38,9 @@ module tb_core_control;
     localparam CICLOS_LAZO = 40;
     localparam CICLOS_CONGELADO = 20;
     localparam MAX_DRENADO = 3;
+    // Limites para que un error no deje el testbench colgado (en el CI no hay quien lo corte)
+    localparam MAX_ESPERA = 20;  // ciclos para que aparezca una instruccion en el lazo
+    localparam MAX_CICLOS_TB = 20000;  // todo el testbench (normalmente usa ~3300)
     localparam [31:0] HALT_WORD = 32'h0000_000B;
 
     // Lazo infinito
@@ -263,6 +266,12 @@ module tb_core_control;
         end
     endtask
 
+    // Perro guardian: si algun lazo del testbench espera para siempre, falla en vez de colgarse
+    initial begin
+        #(PERIODO * MAX_CICLOS_TB);
+        tb_timeout("tb_core_control no termino");
+    end
+
     initial begin
         tb_init;
         @(negedge clock);
@@ -329,7 +338,12 @@ module tb_core_control;
         check_eq("se vio el jal en ID", {31'd0, r_visto_jal}, 32'd1);
 
         // ---- AC6: ABORT con un addi x1, x1, 1 en ID ----
-        while (!(w_if_id[IF_ID_VALID] && w_if_id[95:64] == W_ADDI)) ciclo;
+        ciclos = 0;
+        while (!(w_if_id[IF_ID_VALID] && w_if_id[95:64] == W_ADDI) && ciclos < MAX_ESPERA) begin
+            ciclos = ciclos + 1;
+            ciclo;
+        end
+        if (ciclos == MAX_ESPERA) tb_timeout("el addi del lazo no llego a ID");
         // x1 final = x1 del banco + los addi que ya estan en EX, MEM o WB (el de ID no)
         leer_reg(5'd1);
         n_addi = (w_id_ex[ID_EX_VALID] && w_id_ex[247:216] == W_ADDI) +
