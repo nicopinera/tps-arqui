@@ -1,0 +1,48 @@
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2025.2 (win64) Build 6299465 Fri Nov 14 19:35:11 GMT 2025
+| Date         : -
+| Host         : -
+| Command      : report_utilization -hierarchical -hierarchical_depth 3 -file TP3/hw/reports/top_util_hier.rpt
+| Design       : top
+| Device       : xc7a35tcpg236-1
+| Speed File   : -1
+| Design State : Routed
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Utilization Design Information
+
+Table of Contents
+-----------------
+1. Utilization by Hierarchy
+
+1. Utilization by Hierarchy
+---------------------------
+
++---------------------+------------------+------------+------------+---------+------+------+--------+--------+------------+
+|       Instance      |      Module      | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs | RAMB36 | RAMB18 | DSP Blocks |
++---------------------+------------------+------------+------------+---------+------+------+--------+--------+------------+
+| top                 |            (top) |       3950 |       3262 |     688 |    0 | 2976 |      0 |      0 |          0 |
+|   (top)             |            (top) |          0 |          0 |       0 |    0 |    8 |      0 |      0 |          0 |
+|   u_core            |       riscv_core |       3087 |       2399 |     688 |    0 | 1916 |      0 |      0 |          0 |
+|     u_mem_wb_reg    |       mem_wb_reg |        351 |        351 |       0 |    0 |  139 |      0 |      0 |          0 |
+|     u_ex_mem_reg    |       ex_mem_reg |        336 |        336 |       0 |    0 |  157 |      0 |      0 |          0 |
+|     u_id_ex_reg     |        id_ex_reg |        404 |        404 |       0 |    0 |  223 |      0 |      0 |          0 |
+|     u_id_stage      |         id_stage |        889 |        889 |       0 |    0 |  992 |      0 |      0 |          0 |
+|       u_reg_file    |         reg_file |        889 |        889 |       0 |    0 |  992 |      0 |      0 |          0 |
+|     u_if_id_reg     |        if_id_reg |        125 |        125 |       0 |    0 |  105 |      0 |      0 |          0 |
+|     u_if_stage      |         if_stage |        226 |         50 |     176 |    0 |   32 |      0 |      0 |          0 |
+|       u_instr_mem   |        instr_mem |        217 |         41 |     176 |    0 |    0 |      0 |      0 |          0 |
+|     u_mem_stage     |        mem_stage |        732 |        220 |     512 |    0 |  265 |      0 |      0 |          0 |
+|       u_data_mem    |         data_mem |        568 |         56 |     512 |    0 |    0 |      0 |      0 |          0 |
+|       u_dmem_bitmap |      dmem_bitmap |        164 |        164 |       0 |    0 |  265 |      0 |      0 |          0 |
+|   u_du              |       debug_unit |        783 |        783 |       0 |    0 | 1002 |      0 |      0 |          0 |
+|     u_cmd           |       du_cmd_fsm |        112 |        112 |       0 |    0 |  100 |      0 |      0 |          0 |
+|     u_dumper        |        du_dumper |        530 |        530 |       0 |    0 |  722 |      0 |      0 |          0 |
+|     u_loader        |        du_loader |        108 |        108 |       0 |    0 |  130 |      0 |      0 |          0 |
+|   u_rx              |          uart_rx |         59 |         59 |       0 |    0 |   21 |      0 |      0 |          0 |
+|     datapath        | uart_rx_datapath |         57 |         57 |       0 |    0 |   16 |      0 |      0 |          0 |
++---------------------+------------------+------------+------------+---------+------+------+--------+--------+------------+
+* Note: The sum of lower-level cells may be larger than their parent cells total, due to cross-hierarchy LUT combining
+
+
