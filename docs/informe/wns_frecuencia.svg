@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="440" viewBox="0 0 760 440" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" role="img" aria-label="WNS según la frecuencia del barrido">
+<rect width="760" height="440" rx="8" fill="#1a1a19"/>
+<text x="78" y="26" font-size="16" font-weight="600" fill="#f0efec">WNS según la frecuencia (barrido sin MMCM)</text>
+<text x="78" y="44" font-size="12" fill="#c3c2b7">Cumple timing con WNS ≥ 0; ADR-016 exige además un margen de 0,3 ns</text>
+<line x1="78" y1="370.0" x2="730" y2="370.0" stroke="#2c2c2a" stroke-width="1"/>
+<text x="70" y="374.0" font-size="11" fill="#c3c2b7" text-anchor="end">−1,5</text>
+<line x1="78" y1="347.6" x2="730" y2="347.6" stroke="#2c2c2a" stroke-width="1"/>
+<text x="70" y="351.6" font-size="11" fill="#c3c2b7" text-anchor="end">−1,0</text>
+<line x1="78" y1="325.1" x2="730" y2="325.1" stroke="#2c2c2a" stroke-width="1"/>
+<text x="70" y="329.1" font-size="11" fill="#c3c2b7" text-anchor="end">−0,5</text>
+<line x1="78" y1="302.7" x2="730" y2="302.7" stroke="#2c2c2a" stroke-width="1"/>
+<text x="70" y="306.7" font-size="11" fill="#c3c2b7" text-anchor="end">0,0</text>
+<line x1="78" y1="280.3" x2="730" y2="280.3" stroke="#2c2c2a" stroke-width="1"/>
+<text x="70" y="284.3" font-size="11" fill="#c3c2b7" text-anchor="end">0,5</text>
+<line x1="78" y1="257.9" x2="730" y2="257.9" stroke="#2c2c2a" stroke-width="1"/>
+<text x="70" y="261.9" font-size="11" fill="#c3c2b7" text-anchor="end">1,0</text>
+<line x1="78" y1="235.4" x2="730" y2="235.4" stroke="#2c2c2a" stroke-width="1"/>
+<text x="70" y="239.4" font-size="11" fill="#c3c2b7" text-anchor="end">1,5</text>
+<line x1="78" y1="213.0" x2="730" y2="213.0" stroke="#2c2c2a" stroke-width="1"/>
+<text x="70" y="217.0" font-size="11" fill="#c3c2b7" text-anchor="end">2,0</text>
+<line x1="78" y1="190.6" x2="730" y2="190.6" stroke="#2c2c2a" stroke-width="1"/>
+<text x="70" y="194.6" font-size="11" fill="#c3c2b7" text-anchor="end">2,5</text>
+<line x1="78" y1="168.1" x2="730" y2="168.1" stroke="#2c2c2a" stroke-width="1"/>
+<text x="70" y="172.1" font-size="11" fill="#c3c2b7" text-anchor="end">3,0</text>
+<line x1="78" y1="145.7" x2="730" y2="145.7" stroke="#2c2c2a" stroke-width="1"/>
+<text x="70" y="149.7" font-size="11" fill="#c3c2b7" text-anchor="end">3,5</text>
+<line x1="78" y1="123.3" x2="730" y2="123.3" stroke="#2c2c2a" stroke-width="1"/>
+<text x="70" y="127.3" font-size="11" fill="#c3c2b7" text-anchor="end">4,0</text>
+<line x1="78" y1="100.9" x2="730" y2="100.9" stroke="#2c2c2a" stroke-width="1"/>
+<text x="70" y="104.9" font-size="11" fill="#c3c2b7" text-anchor="end">4,5</text>
+<line x1="78" y1="78.4" x2="730" y2="78.4" stroke="#2c2c2a" stroke-width="1"/>
+<text x="70" y="82.4" font-size="11" fill="#c3c2b7" text-anchor="end">5,0</text>
+<line x1="78" y1="56.0" x2="730" y2="56.0" stroke="#2c2c2a" stroke-width="1"/>
+<text x="70" y="60.0" font-size="11" fill="#c3c2b7" text-anchor="end">5,5</text>
+<line x1="132.3" y1="56" x2="132.3" y2="370" stroke="#2c2c2a" stroke-width="1"/>
+<text x="132.3" y="388" font-size="11" fill="#c3c2b7" text-anchor="middle">50</text>
+<line x1="404.0" y1="56" x2="404.0" y2="370" stroke="#2c2c2a" stroke-width="1"/>
+<text x="404.0" y="388" font-size="11" fill="#c3c2b7" text-anchor="middle">75</text>
+<line x1="458.3" y1="56" x2="458.3" y2="370" stroke="#2c2c2a" stroke-width="1"/>
+<text x="458.3" y="388" font-size="11" fill="#c3c2b7" text-anchor="middle">80</text>
+<line x1="512.7" y1="56" x2="512.7" y2="370" stroke="#2c2c2a" stroke-width="1"/>
+<text x="512.7" y="388" font-size="11" fill="#c3c2b7" text-anchor="middle">85</text>
+<line x1="567.0" y1="56" x2="567.0" y2="370" stroke="#2c2c2a" stroke-width="1"/>
+<text x="567.0" y="388" font-size="11" fill="#c3c2b7" text-anchor="middle">90</text>
+<line x1="621.3" y1="56" x2="621.3" y2="370" stroke="#2c2c2a" stroke-width="1"/>
+<text x="621.3" y="388" font-size="11" fill="#c3c2b7" text-anchor="middle">95</text>
+<line x1="675.7" y1="56" x2="675.7" y2="370" stroke="#2c2c2a" stroke-width="1"/>
+<text x="675.7" y="388" font-size="11" fill="#c3c2b7" text-anchor="middle">100</text>
+<line x1="78" y1="370" x2="730" y2="370" stroke="#5a5955" stroke-width="1"/>
+<line x1="78" y1="56" x2="78" y2="370" stroke="#5a5955" stroke-width="1"/>
+<text x="404.0" y="422" font-size="12" fill="#c3c2b7" text-anchor="middle">Frecuencia (MHz)</text>
+<text transform="translate(20 213.0) rotate(-90)" font-size="12" fill="#c3c2b7" text-anchor="middle">WNS (ns)</text>
+<line x1="78" y1="302.7" x2="730" y2="302.7" stroke="#c3c2b7" stroke-width="1.5"/>
+<text x="88" y="317.7" font-size="11" fill="#c3c2b7">WNS = 0 (límite de timing)</text>
+<line x1="78" y1="289.3" x2="730" y2="289.3" stroke="#c3c2b7" stroke-width="1.5" stroke-dasharray="6 4"/>
+<text x="88" y="283.3" font-size="11" fill="#c3c2b7">margen ADR-016 (0,3 ns)</text>
+<polyline points="132.3,89.2 404.0,274.2 458.3,271.9 512.7,288.2 567.0,301.5 621.3,316.4 675.7,354.1" fill="none" stroke="#3987e5" stroke-width="2" stroke-linejoin="round"/>
+<circle cx="132.3" cy="89.2" r="4.5" fill="#3987e5" stroke="#1a1a19" stroke-width="2"/>
+<text x="142.3" y="93.2" font-size="11" font-weight="400" fill="#f0efec" text-anchor="start">+4,760</text>
+<circle cx="404.0" cy="274.2" r="4.5" fill="#3987e5" stroke="#1a1a19" stroke-width="2"/>
+<text x="404.0" y="262.2" font-size="11" font-weight="400" fill="#f0efec" text-anchor="middle">+0,635</text>
+<circle cx="458.3" cy="271.9" r="4.5" fill="#3987e5" stroke="#1a1a19" stroke-width="2"/>
+<text x="458.3" y="259.9" font-size="11" font-weight="400" fill="#f0efec" text-anchor="middle">+0,688</text>
+<circle cx="512.7" cy="288.2" r="6" fill="#3987e5" stroke="#1a1a19" stroke-width="2"/>
+<circle cx="512.7" cy="288.2" r="10" fill="none" stroke="#3987e5" stroke-width="1.5"/>
+<text x="512.7" y="276.2" font-size="11" font-weight="700" fill="#f0efec" text-anchor="middle">+0,324</text>
+<circle cx="567.0" cy="301.5" r="4.5" fill="#3987e5" stroke="#1a1a19" stroke-width="2"/>
+<text x="575.0" y="296.5" font-size="11" font-weight="400" fill="#f0efec" text-anchor="start">+0,028</text>
+<circle cx="621.3" cy="316.4" r="4.5" fill="#3987e5" stroke="#1a1a19" stroke-width="2"/>
+<text x="621.3" y="336.4" font-size="11" font-weight="400" fill="#f0efec" text-anchor="middle">−0,306</text>
+<circle cx="675.7" cy="354.1" r="4.5" fill="#3987e5" stroke="#1a1a19" stroke-width="2"/>
+<text x="665.7" y="358.1" font-size="11" font-weight="400" fill="#f0efec" text-anchor="end">−1,145</text>
+<text x="512.7" y="208.2" font-size="12" font-weight="600" fill="#f0efec" text-anchor="middle">85 MHz: la mayor</text>
+<text x="512.7" y="223.2" font-size="12" font-weight="600" fill="#f0efec" text-anchor="middle">que cumple el margen</text>
+<line x1="512.7" y1="230.2" x2="512.7" y2="262.2" stroke="#c3c2b7" stroke-width="1"/>
+</svg>

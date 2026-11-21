@@ -27,7 +27,7 @@ UV_RUN := cd $(TOOLS_DIR) && uv run
 # el loop infinito (no termina)
 SYSTEM_PROGRAMS := $(sort $(patsubst asm/%.asm,%,$(filter-out asm/errores/% asm/special/infinite_loop.asm,$(shell find asm -name '*.asm' 2>/dev/null))))
 
-.PHONY: help setup lint sim sim-all sim-programs sim-system verify synth-ooc timing-core impl freq-sweep clk-wiz reportes test-py check-py gnu-ref check clean
+.PHONY: help setup lint sim sim-all sim-programs sim-system verify synth-ooc timing-core impl freq-sweep grafico-wns clk-wiz reportes test-py check-py gnu-ref check clean
 
 help:
 	@echo "Objetivos:"
@@ -50,8 +50,10 @@ help:
 	@echo "  make timing-core               Sintesis e implementacion fuera de contexto de riscv_core a 100 MHz"
 	@echo "                                 (deja WNS/WHS en hw/reports/)"
 	@echo "  make impl                      Sistema completo en la Basys 3 con Vivado: bitstream y reportes top_*.rpt"
-	@echo "  make freq-sweep                Barrido de frecuencia (US-602): hw/reports/freq_sweep.csv"
+	@echo "  make freq-sweep                Barrido de frecuencia (US-602): hw/reports/freq_sweep.csv y el grafico"
 	@echo "       MHZ=\"50 100\"              solo esas frecuencias"
+	@echo "  make grafico-wns               Grafico WNS vs frecuencia desde freq_sweep.csv: docs/informe/wns_frecuencia.svg"
+	@echo "       TEMA=claro                  tema claro (por defecto, oscuro)"
 	@echo "  make clk-wiz MHZ=85            Regenera el Clock Wizard (hw/ip/clk_wiz_0/clk_wiz_0.xci)"
 	@echo "  make reportes                  Tablas en Markdown de hw/reports/ para el informe (sin Vivado)"
 	@echo "  make test-py                   Tests de Python con cobertura"
@@ -205,6 +207,11 @@ freq-sweep:
 		status=$$?; grep '^>>>' vivado.log; \
 		[ $$status -eq 0 ] || echo "Vivado termino con error: ver $(BUILD_DIR)/vivado_sweep/vivado.log"; \
 		exit $$status
+	@$(MAKE) --no-print-directory grafico-wns
+
+# Grafico del barrido (no necesita Vivado): lee hw/reports/freq_sweep.csv. TEMA=claro|oscuro.
+grafico-wns:
+	@$(UV_RUN) python -m scripts.grafico_wns --tema $(or $(TEMA),oscuro)
 
 # Tablas en Markdown de los reportes de hw/reports/ (no necesita Vivado): lo que va en
 # docs/informe/timing.md y metricas.md.
