@@ -112,7 +112,7 @@
                         <mxPoint y="16" as="offset"/>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="arq-35" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;text;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=10;" value="&lt;b&gt;USB serie&lt;/b&gt;&lt;br&gt;19200 bps" vertex="1">
+                <mxCell id="arq-35" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;text;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=10;" value="&lt;b&gt;USB serie&lt;/b&gt;&lt;br&gt;19200 bps · 8E1" vertex="1">
                     <mxGeometry height="30" width="150" x="560" y="138" as="geometry"/>
                 </mxCell>
                 <mxCell id="arq-pipe-imem" edge="1" parent="1" source="arq-25" style="html=1;endArrow=classic;startArrow=classic;rounded=0;fontSize=9;labelBackgroundColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;exitX=0.23;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="arq-26" value="IF">
@@ -126,6 +126,12 @@
                         <mxPoint x="820" y="270" as="sourcePoint"/>
                         <mxPoint x="870" y="220" as="targetPoint"/>
                     </mxGeometry>
+                </mxCell>
+                <mxCell id="arq-clk" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;strokeColor=#6A4FB5;strokeWidth=2;" value="&lt;b&gt;Clock Wizard&lt;/b&gt;&lt;br&gt;&lt;span style=&#39;font-size:9px;font-weight:normal&#39;&gt;MMCM: 100 → 85 MHz&lt;/span&gt;" vertex="1">
+                    <mxGeometry height="55" width="120" x="715" y="380" as="geometry"/>
+                </mxCell>
+                <mxCell id="arq-clk-nota" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=9;fontColor=#6A4FB5;" value="un único reloj (BUFG) para la UART,&lt;br&gt;la Debug Unit y el núcleo;&lt;br&gt;el núcleo avanza con i_enable" vertex="1">
+                    <mxGeometry height="55" width="180" x="845" y="380" as="geometry"/>
                 </mxCell>
             </root>
         </mxGraphModel>
