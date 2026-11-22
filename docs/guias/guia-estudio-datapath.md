@@ -82,7 +82,7 @@ RV32I tiene **32 registros de 32 bits**, `x0` a `x31`, más el **PC**, que no es
 
 ### 1.5 Cómo está codificada una instrucción
 
-Cada instrucción es una palabra de **32 bits**. En IF/ID viaja junto con `pc`, `pc_plus4` y `valid` (104 bits en total), pero lo que se decodifica son esos 32 bits de `instr`.
+Cada instrucción es una palabra de **32 bits**. En IF/ID viaja junto con `pc`, `pc_plus4` y `valid` (97 bits, que en el snapshot ocupan 13 bytes = 104 bits con el relleno), pero lo que se decodifica son esos 32 bits de `instr`.
 
 #### Los formatos
 
@@ -170,7 +170,7 @@ Los 32 bits se reparten en campos, y el reparto depende del **formato**:
 
 Por eso en este diseño **funct3 viaja en los latches**:
 
-- **hasta EX:** lo usan `alu_control` y `branch_cmp` (`000` = igual, `001` = distinto);
+- **hasta EX:** lo usan `alu_control` y `redirect_ex`, que con el `eq` de `branch_cmp` decide el salto (`000` = igual, `001` = distinto);
 - **hasta MEM:** lo usan `store_align` y `load_extend` para saber si el acceso es de byte, media palabra o palabra, y si se extiende con signo.
 
 #### Trampa: en los otros formatos, esos bits son inmediato
@@ -205,7 +205,7 @@ Lo mismo vale para funct3 en U y J: en `lui` y `jal` esos bits también son inme
 
 - La **IMEM** se lee con el PC en el mismo ciclo (combinacional), así que la instrucción entra a IF/ID en el flanco siguiente.
 - **Puerto naranja:** `i_imem_we/addr/wdata`. La Debug Unit carga el programa con el núcleo congelado.
-- A IF/ID entra `validF = 1`. Las burbujas (`valid = 0`) aparecen por **flush** (CLR) o por halt_fetch.
+- A IF/ID entra `validF = !StallF`. Las burbujas (`valid = 0`) aparecen por **flush** (CLR) o porque la búsqueda está detenida (HALT o ABORT). En el load-use también vale `validF = 0`, pero IF/ID está congelado y esa burbuja no entra.
 
 **IF/ID guarda:** `pc`, `pc_plus4`, `instr` y `valid`.
 
@@ -378,9 +378,9 @@ Las que solo se usan en ID (`imm_type` y `uses_rs1/2`) no necesitan latch. `jump
 
 **`branch` (1 bit)** vale 1 para `beq` y `bne`.
 
-- **Qué hace:** en EX, `branch_cmp` compara los operandos _forwardeados_ y, con `funct3`, decide si se toma: `000` = igual, `001` = distinto.
+- **Qué hace:** en EX, `branch_cmp` compara los operandos _forwardeados_ (`eq`) y `redirect_ex`, con `funct3`, decide si se toma: `000` = igual, `001` = distinto.
 - **Si se toma:** `redirect_ex = 1`. La Hazard Unit pone `pc_sel = 10` y hace flush de IF/ID e ID/EX.
-- **Por qué no usa la ALU:** la ALU podría estar ocupada calculando algo, y así el diseño queda más claro. Por eso `alu_op` es "—" para los branches.
+- **Por qué no usa la ALU:** un comparador de igualdad es más rápido que una resta de 32 bits más un flag `zero`, y acorta el camino forwarding → decisión → mux del PC, que es candidato a camino crítico (ADR-019). El destino `PC + imm` tampoco sale de la ALU: tiene su propio sumador. Por eso `alu_op` es "—" para los branches.
 
 **`jalr` (1 bit)** vale 1 solo para `jalr`.
 
@@ -436,17 +436,18 @@ Estas no dependen de una instrucción sola, sino de la relación entre instrucci
 | ------------------------------ | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **`valid`** (1 por latch)      | cada etapa      | Dice si en ese latch hay una instrucción real o una burbuja. Todo efecto (escribir registro o memoria, forwardear, pedir stall, terminar) se condiciona con `valid`. Un flush **no borra** el latch: pone `valid = 0` |
 | **`fwd_a` / `fwd_b`** (2 bits) | Forwarding Unit | Elige de dónde salen los operandos en EX: `00` = banco (vía ID/EX), `10` = EX/MEM (distancia 1), `01` = MEM/WB (distancia 2). EX/MEM tiene prioridad porque es el valor más nuevo                                     |
-| **`StallF`**                   | Hazard Unit     | Congela el PC: `stall \| halt_fetch \| i_stop_fetch`                                                                                                                                                                  |
+| **`StallF`**                   | Hazard Unit     | Congela el PC y hace que IF mande burbujas: load-use, `halt_fetch` o `i_stop_fetch`. Con una redirección de EX vale solo `i_stop_fetch`                                                                               |
 | **`StallD`**                   | Hazard Unit     | Congela IF/ID: la instrucción en ID repite el ciclo (load-use)                                                                                                                                                        |
 | **`FlushD`**                   | Hazard Unit     | Burbuja en IF/ID: descarta lo que estaba en IF. Se activa con un `jal` en ID o una redirección desde EX                                                                                                               |
-| **`FlushE`**                   | Hazard Unit     | Burbuja en ID/EX: por load-use (no se manda a EX una instrucción sin su dato) o por redirección desde EX (lo que estaba en ID era especulativo)                                                                       |
-| **`pc_sel`** (2 bits)          | Hazard Unit     | Mux del PC: `00` = `PC+4` · `01` = destino de `jal` (ID) · `10` = destino de EX (branch o `jalr`). Prioridad: EX > `jal` > stall > HALT (§5.2)                                                                        |
-| **`halt_fetch`**               | ID              | Un HALT o una instrucción ilegal en ID detienen la búsqueda. Se cancela si EX redirige, porque entonces el HALT era especulativo (R-EJ-4)                                                                             |
+| **`FlushE`**                   | Hazard Unit     | Burbuja en ID/EX por redirección desde EX (lo que estaba en ID era especulativo). Es la que sale como `o_flush_id_ex` en el snapshot                                                                                 |
+| **`BubbleE`**                  | Hazard Unit     | Burbuja en ID/EX que nace ahí: por load-use (no se manda a EX una instrucción sin su dato) o por ABORT (se descarta la instrucción de ID). No cuenta como flush en el snapshot                                       |
+| **`pc_sel`** (2 bits)          | Hazard Unit     | Mux del PC: `00` = `PC+4` · `01` = destino de `jal` (ID) · `10` = destino de EX (branch o `jalr`). Prioridad: EX > ABORT > `jal` > load-use > HALT (§5.2)                                                             |
+| **`halt_fetch`**               | Hazard Unit     | Registro "pegajoso": lo prende un HALT o una ilegal válidos en ID (`halt_detected`, de ID) y mantiene la búsqueda detenida hasta que el HALT llega a WB. Se borra si EX redirige, porque el HALT era especulativo (R-EJ-4) |
 
 **Señales que vienen de la Debug Unit** (ADR-001, 009 y 010; ver §7):
 
 - **`i_enable`:** _clock enable_ de todo el núcleo. Con 0, nada cambia. Un STEP es exactamente 1 ciclo con `i_enable = 1`.
-- **`i_stop_fetch`** (ABORT): hace lo mismo que el HALT, pero se pide desde afuera. Congela el PC y deja que el pipeline se vacíe.
+- **`i_stop_fetch`** (ABORT): como el HALT, pero se pide desde afuera. Congela el PC, descarta la instrucción que está en ID (`BubbleE`) y deja que el pipeline se vacíe.
 - **`i_flush_all`:** reset del pipeline. Pone `valid = 0` en los 4 latches, y el PC y los registros en 0.
 
 #### 2.6.3 Cómo encaja todo, con un ejemplo
@@ -459,7 +460,7 @@ add x3, x1, x4
 1. **Ciclo en que `lw` está en EX y `add` en ID:**
    - el `lw` llega con `mem_readE = 1` y `rdE = x1`;
    - el `add` tiene `uses_rs1D = 1` y `rs1D = x1`;
-   - la Hazard Unit pone `stall = 1`, y con eso `StallF = StallD = FlushE = 1`.
+   - la Hazard Unit detecta el load-use y pone `StallF = StallD = BubbleE = 1`.
 2. **Ciclo siguiente:** el `add` repite ID y entra una burbuja a EX (`validE = 0`). El `lw` pasa a MEM.
 3. **Ciclo siguiente:** el `add` llega a EX con el `lw` ya en WB, y la Forwarding Unit pone `fwd_a = 01`. En ese mismo ciclo, el `lw` escribe con `reg_write = 1` y `result_src = 01`.
 
@@ -689,7 +690,7 @@ stall = validE && mem_readE && rdE != 0 &&
 Efecto, durante 1 ciclo:
 
 - **PC e IF/ID se congelan** (`StallF`, `StallD`): la instrucción se repite;
-- **ID/EX recibe una burbuja** (`FlushE`).
+- **ID/EX recibe una burbuja** (`BubbleE`; no es un flush, porque la instrucción no se descarta: espera en ID).
 
 En el ciclo siguiente el `lw` está en WB y el dato llega por forwarding `01`.
 
@@ -699,9 +700,9 @@ Casos borde:
 - `lw x1` seguido de `lui x1` → **0 stalls**: `lui` no lee rs1.
 - `lw x1` seguido de `sw x1, 0(x2)` → **1 stall**: no hay forwarding de MEM a MEM.
 
-### 4.4 bypass del banco (wb → id)
+### 4.4 Bypass del banco (WB → ID)
 
-si en el mismo ciclo wb escribe x5 e id lee x5, el banco devuelve el valor que se está escribiendo. así cubre la distancia 3, que el forwarding no alcanza. el libro lo resuelve escribiendo en el flanco de bajada. este diseño no, porque usa un solo flanco.
+Si en el mismo ciclo WB escribe x5 e ID lee x5, el banco devuelve el valor que se está escribiendo. Así cubre la distancia 3, que el forwarding no alcanza. El libro lo resuelve escribiendo en el flanco de bajada. Este diseño no, porque usa un solo flanco.
 
 ### 4.5 Resumen por distancia
 
@@ -727,10 +728,11 @@ Un branch **no tomado** cuesta 0 ciclos: se predice siempre "no tomado", porque 
 
 ### 5.2 Prioridades en un mismo ciclo
 
-1. **Redirección desde EX:** es la instrucción más vieja, así que todo lo que hay detrás es especulativo.
-2. `jal` en ID.
-3. Stall de load-use.
-4. HALT o ilegal detectado en ID.
+1. **Redirección desde EX:** es la instrucción más vieja, así que todo lo que hay detrás es especulativo. Si además hay ABORT, se descarta lo especulativo pero no se busca el destino.
+2. ABORT (`i_stop_fetch`), que viene de la Debug Unit.
+3. `jal` en ID.
+4. Stall de load-use.
+5. HALT o ilegal detectado en ID.
 
 Ejemplo: `beq` tomado en EX y `jal` en ID en el mismo ciclo. Gana el `beq`, y el `jal` se descarta porque nunca debió ejecutarse.
 
@@ -821,7 +823,7 @@ Carta de pipeline. "—" = burbuja (`valid=0`).
 **Para practicar:**
 
 1. Cambiá el `beq` por `bne x4, x4, +12`: no se toma. ¿Cuántos ciclos tarda y qué instrucciones se ejecutan?
-2. Poné un `jal x0, +8` en 0x14. ¿Cambia algo? Pista: nunca llega a ID porque se descarta antes.
+2. Poné un `jal x0, +8` en 0x14. ¿Cambia algo? Pista: en el ciclo 8 el `jal` está en ID mientras el `beq` está en EX. ¿Cuál de las dos redirecciones gana?
 3. Insertá una instrucción independiente entre `lw` y `add`. ¿Desaparece el stall? ¿Qué `fwd_a` tiene ahora el `add`?
 4. Armá tu programa de 10 instrucciones para cumplir con la US-103 AC4. Tiene que incluir: un load-use, un forwarding EX/MEM y un `beq` tomado.
 
@@ -892,4 +894,4 @@ N + 4: 4 ciclos para llenar el pipeline, y después termina una instrucción por
 
 - **¿Qué ves en el snapshot cuando hay un stall de load-use?**
 
-`o_stall = 1`. IF/ID muestra la misma instrucción en dos snapshots seguidos, y en el ciclo siguiente ID/EX aparece con `valid = 0` (la burbuja). Un ciclo después, la instrucción dependiente aparece en EX con `fwd = 01`.
+`o_stall = 1` y `o_flush_id_ex = 0` (la burbuja de load-use no es un flush). IF/ID muestra la misma instrucción en dos snapshots seguidos, y en el ciclo siguiente ID/EX aparece con `valid = 0` (la burbuja). Un ciclo después, la instrucción dependiente aparece en EX con `fwd = 01`.

@@ -5,38 +5,40 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-21
+
+Esta versión no cambia el hardware ni el software, solo la documentación. Agrega un README principal al repositorio, que presenta los tres TPs y explica cómo usarlos, y reescribe este CHANGELOG para que cuente qué se hizo en el TP3 en lugar de listar archivos. También se completan las guías de estudio del datapath y de los bloques del núcleo.
+
+### Qué se hizo en el TP3
+
+El objetivo del TP3 fue implementar en la Basys 3 un **procesador RISC-V de 32 bits (RV32I) segmentado en 5 etapas**, que se pudiera programar y observar desde una PC por la UART del TP2. El trabajo se planificó en un PRD con seis hitos, y cada decisión que el enunciado dejaba abierta se registró en un ADR (hay 20 en `docs/adr/`). A partir del segundo hito, el trabajo se dividió en dos pistas paralelas: una armó el núcleo y la otra, la Debug Unit y el software de PC. Cada pista trabajó contra una versión simulada de la otra, con las interfaces fijadas desde el principio, y las dos se juntaron al final en la placa.
+
+**El núcleo** (`hw/rtl/core/`) tiene las cinco etapas clásicas (IF, ID, EX, MEM y WB) separadas por cuatro latches, y ejecuta las 32 instrucciones que pide el enunciado más una instrucción `HALT` propia. Primero se lo hizo andar con un flush básico en los saltos y programas que evitaban las dependencias a mano. Después se agregó el manejo completo de riesgos. Una **forwarding unit** reenvía resultados desde EX/MEM y MEM/WB a la entrada de la ALU, y una **hazard unit** concentra el resto del control: frena un ciclo el pipeline en el caso load-use, descarta las instrucciones del camino equivocado cuando hay un salto (los `jal` se resuelven en ID y los branches y `jalr` en EX, con predicción _not-taken_), detiene la búsqueda ante un `HALT` o una instrucción ilegal y resuelve las prioridades cuando varios eventos coinciden. La ALU es nueva, de 32 bits y con un código interno de operación, porque la del TP1 no se adaptaba a la codificación de RISC-V (ADR-019).
+
+**La Debug Unit** (`hw/rtl/debug/`) recibe comandos de la PC por la UART. Puede cargar un programa nuevo en la memoria de instrucciones sin resintetizar, ejecutarlo de corrido o de a un ciclo, abortarlo y devolver un snapshot con los 32 registros, el contenido de los 4 latches, la memoria de datos que se usó y las señales de riesgo del ciclo. El reloj no se toca en ningún momento: el avance del núcleo se controla con un _clock enable_, así que todo el sistema queda en un único dominio de reloj. El protocolo está documentado byte a byte en `docs/protocolo.md`.
+
+**El software de PC** (`tools/riscv_toolkit/`) se escribió en Python 3.13. Incluye un ensamblador propio de dos pasadas, un desensamblador, un _golden model_ que ejecuta los programas sin pipeline, un modelo del pipeline ciclo a ciclo, una CLI (`asm`, `sim`, `dbg`) y una interfaz gráfica en Flet. La GUI muestra los registros, la memoria, los latches campo a campo, la carta de pipeline y el datapath animado con el valor de cada cable. Todo sale de una única tabla de instrucciones, de la que también se genera un archivo de definiciones del hardware.
+
+**La verificación** se hizo en capas. Cada módulo tiene un testbench que se verifica solo. Los programas de `asm/tests/` dejan una firma en memoria que indica qué caso falló, y se corren en el núcleo con el enable fijo y aleatorio. Además, todo el directorio `asm/` se compara contra el golden model, y la suite completa se pasa por la UART simulada al `top`. Para confirmar que las pruebas detectan errores de verdad, se introdujeron mutaciones a propósito, y todas se detectaron. GitHub Actions corre todo esto en cada push.
+
+**En la implementación** el diseño no cerró timing a 100 MHz. Lo inesperado fue que el camino crítico no estaba en el pipeline sino en la Debug Unit, armando el snapshot a partir de la memoria de datos, y no se veía sintetizando los módulos por separado. En lugar de adivinar una frecuencia, se hizo un barrido y se eligió la mayor que dejaba al menos 0,3 ns de margen: **85 MHz**, generados con un Clock Wizard (WNS = +0,345 ns). El diseño ocupa menos del 20 % de la FPGA y logra un CPI de entre 1,23 y 1,44 en los programas de demostración. Casi toda la pérdida respecto del CPI ideal viene de los saltos.
+
+El informe completo es `TP3/README.md`. Su respaldo (timing, métricas y datos) está en `docs/informe/`, y el manual de usuario y la hoja de referencia de la ISA, en `docs/manual/`.
+
 ## [1.2] - 2026-11-21
 
-Versión final del TP3: procesador RISC-V (RV32I) segmentado en 5 etapas sobre la Basys 3, con una Debug Unit que lo programa, ejecuta y vuelca por UART, y software de PC para manejarlo. El informe es `TP3/README.md`.
-
-### Added
-
-- **Núcleo RV32I** (`hw/rtl/core/`): las 5 etapas (`if_stage`, `id_stage`, `ex_stage`, `mem_stage`, `wb_stage`), los 4 latches (`if_id_reg`, `id_ex_reg`, `ex_mem_reg`, `mem_wb_reg`), los bloques funcionales (`alu`, `alu_control`, `branch_cmp`, `reg_file`, `control_unit`, `imm_gen`, `instr_mem`, `data_mem`, `dmem_bitmap`, `store_align`, `load_extend`), la `forwarding_unit`, la `hazard_unit` y `riscv_core`, que los integra. Ejecuta las 32 instrucciones del enunciado más `halt`, con forwarding, stall por load-use y predicción _not-taken_.
-- **Debug Unit** (`hw/rtl/debug/`): `debug_unit` con sus submódulos `du_cmd_fsm` (intérprete de comandos), `du_loader` (carga y reprogramación), `du_exec_ctrl` (`RUN`, `STEP`, `ABORT`), `du_dumper` (snapshot y `DUMP_MEM`), `du_resp_tx` y `du_tx_mux` (respuestas). Implementa el protocolo de `docs/protocolo.md`.
-- **Sistema en la placa**: `hw/rtl/top.v` (UART + Debug Unit + núcleo, LEDs de estado), el Clock Wizard `hw/ip/clk_wiz_0/` que genera los 85 MHz y las restricciones `hw/constraints/basys3.xdc`. La UART del TP2 (`hw/rtl/uart/`) ahora valida la paridad.
-- **Testbenches** (`hw/tb/`): uno por módulo del núcleo (`tb_alu`, `tb_reg_file`, `tb_if_stage`, `tb_hazard_unit`, …) y de la Debug Unit (`tb_du_*`), y los de integración `tb_core_programs`, `tb_core_control`, `tb_top_system` y `tb_top_sin_halt`, más los modelos `core_stub` y `uart_host_model`.
-- **Programas en ensamblador** (`asm/`): pruebas con firma en `tests/` (por instrucción, por caso de riesgo y del Hito 2), demos en `demos/` (`fibonacci`, `burbuja`, `factorial`, `subrutina`, …), casos cortos para mirar en la GUI en `riesgos/`, casos especiales en `special/` (sin `halt`, lazo infinito, ilegal) y ejemplos de errores del ensamblador en `errores/`.
-- **Software de PC** (`tools/riscv_toolkit/`): ensamblador (`assembler/`), desensamblador (`disasm/`), tabla de la ISA (`isa/`), golden model y modelo del pipeline (`iss/`), codec del protocolo y transporte serie o simulado (`protocol/`), sesión con historial (`session/`), CLI `asm`, `sim` y `dbg` (`cli/`) e interfaz gráfica en Flet con vista del datapath (`ui/`).
-- **Scripts y automatización**: objetivos del `Makefile` (`lint`, `sim-all`, `sim-programs`, `verify`, `sim-system`, `impl`, `freq-sweep`, `grafico-wns`, `reportes`, `check`, …), scripts de Vivado en `hw/scripts/`, scripts de Python en `tools/scripts/` (`verify_rtl`, `verify_board`, `resumen_reportes`, `grafico_wns`, generadores de `du_defs.vh` y de vectores) y los workflows de CI y de release en `.github/workflows/`.
-- **Reportes de Vivado** (`hw/reports/`): timing, utilización, potencia y DRC del diseño final a 85 MHz, el "antes" a 100 MHz y el barrido de frecuencias.
-- **Documentación**: el informe final (`TP3/README.md`), con su respaldo en `docs/informe/` (timing, métricas y datos), el PRD, los 20 ADR, los contratos de `docs/interfaces/`, el protocolo, los diagramas, las guías de estudio de `docs/guias/`, el manual de usuario, la hoja de referencia de la ISA y el guion de la defensa.
-
-### Changed
-
-- `TP3/README.md` pasa a ser el informe final, con el mismo formato que el del TP2.
-- Este CHANGELOG se reorganizó por grupo de archivos, para que las notas del release se puedan leer.
+Versión final del TP3 en cuanto a contenido. `TP3/README.md` pasó a ser el informe final, con el mismo formato que el del TP2, y se sumaron el gráfico de WNS según la frecuencia y el Clock Wizard en el diagrama de arquitectura. Las notas de esta versión listaban los archivos por grupo; la [1.2.1] cuenta lo mismo de forma narrativa.
 
 ## [1.1] - 2026-11-20
 
-### Changed
-
-- Sección de la versión en este CHANGELOG, para que el workflow de release (`.github/workflows/release.yml`) arme las notas a partir de ella.
+Se ajustó el formato de este CHANGELOG para que el workflow de release (`.github/workflows/release.yml`) pueda armar las notas a partir de la sección de cada versión.
 
 ## [1.0] - 2026-11-20
 
-Primera versión completa: los 6 hitos del PRD (núcleo, riesgos, Debug Unit, GUI, timing e informe) integrados en `main`. El detalle de lo que incluye está en la versión [1.2].
+Primera versión completa, con los seis hitos del PRD integrados en `main`: núcleo, riesgos, Debug Unit, interfaz gráfica, timing e informe.
 
-[Unreleased]: https://github.com/nicopinera/tps-arqui/compare/v1.2...HEAD
+[Unreleased]: https://github.com/nicopinera/tps-arqui/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/nicopinera/tps-arqui/compare/v1.2...v1.2.1
 [1.2]: https://github.com/nicopinera/tps-arqui/compare/v1.1...v1.2
 [1.1]: https://github.com/nicopinera/tps-arqui/compare/v1.0...v1.1
 [1.0]: https://github.com/nicopinera/tps-arqui/releases/tag/v1.0

@@ -1,28 +1,40 @@
 # Guía de los bloques del núcleo (H2-E1 y H2-E2, US-201 a US-210)
 
-Cómo funcionan los bloques combinacionales y de memoria del núcleo, que la épica H2-E2 va a conectar en las etapas del pipeline. El código está en `TP3/hw/rtl/core/`; los contratos, en [`tabla_control.md`](../interfaces/tabla_control.md), [`riscv_core.md`](../interfaces/riscv_core.md) y [`formatos.md`](../interfaces/formatos.md); las decisiones, en ADR-005, ADR-008, ADR-018 y ADR-019.
-
-> Estado: H2-E1 completa (US-201 a US-205); H2-E2 en curso (US-206). Esta guía cubre solo las partes difíciles de cada bloque, no todo el código.
+Cómo funcionan los bloques combinacionales y de memoria del núcleo, que se van a conectar en las etapas del pipeline.
 
 ## 1. Panorama
 
-> TODO: tabla con una fila por bloque y estas columnas:
-> archivo | US | etapa (IF/ID/EX/MEM/WB) | combinacional o secuencial | qué hace en una línea.
-> Ubicar cada bloque en la página 2 de `datapath_pipeline.drawio`.
+### 1.1 Bloques de H2-E1
 
-| Archivo          | US     | Etapa   | Tipo                 | Qué hace |
-| ---------------- | ------ | ------- | -------------------- | -------- |
-| `alu.v`          | US-201 | EX      | comb.                |          |
-| `alu_control.v`  | US-201 | EX      | comb.                |          |
-| `reg_file.v`     | US-202 | ID / WB | sec. + lectura comb. |          |
-| `control_unit.v` | US-203 | ID      | comb.                |          |
-| `imm_gen.v`      | US-203 | ID      | comb.                |          |
-| `instr_mem.v`    | US-204 | IF      | sec. + lectura comb. |          |
-| `data_mem.v`     | US-204 | MEM     | sec. + lectura comb. |          |
-| `store_align.v`  | US-205 | MEM     | comb.                |          |
-| `load_extend.v`  | US-205 | MEM     | comb.                |          |
+| Archivo          | Etapa   | Tipo                 | Qué hace                                                                                      |
+| ---------------- | ------- | -------------------- | --------------------------------------------------------------------------------------------  |
+| `alu.v`          | EX      | comb.                | Opera A y B según `alu_ctrl`: suma, resta, lógicas, desplazamientos, comparaciones y `PASS_B` |
+| `alu_control.v`  | EX      | comb.                | Traduce `alu_op` + `funct3` + `funct7[5]` al `alu_ctrl` de 4 bits                             |
+| `reg_file.v`     | ID / WB | sec. + lectura comb. | 32 registros de 32 bits en FF, `x0` fijo en 0, bypass WB→ID y puerto de depuración            |
+| `control_unit.v` | ID      | comb.                | Decodifica `opcode`/`funct3`/`funct7`: señales de control, `imm_type`, HALT, ilegal, `uses_rs*` |
+| `imm_gen.v`      | ID      | comb.                | Reordena el inmediato del formato I/S/B/U/J y lo extiende con signo                           |
+| `instr_mem.v`    | IF      | sec. + lectura comb. | IMEM de 256 palabras en LUTRAM; lee `mem[pc/4]` sin latencia; la carga la Debug Unit          |
+| `data_mem.v`     | MEM     | sec. + lectura comb. | DMEM de 256 palabras con byte enables; mux de escritura núcleo / Debug Unit                   |
+| `dmem_bitmap.v`  | MEM     | sec.                 | Un bit por palabra escrita y contador de palabras usadas                                      |
+| `store_align.v`  | MEM     | comb.                | Arma los byte enables y replica el dato de `sb`/`sh`/`sw` en la palabra                       |
+| `load_extend.v`  | MEM     | comb.                | Saca el byte o la media palabra de la palabra leída y la extiende (signo o ceros)             |
 
-> TODO: qué queda para H2-E2: los latches, el PC, el mux de `result_src`, `branch_cmp`, etc.
+### 1.2 Lo que agrega H2-E2 (y H3-E1)
+
+Los bloques de  son piezas sueltas. H2-E2 los agrupa en etapas, agrega lo que falta para que el pipeline funcione y los une en `riscv_core`:
+
+| Archivo                                         |      | Qué agrega                                                                                                  |
+| ----------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------- |
+| `if_stage.v`                                    |  | Registro **PC**, sumador `pc + 4`, mux del próximo PC; instancia la IMEM                                     |
+| `if_id_reg.v`                                   |  | Latch IF/ID con stall, flush y bit `valid`                                                                   |
+| `id_stage.v`                                    |  | Extrae los campos de la instrucción; instancia banco, `control_unit` e `imm_gen`; sumador del destino del `jal` |
+| `id_ex_reg.v`                                   |  | Latch ID/EX: burbuja que anula el control                                                                    |
+| `ex_stage.v`, `branch_cmp.v`                    |  | Muxes de forwarding, mux `alu_src`, ALU, comparador de branches, sumador del destino y `redirect_ex`         |
+| `ex_mem_reg.v`                                  |  | Latch EX/MEM (sin stall ni flush)                                                                            |
+| `mem_stage.v`                                   |  | Une `store_align`, `data_mem`, `dmem_bitmap` y `load_extend`                                                 |
+| `mem_wb_reg.v`, `wb_stage.v`                    |  | Latch MEM/WB, mux de `result_src` y detección del HALT que se retira                                         |
+| `riscv_core.v`                                  |  | Integración: enable efectivo, `o_halted`, reset por `i_flush_all`, buses planos del snapshot                  |
+| `forwarding_unit.v`, `hazard_unit.v`            |  | Forwarding, stall load-use y toda la lógica de flush / próximo PC                                   |
 
 ## 2. Patrones de Verilog que se repiten
 
@@ -36,7 +48,7 @@ Cómo funcionan los bloques combinacionales y de memoria del núcleo, que la ép
 
 Se eligió usar localparams en vez de macros (defines) para evitar conflictos ademas es lo mas correcto ya que son valores importantes para esos bloques nada mas, se usan macros para valores globales. A su vez al usar localparams el include debe estar dentro del modulo, porque sino seria un error de sintaxis.
 
-### 2.3 `lint_off` de Verilator: cuándo y por qué
+### 2.2 `lint_off` de Verilator: cuándo y por qué
 
 ```verilog
 // data_mem.v:28-30
@@ -49,9 +61,11 @@ en los `.vh` se usa `UNUSEDPARAM`, porque cada módulo usa una parte de las cons
 
 `UNUSEDSIGNAL` en puertos que reciben más bits de los que usan (`i_addr`, `i_pc`, `i_instr[6:0]` de `imm_gen`). Se recibe el bus entero para que cada módulo decida qué bits usa (las memorias según su tamaño, imm_gen con los índices de la especificación).
 
-### 2.4 Valores por defecto al inicio del `always @(*)`
+### 2.3 Valores por defecto al inicio del `always @(*)`
 
 En un `always @(*)`, si en algún camino del if/case una salida no recibe valor, para verilog se mantiene el valor que tenía. Para recordar un valor sin reloj, vivado infiere un latch para eso, lo cual no es deseable en un diseño sincronico debido a que puede que se maneje mal el analisis de timing o se genere un glitch.
+
+Por eso todos los bloques combinacionales arrancan asignando un valor a cada salida y después lo pisan según el caso (`store_align`, `load_extend`, `hazard_unit`, el mux de `wb_stage`). Además, el `default` de cada `case` repite ese valor, así un código no previsto (por ejemplo `result_src = 11`) da algo definido.
 
 ## 3. ALU y control de ALU (US-201)
 
@@ -99,7 +113,7 @@ esto se evalúa de arriba hacia abajo y gana la primera condición que se cumpla
 2. Si la instruccion que esta en WB está escribiendo justo el registro que se lee (rd == rs1) entonces hace el bypass y devuelve directamente el valor del registro que viene de WB.
 3. Si no se da ninguna, devuelve el valor del registro está guardado en el banco.
 
-### 4.4 Flip-flops, no LUTRAM
+### 4.2 Flip-flops, no LUTRAM
 
 Al implementar el banco de registros mediante flip-flops en vez de LUTRAM, se puede hacer el borrado de los datos del banco en un solo ciclo, si fuese LUTRAM al ser una memoria (ADDRESS+DATA por ciclo), requeriria de 32 ciclos para ser borrados
 
@@ -283,8 +297,10 @@ Lo que muestra esta imagen es que cuando la instruccion de add este en EX, le ll
 
 El mux se realiza mediante prioridades, donde la redireccion desde EX (salto condicional o jalr) > redireccion desde ID (salto incondicional, sin contar jalr) > pc+4. Esto tiene un motivo fundamental: La que se resulve mas tarde es la que gana porque su decision anula a las que vinieron despues
 
+> Este es el código de US-206. Desde US-303 la prioridad la decide la hazard unit y `if_stage` solo obedece a `i_pc_sel` (ver la sección 15). Las secciones 8.2 y 8.3 quedan porque explican por qué el orden es ese.
+
 ```verilog
-// if_stage.v:54-58
+// if_stage.v en US-206
 always @(*) begin
     r_pc_next = w_pc_plus4;
     if (i_redirect_ex) r_pc_next = i_redirect_ex_pc;
@@ -295,7 +311,8 @@ end
 ### 8.3 Cuándo se escribe el PC: la redirección de EX le gana a la detención
 
 ```verilog
-// if_stage.v:51
+// if_stage.v en US-206 (desde US-303: i_enable && !i_stall_f, y la hazard unit
+// no pone stall_f cuando hay redireccion de EX, salvo con ABORT)
 wire w_pc_we = i_enable && (i_redirect_ex || (!i_stall && !i_halt_fetch));
 ```
 
@@ -309,7 +326,7 @@ De esta parte lo mas interesante es que la escritura de next pc se habilita a pe
   0x0C  halt                  # el ensamblador lo agrega solo al final
 ```
 
-El bne se resuelve en EX pero halt se detecta en ID
+El bne se resuelve en EX pero halt se detecta en ID. En el primer paso por el lazo, cuando el `bne` (0x08) está en EX, el HALT (0x0C) ya está en ID y activó `halt_fetch`. Si `halt_fetch` bloqueara también la redirección, el PC nunca volvería a `loop` y el programa terminaría con `x1 = 1` en vez de `x1 = 0`. El HALT era especulativo (venía detrás de un branch tomado), así que la redirección de EX tiene que poder escribir el PC igual, y el flush de ID/EX descarta el HALT.
 
 ### 8.4 Latch IF/ID y el bit `valid`
 
@@ -468,11 +485,106 @@ RV32I está pensada para no cambiar cuando se agrega C, y por eso tiene detalles
 - `jalr` hace `& ~1`, lo mínimo para que el destino sea par;
 - los inmediatos B y J (`formatos.md`) tienen el bit 0 implícito en 0, pero codifican el bit 1: los offsets están en unidades de 2 bytes.
 
-En nuestro caso como usamos solamente instrucciones del 32 bits, la IMEM ignora `pc[1:0]` (explicado en la seccion 6.2), así que con PC = `0x102` lee la palabra de `0x100`, y las instrucciones que se ejecutan son las mismas.
+En nuestro caso como usamos solamente instrucciones del 32 bits, la IMEM ignora `pc[1:0]` (explicado en la seccion 6.1), así que con PC = `0x102` lee la palabra de `0x100`, y las instrucciones que se ejecutan son las mismas.
 
 Pero fue agregado para respetar la especificacion, ademas para que lo que muestra el hardware en los snapshots (el PC y registros como x1) coincida con el golden model, que sigue la spec.
 
-## 11. Forwarding unit (US-301)
+## 11. Etapas MEM y WB, y latch MEM/WB (US-209)
+
+### 11.1 `mem_stage`: solo cableado
+
+`mem_stage` no tiene lógica propia: instancia `store_align`, `data_mem`, `dmem_bitmap` y `load_extend` y los conecta como en el diagrama. La dirección es `alu_result` (rs1 + imm): los bits `[1:0]` van a `store_align` y `load_extend`, y `data_mem` usa `[ADDR_BITS+1:2]` (sección 6.2).
+
+`mem_read` no entra a la etapa. La lectura de la DMEM es combinacional y siempre está disponible: si la instrucción no es un load, el dato leído se descarta en WB porque `result_src` no lo elige. `mem_read` sigue en EX/MEM solo para la hazard unit (en ID/EX) y para el snapshot.
+
+La marca del bitmap sale de `data_mem` (`o_core_we`, `o_core_addr`), no de la etapa, para que la condición que escribe la memoria y la que marca el bitmap sea una sola (sección 6.4).
+
+### 11.2 EX/MEM y MEM/WB no crean burbujas
+
+A diferencia de IF/ID e ID/EX, estos dos latches no tienen stall ni flush: cargan lo que llega siempre que `i_enable = 1`.
+
+```verilog
+// mem_wb_reg.v (ex_mem_reg.v es igual)
+end else if (i_enable) begin
+    o_instr <= w_instr;
+    o_valid <= i_valid;
+end
+```
+
+- **Sin flush:** las redirecciones se resuelven a más tardar en EX, así que todo lo que pasó de EX es del camino correcto.
+- **Sin stall:** el único stall (load-use) frena IF e ID; el load sigue avanzando para que su dato llegue.
+- **Las burbujas pasan tal cual:** llegan de ID/EX con `valid = 0` y el control ya en 0 (sección 9.4), y se copian.
+
+### 11.3 `wb_stage`: mux de `result_src` y qué se escribe
+
+```verilog
+// wb_stage.v
+always @(*) begin
+    o_wb_data = i_alu_result;
+    case (i_result_src)
+        RES_MEM: o_wb_data = i_mem_data;   // loads
+        RES_PC4: o_wb_data = i_pc_plus4;   // jal / jalr
+        default: o_wb_data = i_alu_result; // RES_ALU y 11
+    endcase
+end
+
+assign o_wb_we        = i_valid && i_reg_write;
+assign o_halt_retired = i_valid && i_halt;
+```
+
+- Por eso MEM/WB guarda tres valores de 32 bits (`alu_result`, `mem_data`, `pc_plus4`): el mux está en WB, después del latch.
+- `o_wb_data` es `ResultW` en el diagrama: va al banco (`WD3`) y también es la entrada `FWD_MEM_WB` de los muxes de forwarding en EX.
+- `o_wb_we` vuelve a mirar `valid`. Una burbuja ya trae `reg_write = 0`, así que es una segunda protección, como `i_valid` en `redirect_ex` (sección 10.3).
+- `o_halt_retired` indica que el HALT (o la ilegal) terminó de recorrer el pipeline: todas las instrucciones anteriores ya escribieron. Dura un ciclo; `riscv_core` lo guarda (sección 12.2).
+
+## 12. Integración del núcleo (US-210)
+
+`riscv_core` instancia las cinco etapas, los cuatro latches, la hazard unit y la forwarding unit. Lo que no pertenece a ninguna etapa vive acá:
+
+```verilog
+// riscv_core.v:189-191
+wire w_rst = i_reset || i_flush_all;   // reset de PC, latches y banco
+wire w_en  = i_enable && !r_halted;    // con el programa terminado, no avanza
+```
+
+### 12.1 Dónde quedó cada memoria
+
+El banco de registros está dentro de `id_stage`, aunque lo escribe WB: las señales de escritura (`o_wb_we`, `o_wb_rd`, `o_wb_data`) salen de `wb_stage` y vuelven a `id_stage` como `i_wb_*`. La IMEM está en `if_stage` y la DMEM y el bitmap en `mem_stage`. Los puertos de la Debug Unit (carga de IMEM, lectura de registros y memoria, limpieza) atraviesan esas etapas hasta el bloque que corresponde.
+
+### 12.2 `o_halted` y el enable efectivo
+
+```verilog
+// riscv_core.v:203-211
+always @(posedge clock) begin
+    if (w_rst) begin
+        r_halted  <= 1'b0;
+        r_illegal <= 1'b0;
+    end else if (w_en && w_wb_halt_retired) begin
+        r_halted  <= 1'b1;
+        r_illegal <= w_wb_illegal_retired;
+    end
+end
+```
+
+Cuando el HALT llega a WB, `r_halted` se pone en 1 y `w_en` baja a 0. `w_en` es el `i_enable` de todo el núcleo (PC, latches, banco, DMEM, hazard unit), así que el pipeline queda congelado con el estado final aunque la Debug Unit siga mandando `i_enable = 1`. El HALT queda en MEM/WB y se ve en el snapshot. Solo `i_reset` o `i_flush_all` lo sacan de ese estado.
+
+El HALT se detecta en ID (para dejar de buscar) pero el núcleo se detiene recién en WB: así las instrucciones anteriores al HALT terminan de escribir antes de que la Debug Unit lea registros y memoria.
+
+### 12.3 `i_reset`, `i_flush_all` e `i_clear_used`
+
+| Señal          | PC y latches | Banco | Bitmap | Necesita `i_enable` |
+| -------------- | ------------ | ----- | ------ | ------------------- |
+| `i_reset`      | sí           | sí    | sí     | no                  |
+| `i_flush_all`  | sí           | sí    | no     | no                  |
+| `i_clear_used` | no           | no    | sí     | no                  |
+
+`i_flush_all` es lo que usa la Debug Unit para volver a correr un programa (ADR-009): deja el núcleo como recién reseteado sin borrar el bitmap, que se limpia aparte. Ninguna de las tres depende de `i_enable`, porque la Debug Unit las usa con el núcleo congelado.
+
+### 12.4 Los latches como buses planos
+
+Para el snapshot (ADR-017), cada latch sale de `riscv_core` como un bus plano (`o_if_id` de 104 bits, `o_id_ex` de 248, `o_ex_mem` de 152 y `o_mem_wb` de 144), con el layout de bytes de [`riscv_core.md`](../interfaces/riscv_core.md) sección 4: byte `k` = `bus[8k+7:8k]`, y los bits sobrantes de cada byte en 0. Así la Debug Unit manda el latch byte por byte sin conocer sus campos, y el software lo decodifica con la misma tabla.
+
+## 13. Forwarding unit (US-301)
 
 En la forwarding unit ingresan las direcciones de los registros que se usan en la etapa de EX y se comparan contra rd en MEM y rd en WB osea lo que se hace es verifica que en la etapa de EX se va a usar registros (rs1 y rs2) que van a ser escritos (reg_write) en MEM o WB y que la operacion no es una burbuja mediante el valid. Luego notar tambien que el registro en MEM tiene mayor prioridad en la toma de la decision porque es el valor mas reciente, podria darse el caso que las instrucciones en MEM y en WB escriban el mismo registro, y el valor correcto es el de la mas reciente. Ademas se verifica que el registro no sea x0, que siempre debe valer 0: hay instrucciones con rd = x0 y reg_write = 1 (jal x0, addi x0) y, si se reenviaran, la que lee x0 recibiria un valor distinto de 0
 
@@ -492,7 +604,7 @@ end
 // lo mismo para el operando B
 ```
 
-## 12. Hazard unit (US-302)
+## 14. Hazard unit (US-302)
 
 La hazard unit resuelve un problema que la forwarding unit no puede resolver, es el tema de load-use por ejemplo:
 
@@ -521,7 +633,7 @@ assign o_stall = w_load_en_ex && w_usa_rd;
 
 ---
 
-En este punto se hicieron cambiamos retroactivos a otros bloques. Con el fin de completar la funcionalidad de la hazard unit se cambiaron las siguientes cosas:
+En este punto se hicieron cambios retroactivos a otros bloques. Con el fin de completar la funcionalidad de la hazard unit se cambiaron las siguientes cosas:
 control_defs: Se agregaron las codificaciones para el PC_SEL en el mux de PC: PC_SEL_PLUS4, PC_SEL_JAL, PC_SEL_EX
 if_stage: antes manejaba el las prioridades dentro del mux del PC, ahora obedece lo que le dice la hazard unit
 hazard_unit: hasta la us-302 lo unico que manejaba era el hazard load-use, a partir de ahora pasa a manejar todo esto, que antes estaba en otros módulos:
@@ -533,14 +645,14 @@ hazard_unit: hasta la us-302 lo unico que manejaba era el hazard load-use, a par
 | Flush de ID/EX (redirección de EX)                 | `riscv_core` (`w_flush_id_ex`)                            | `o_flush_e`                                                                  |
 | Burbuja de ID/EX por ABORT                         | `riscv_core` (`w_bubble_id_ex = stall \|\| i_stop_fetch`) | `o_bubble_e`                                                                 |
 | Frenar la búsqueda por HALT o ABORT                | `riscv_core` (`w_halt_fetch`) + `if_stage`                | `o_stall_f`                                                                  |
-| Registro `halt_fetch` (recordar el HALT)           | `riscv_core` (`r_halt_fetch`)                             | adentro de la unidad, por eso ahora tiene `c uwlock`, `i_reset` e `i_enable` |
+| Registro `halt_fetch` (recordar el HALT)           | `riscv_core` (`r_halt_fetch`)                             | adentro de la unidad, por eso ahora tiene `clock`, `i_reset` e `i_enable` |
 | Prioridades entre eventos simultáneos              | implícitas, repartidas en los tres lugares                | explícitas, en una sola cadena `if` / `else if`                              |
 
 ---
 
-## 13 Hazard unit (us-303)
+## 15. Hazard unit (US-303)
 
-### 13.1 ABORT
+### 15.1 ABORT
 
 El ABORT es una señal que le envia la DU al core, existe para los programas que nunca llegan a un HALT. Por ejemplo:
 
@@ -554,7 +666,7 @@ En modo continuo este programa corre para siempre: ningún HALT llega a WB. El r
 
 Tanto el HALT como ABORT funciona igual, ambos activan stallF, lo que hace frenar al PC y rellenar con burbujas las siguientes etapas
 
-### 13.2 Funcionalidades de la Hazard unit
+### 15.2 Funcionalidades de la Hazard unit
 
 Desde la us-303, la hazard unit decide en cada ciclo tres cosas:
 
@@ -578,7 +690,7 @@ Las salidas y a dónde van:
 | `o_flush_e`  | `id_ex_reg` (`i_flush`)  | ID/EX carga una burbuja en lugar de la instrucción de ID (redirección) |
 | `o_bubble_e` | `id_ex_reg` (`i_bubble`) | ID/EX carga una burbuja (load-use o ABORT)                             |
 
-### 13.3 `always` combinacional: la tabla de prioridades
+### 15.3 `always` combinacional: la tabla de prioridades
 
 ```verilog
 // Tabla de prioridades
@@ -627,7 +739,7 @@ En un mismo ciclo pueden pasar varias cosas a la vez. Por ejemplo, un branch tom
 
 Notar que en ABORT se detiene el PC y se descarta la instruccion en ID, mientras que un halt o illegal solamente detiene el PC y deja que se continue ejecutado las etapas posteriores sin agregar burbujas
 
-### 13.4 `always` secuencial: `r_halt_fetch`
+### 15.4 `always` secuencial: `r_halt_fetch`
 
 ```verilog
 // Busqueda detenida por un HALT/ilegal: el de este ciclo en ID o uno detectado antes
